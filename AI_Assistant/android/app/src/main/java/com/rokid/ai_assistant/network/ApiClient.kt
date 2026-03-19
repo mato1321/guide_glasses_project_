@@ -9,7 +9,7 @@ import java.util.concurrent.TimeUnit
 object ApiClient {
 
     // ✅ 改成你的 FastAPI 位址
-    private const val BASE_URL = "http://192.168.158.216:8000/"
+    private const val BASE_URL = "你的網路ip位址"
 
     private val logging by lazy {
         HttpLoggingInterceptor().apply {
