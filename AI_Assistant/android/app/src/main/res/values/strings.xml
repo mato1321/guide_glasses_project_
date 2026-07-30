@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">AI_Assistant</string>
+    <string name="app_name">rokidglasses_project</string>
+    <string name="user_photo">使用者頭像</string>
 </resources>
