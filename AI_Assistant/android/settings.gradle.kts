@@ -14,12 +14,12 @@ pluginManagement {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
+        maven{url = uri("https://maven.rokid.com/repository/maven-public/")}
         google()
         mavenCentral()
-        maven { url = uri("https://jitpack.io") }
     }
 }
 
-rootProject.name = "AI_Assistant"
+rootProject.name = "rokidglasses_project"
 include(":app")
  
