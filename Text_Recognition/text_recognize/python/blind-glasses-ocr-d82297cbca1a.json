@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "blind-glasses-ocr",
+  "private_key_id": "你的keyid",
+  "private_key": "-----BEGIN PRIVATE KEY-----\n你的key\n-----END PRIVATE KEY-----\n",
+  "client_email": "你的email",
+  "client_id": "你的id",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/katiemou0102%40blind-glasses-ocr.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
