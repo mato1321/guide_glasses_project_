@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true"
+    android:background="#FFFFFF">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="智慧導讀辨識"
+            android:textSize="28sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:paddingBottom="12dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="拍照辨識文字，系統會自動朗讀"
+            android:textSize="16sp"
+            android:gravity="center"
+            android:paddingBottom="20dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/card_panel"
+            android:padding="18dp"
+            android:layout_marginBottom="16dp">
+
+            <TextView
+                android:id="@+id/statusText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="狀態：準備完成"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:paddingBottom="14dp" />
+
+            <Button
+                android:id="@+id/btnCapture"
+                android:layout_width="match_parent"
+                android:layout_height="64dp"
+                android:text="拍照辨識"
+                android:textSize="22sp"
+                android:textStyle="bold"
+                android:textColor="#FFFFFF"
+                android:background="@drawable/btn_primary"
+                android:layout_marginBottom="12dp"
+                android:focusable="true"
+                android:focusableInTouchMode="true" />
+
+            <Button
+                android:id="@+id/btnReplay"
+                android:layout_width="match_parent"
+                android:layout_height="64dp"
+                android:text="重新朗讀"
+                android:textSize="22sp"
+                android:textStyle="bold"
+                android:textColor="#FFFFFF"
+                android:background="@drawable/btn_gray"
+                android:layout_marginBottom="12dp"
+                android:focusable="true"
+                android:focusableInTouchMode="true" />
+
+            <Button
+                android:id="@+id/btnStop"
+                android:layout_width="match_parent"
+                android:layout_height="64dp"
+                android:text="停止朗讀"
+                android:textSize="22sp"
+                android:textStyle="bold"
+                android:textColor="#FFFFFF"
+                android:background="@drawable/btn_danger"
+                android:focusable="true"
+                android:focusableInTouchMode="true" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/card_panel"
+            android:padding="18dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="辨識結果"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                android:paddingBottom="10dp" />
+
+            <TextView
+                android:id="@+id/resultText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="200dp"
+                android:text="辨識結果會顯示在這裡"
+                android:textSize="20sp"
+                android:padding="16dp" />
+        </LinearLayout>
+
+    </LinearLayout>
+</ScrollView>
