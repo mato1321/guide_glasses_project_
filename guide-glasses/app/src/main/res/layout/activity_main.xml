@@ -1,23 +1,63 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Phase 1 骨架畫面。
-    刻意使用大字級與高對比，並保證每個元素都有 contentDescription，
-    讓 TalkBack 從第一版就能完整操作。
+    無障礙優先的版面。
+
+    「說話」是一整片佔滿畫面的按鈕，而不是角落的小圖示 ——
+    看不見畫面的人不必先找到按鈕在哪，點任何地方都有效。
+    「停止播報」獨立成一個固定在底部的區塊，因為那是最需要在
+    慌張時能盲摸到的操作。
 -->
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:padding="24dp">
+    android:orientation="vertical"
+    android:padding="16dp">
 
     <TextView
         android:id="@+id/tvStatus"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="center"
         android:gravity="center"
-        android:text="@string/status_initialising"
-        android:textSize="32sp"
-        android:textStyle="bold"
-        android:contentDescription="@string/status_initialising" />
+        android:paddingVertical="12dp"
+        android:text="@string/status_idle"
+        android:textSize="26sp"
+        android:textStyle="bold" />
 
-</FrameLayout>
+    <TextView
+        android:id="@+id/tvTranscript"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:contentDescription="@string/desc_transcript"
+        android:gravity="center"
+        android:paddingVertical="8dp"
+        android:textSize="22sp"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/tvReply"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:contentDescription="@string/desc_reply"
+        android:gravity="center"
+        android:paddingVertical="8dp"
+        android:textSize="22sp"
+        android:visibility="gone" />
+
+    <Button
+        android:id="@+id/btnTalk"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginVertical="12dp"
+        android:text="@string/action_talk"
+        android:textSize="36sp"
+        android:textStyle="bold" />
+
+    <Button
+        android:id="@+id/btnStop"
+        android:layout_width="match_parent"
+        android:layout_height="88dp"
+        android:text="@string/action_stop"
+        android:textSize="26sp" />
+
+</LinearLayout>
