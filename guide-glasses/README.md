@@ -54,13 +54,20 @@ sdk.dir=C\:\\Users\\<你的帳號>\\AppData\\Local\\Android\\Sdk
 ## 模組結構
 
 ```
-app/                    組裝層：Application、MainActivity、Hilt Modules
+app/                          組裝層：Application、MainActivity、Hilt Modules
 core/
-  core-domain/          【純 Kotlin】Entity、UseCase 介面、播報仲裁邏輯
-  core-common/          Dispatcher、共用工具
+  core-domain/                【純 Kotlin】Entity、播報仲裁、意圖路由
+  core-common/                Dispatcher、共用工具
+ai/
+  ai-speech/                  Android SpeechRecognizer / TextToSpeech
+  ai-agent/                   BFF function calling 協定與 HTTP 閘道
+feature/
+  feature-assistant/          助理中樞 ViewModel
 ```
 
-後續 Phase 會加入：`glasses-cxr` / `glasses-fallback` / `ai-*` / `feature-*`。
+後續 Phase 會加入：`glasses-cxr` / `glasses-fallback` / `ai-vision` /
+`ai-face` / `ai-ocr` / `feature-obstacle` / `feature-face` /
+`feature-navigation` / `feature-ocr`。
 
 ### `core-domain` 刻意不是 Android 模組
 
@@ -71,17 +78,52 @@ core/
 
 ---
 
-## 目前狀態（Phase 1）
+## 目前狀態（Phase 2 完成）
 
 已完成：
 
+**Phase 1 地基**
 - 多模組骨架、version catalog、Hilt DI 接線
-- `AppResult` / `AppError` —— 型別化的錯誤，取代舊專案讓 exception
-  直接穿透到 UI 再唸出英文訊息的做法
-- `AnnouncementQueue` —— 播報優先級仲裁（14 個單元測試涵蓋）
+- `AppResult` / `AppError` —— 型別化的錯誤
+- `AnnouncementQueue` / `AnnouncementManager` —— 播報優先級仲裁
 - `GlassesGateway` / `FrameSource` / `Announcer` —— 眼鏡能力的抽象介面
 
-尚未實作：所有功能模組。`MainActivity` 目前只是一個空畫面。
+**Phase 2 助理中樞**
+- `LocalCommandMatcher` —— 本地快捷指令，<100ms、離線可用
+- `IntentRouter` —— 雙層路由（本地優先，未命中才呼叫 LLM）
+- `ConversationHistory` —— 有界、可注入，取代全域無上限的對話記憶
+- `AndroidSpeechRecognitionGateway` —— 串流式 ASR，離線優先
+- `AndroidTtsAnnouncer` —— 本機 TTS，走無障礙音訊通道
+- `RemoteLlmIntentGateway` —— BFF function calling
+- `AssistantViewModel` + 無障礙主畫面
+
+尚未實作：障礙物、人臉、導航、OCR、翻譯。這些 intent 目前會播報
+「這個功能還在開發中」—— 刻意不靜默，因為對看不見畫面的使用者，
+沒有聲音等於系統當掉。
+
+### 設定 LLM 後端（選用）
+
+留空時 App 仍完全可用，只是複雜語句無法理解。在 `local.properties` 或
+`~/.gradle/gradle.properties` 加入：
+
+```
+guideglasses.llmEndpoint=https://your-bff.run.app/route
+```
+
+BFF 需實作的協定見 `ai/ai-agent/src/main/kotlin/.../AgentProtocol.kt`。
+App 端刻意不直接呼叫 LLM 供應商 —— 內嵌金鑰必然會被反編譯取出。
+
+### 語音指令（本地、不需網路）
+
+| 說法 | 動作 |
+|---|---|
+| 停 / 安靜 / 別說了 | 立刻停止播報 |
+| 前面有什麼 / 可以走嗎 / 有障礙物嗎 | 障礙物偵測 |
+| 這是誰 / 這個人是誰 / 誰在我前面 | 人臉辨識 |
+| 唸給我聽 / 上面寫什麼 | OCR 朗讀 |
+| 再說一次 / 剛剛說什麼 | 重複上一則 |
+
+需要參數的指令（「帶我去台北101」「翻成英文」）走 LLM。
 
 ### 播報優先級
 
@@ -100,8 +142,14 @@ core/
 ## 測試
 
 ```bash
-./gradlew :core:core-domain:test
+./gradlew test
 ```
 
-`core-domain` 是純 JVM 模組，測試秒級完成，不需要模擬器。
-攸關安全的行為（危險警示能否打斷長文朗讀）都以單元測試守護。
+目前 57 個單元測試，全部是純 JVM，秒級完成，不需要模擬器。
+
+守護的是行為而不只是資料結構：
+- 危險警示能否打斷正在進行的長文朗讀
+- 使用者說「停」是否真的清空所有佇列
+- 已被打斷的 TTS 回呼遲到時，佇列會不會跳號漏播
+- 「這個人是誰」能否命中（舊版關鍵字比對會漏掉）
+- 沒有網路時，助理是否說人話而不是唸出 exception
