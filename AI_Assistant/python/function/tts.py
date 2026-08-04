@@ -3,9 +3,9 @@ from dotenv import load_dotenv
 from openai import OpenAI
 import time
 
-# 加载 .env 文件
+# 載入 .env（見 .env.example）
 load_dotenv()
-client = OpenAI(api_key=os.getenv("api_key"))
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 async def generate_text(response_text:str , voice:str = "alloy") -> str:
     """

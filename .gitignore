@@ -1,5 +1,18 @@
-# ===== Git 相關 =====
-.gitignore
+# ===== 機敏資料（最高優先，絕不可提交）=====
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.keystore
+*.jks
+# GCP / Firebase 服務帳戶金鑰
+**/service-account*.json
+**/*-credentials.json
+blind-glasses-ocr-*.json
+# Android 簽章設定
+keystore.properties
+signing.properties
 
 # ===== Python =====
 venv/
@@ -10,21 +23,24 @@ __pycache__/
 *.pyd
 *.egg-info/
 dist/
-build/
-.env
+.pytest_cache/
+.mypy_cache/
 
-# ===== Android & C/C++ =====
+# ===== Android / Gradle =====
 .gradle/
+build/
 local.properties
 captures/
 .externalNativeBuild/
 .cxx/
-android/build/
-android/app/build/
+.kotlin/
+*.apk
+*.aab
 
-# ===== IDE =====
+# ===== IDE / 工具 =====
 .idea/
 .vscode/
+.claude/
 *.swp
 *.swo
 *.iml
@@ -34,23 +50,23 @@ android/app/build/
 Thumbs.db
 desktop.ini
 
-# ===== 專案特定 (測試檔案、人臉資料與模型) =====
-python-server/test_engine.py
-python-server/test_api.py
-python-server/face_database/*/
+# ===== 模型權重（體積大，改用 Git LFS 或 release 附件）=====
 *.onnx
 *.pt
+*.tflite
+*.task
 
-# ===== 日誌、暫存與多媒體 (全域) =====
-*.jpg
-*.jpeg
-*.png
+# ===== 執行期產物 =====
 *.log
 *.tmp
 temp/
+debug.jpg
+temp_output_*.mp3
+recording_*.m4a
 
-*.json
+# ===== 人臉資料（生物特徵，不得進版控）=====
+# 測試用的 face_database 目前保留，正式環境請整個排除
+# face_database/
 
-# 或只忽略這支金鑰
-blind-glasses-ocr-d82297cbca1a.json
-Text_Recognition/text_recognize/python/blind-glasses-ocr-d82297cbca1a.json
+# 注意：不要用 *.json / *.png / *.jpg 這類全域規則，
+# 會誤擋 google-services.json 與 Android res/drawable 資源。
