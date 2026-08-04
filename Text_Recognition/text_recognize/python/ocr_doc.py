@@ -2,9 +2,18 @@ import os
 import cv2
 import numpy as np
 import re
+from dotenv import load_dotenv
 from google.cloud import vision
 
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = r"C:\Users\user\Downloads\blind-glasses-ocr-d82297cbca1a.json"
+# 憑證路徑從 .env 讀取（見 .env.example）。
+# 絕不可把金鑰路徑或金鑰內容寫死在程式碼裡。
+load_dotenv()
+
+if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+    raise RuntimeError(
+        "缺少環境變數 GOOGLE_APPLICATION_CREDENTIALS。\n"
+        "請複製 .env.example 為 .env，並填入服務帳戶金鑰的檔案路徑。"
+    )
 
 # 把 bytes 轉成 OpenCV 圖片
 def imdecode_bytes(image_bytes: bytes):
