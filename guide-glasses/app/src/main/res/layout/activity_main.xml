@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Phase 1 骨架畫面。
+    刻意使用大字級與高對比，並保證每個元素都有 contentDescription，
+    讓 TalkBack 從第一版就能完整操作。
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="24dp">
+
+    <TextView
+        android:id="@+id/tvStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:gravity="center"
+        android:text="@string/status_initialising"
+        android:textSize="32sp"
+        android:textStyle="bold"
+        android:contentDescription="@string/status_initialising" />
+
+</FrameLayout>
