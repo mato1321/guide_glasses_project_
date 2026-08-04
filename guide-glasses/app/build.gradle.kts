@@ -16,12 +16,25 @@ android {
         versionCode = 1
         versionName = "0.1.0"
 
+        // BFF 位址。留空時退回離線閘道，App 仍可用本地快捷指令。
+        // 設定方式：在 local.properties 或 ~/.gradle/gradle.properties 加入
+        //   guideglasses.llmEndpoint=https://your-bff.run.app/route
+        buildConfigField(
+            "String",
+            "LLM_ENDPOINT",
+            "\"${providers.gradleProperty("guideglasses.llmEndpoint").getOrElse("")}\"",
+        )
+
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Rokid Glasses 是 ARM64。不打包 x86/x86_64，避免 APK 無謂膨脹。
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     buildTypes {
@@ -52,6 +65,9 @@ kotlin {
 dependencies {
     implementation(project(":core:core-common"))
     implementation(project(":core:core-domain"))
+    implementation(project(":ai:ai-speech"))
+    implementation(project(":ai:ai-agent"))
+    implementation(project(":feature:feature-assistant"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)

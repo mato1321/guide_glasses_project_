@@ -24,3 +24,10 @@ include(":app")
 // ===== 共用基礎 =====
 include(":core:core-common")
 include(":core:core-domain")
+
+// ===== Edge AI =====
+include(":ai:ai-speech")
+include(":ai:ai-agent")
+
+// ===== 功能模組 =====
+include(":feature:feature-assistant")
