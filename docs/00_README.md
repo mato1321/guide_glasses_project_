@@ -1,6 +1,19 @@
 # Rokid AI 導盲眼鏡系統 — 完整分析報告
 
-分析日期：2026-08-05 ｜ 基準 commit：`1adfd1a`
+分析日期：2026-08-05
+
+---
+
+## 🔵 請從這裡開始
+
+| 你想知道 | 看這份 |
+|---|---|
+| **guide-glasses 怎麼跑、怎麼測、完成到哪** | [`guide-glasses/DOCUMENTATION.md`](../guide-glasses/DOCUMENTATION.md) |
+| **前次分析哪些結論是錯的、正確的是什麼** | [`08_CORRECTIONS_AND_REANALYSIS.md`](08_CORRECTIONS_AND_REANALYSIS.md) |
+| Face_Recognition 為什麼延遲高 | [`08` §2](08_CORRECTIONS_AND_REANALYSIS.md) |
+
+> ⚠️ **`01`～`07` 有部分結論已於 2026-08-05 被修正**（見 `08`）。
+> 這些文件保留不改寫，僅供分析過程的可追溯性。
 
 ---
 
@@ -13,42 +26,64 @@
 | [03_FEATURE_ANALYSIS.md](03_FEATURE_ANALYSIS.md) | 六大功能逐項分析：現況、模型選型、Edge/Cloud 判定、風險 |
 | [04_ARCHITECTURE.md](04_ARCHITECTURE.md) | Edge/Cloud 配置、雲端供應商比較、Clean Architecture 模組設計、7 張系統流程圖 |
 | [05_ROADMAP_AND_FEASIBILITY.md](05_ROADMAP_AND_FEASIBILITY.md) | Phase 0–6 Roadmap、誠實的可行性分析、待確認事項 |
+| [06_SECURITY_RUNBOOK.md](06_SECURITY_RUNBOOK.md) | 金鑰外洩處理程序與執行結果 |
+| [07_HANDOVER.md](07_HANDOVER.md) | 專案交接文件 — 完整工作紀錄、檔案異動清單、風險清單 |
+| [08_CORRECTIONS_AND_REANALYSIS.md](08_CORRECTIONS_AND_REANALYSIS.md) | **⭐ 前次分析的修正與重新分析** — 延遲根因、相機方案、CXR-L、電池、Android 保活、公車 MVP、YOLO 模型 |
+| [../guide-glasses/DOCUMENTATION.md](../guide-glasses/DOCUMENTATION.md) | **⭐ guide-glasses 技術文件** — 架構、功能、執行、測試、完成度 |
 
 ---
 
-## 🔴 立即行動事項（在做任何其他事之前）
+## 金鑰事件（已結案）
 
-1. **撤銷 OpenAI API Key** — `AI_Assistant/python/.env` 已提交進 git 且存在於歷史中
-2. **撤銷 GCP Service Account Key** — `Text_Recognition/text_recognize/python/blind-glasses-ocr-d82297cbca1a.json` 同上
+`.env` 的 OpenAI key 與 GCP service account 私鑰曾進入版控。處理結果：
 
-刪除檔案沒有用，金鑰仍在 git 歷史裡。必須到供應商後台撤銷並重新產生。
+| 項目 | 狀態 |
+|---|---|
+| 金鑰撤銷並重新產生 | ✅ 團隊已完成 |
+| 工作目錄清理 | ✅ commit `5687577` |
+| git 歷史清除 + force push | ✅ 2026-08-05 完成 |
 
----
+> ⚠️ **歷史已重寫。所有既有的本機 clone 必須刪除後重新 clone**，
+> 否則 `git pull` 會把舊歷史推回去。
 
-## 五個最關鍵的結論
-
-1. **專案目前沒有真的使用 Rokid 眼鏡。** `com.rokid.cxr:client-m` 只宣告在 gradle，程式碼中零呼叫。目前所有功能跑在手機 CameraX 上。
-
-2. **你給的四份文件屬於兩條不同的產品線。** `x-docs` 的 Glass3 企業 SDK（有內建 ASR/TTS/人臉辨識）與你 repo 實際依賴的 CXR-M SDK（**明確不提供** ASR/AI/TTS 引擎）不是同一套東西。**這需要你先確認手上的裝置型號。**
-
-3. **眼鏡只有 2GB RAM、210mAh、4 小時續航。** 所有 AI 運算必須放在手機端。眼鏡是感測器與喇叭，手機是大腦。
-
-4. **最大的技術風險是「眼鏡沒有公開的連續影像串流 API」。** 官方文件只有 `takeGlassPhoto()` 單張拍照。這決定「障礙物偵測」是「即時警示」還是「查詢式描述」——兩種完全不同的產品。
-
-5. **建議重建而非原地重構。** 5 個獨立專案改造成 1 個多模組系統的成本，高於帶著有價值的資產重寫。
+處理過程見 [06_SECURITY_RUNBOOK.md](06_SECURITY_RUNBOOK.md)。
 
 ---
 
-## 六大功能現況一覽
+## 五個最關鍵的結論（2026-08-05 修正後）
 
-| 功能 | 完成度 | 可行性 | 主要風險 |
-|---|---|---|---|
-| 一、障礙物偵測 | 5% | 🟠 中 | 相機串流 API 未知；本地類別需自行標註 |
-| 二、人臉辨識 | 50% | 🟡 中高 | 隱私法遵（非技術風險） |
-| 三、AI 語音助理 | 30% | 🟢 高 | 需從關鍵字比對改為 Function Calling |
-| 四、智慧導航 | **0%** | 🟠 中低 | 「哪一輛公車進站」無可靠解法 |
-| 五、語音辨識與翻譯 | 40% | 🟢 高 | 應改用 Android 原生取代雲端 |
-| 六、OCR 朗讀 | 60% | 🟢 高 | 改良即可，斷句邏輯值得保留 |
+1. **Rokid Glasses 就是一台 Android 12 裝置，APK 直接安裝執行。**
+   `Face_Recognition/` 已經在眼鏡上實機運作 —— 用標準 CameraX 取像、TTS 播報。
+   因此連續影像串流不是問題，標準 Android API 就給你 30fps。
+
+2. **五個 Gradle 專案是刻意的分工**，五位成員各自開發。`guide-glasses` 是第六個、
+   也是最終的整合專案。**只在 guide-glasses 開發，不修改其他人的資料夾。**
+
+3. **Face_Recognition 延遲高不是 FastAPI 的錯。** 主因依序是：5 秒輪詢間隔、
+   `HttpLoggingInterceptor.Level.BODY` 導致請求體寫兩次、每次請求都寫 `debug.jpg`、
+   `async def` 內呼叫阻塞函式。前三項都是改一兩行的事。詳見 [`08` §2](08_CORRECTIONS_AND_REANALYSIS.md)。
+
+4. **眼鏡只有 2GB RAM、210mAh。** 端側模型總量要控制在 400MB 內，相機建議
+   2–5 fps 而非 30fps。續航靠外接行動電源解決（**邊充邊用是否可行待驗證**）。
+
+5. **guide-glasses 目前約 18% 完成。** 已有「大腦」（語音、意圖路由、播報仲裁），
+   還沒有「眼睛」（相機、人臉、OCR、障礙物、導航全部未實作）。
+
+---
+
+## 六大功能在 guide-glasses 中的完成度
+
+| 功能 | guide-glasses | 組員工作區的狀態 |
+|---|---:|---|
+| AI 語音助理 | **85%** | AI_Assistant 開發中 |
+| 語音 STT / TTS | **90%** | 已被 guide-glasses 取代（Android 原生） |
+| 人臉辨識 | **0%** | Face_Recognition **已在眼鏡實機運作**（延遲待優化） |
+| OCR 朗讀 | **0%** | Text_Recognition 開發中 |
+| 障礙物偵測 | **0%** | Obstacle_Recognition **YOLO 8 類訓練中** |
+| 智慧導航 | **0%** | Audio_Navigation 開發中 |
+| 翻譯 | **0%** | 無人負責 |
+
+完整的模組完成度表見 [`guide-glasses/DOCUMENTATION.md` §8](../guide-glasses/DOCUMENTATION.md)。
 
 ---
 

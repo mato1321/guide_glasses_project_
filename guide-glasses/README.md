@@ -2,11 +2,18 @@
 
 Rokid AI 導盲眼鏡系統 —— 統一的多模組 Android 專案。
 
-取代舊有的 5 個獨立 Gradle 專案（`AI_Assistant/` / `Face_Recognition/` /
-`Obstacle_Recognition/` / `Audio_Navigation/` / `Text_Recognition/`）。
-舊專案在新版功能對齊之前**保留不動**，可作為對照。
+這是**最終的完整整合系統**。目標裝置是 Rokid Glasses —— 它執行 YodaOS-Sprite
+（Android 12 / API 32），APK 可直接安裝執行。
 
-完整分析與規劃見 [`../docs/`](../docs/00_README.md)。
+`AI_Assistant/` / `Face_Recognition/` / `Obstacle_Recognition/` /
+`Audio_Navigation/` / `Text_Recognition/` 是五位組員各自的工作區。
+**guide-glasses 不修改它們** —— 需要引用時複製過來再重新整合，
+讓原始資料夾保持可供組員繼續開發。
+
+**完整技術文件見 [`DOCUMENTATION.md`](DOCUMENTATION.md)** —— 架構、功能、
+哪些功能跑在哪裡、系統流程圖、執行步驟、測試方法、完成度。
+
+分析報告見 [`../docs/`](../docs/00_README.md)。
 
 ---
 
