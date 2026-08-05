@@ -1,5 +1,12 @@
 # 第五部：Roadmap 與可行性分析
 
+> ⚠️ **本文件部分結論已被修正。**
+> 2026-08-05 依據團隊提供的實際狀況重新分析後，以下結論已不成立：
+> 五個獨立專案是刻意的分工、Face_Recognition 已在眼鏡上實機運作、
+> App 直接跑在眼鏡上（CameraX 可用）、金鑰已全部重發。
+> **請以 [`08_CORRECTIONS_AND_REANALYSIS.md`](08_CORRECTIONS_AND_REANALYSIS.md) 為準。**
+> 本文件保留不改寫，僅供分析過程的可追溯性。
+
 ---
 
 ## 1. Roadmap
