@@ -6,6 +6,7 @@ import com.guideglasses.ai.agent.OfflineLlmIntentGateway
 import com.guideglasses.ai.agent.RemoteLlmIntentGateway
 import com.guideglasses.ai.speech.AndroidSpeechRecognitionGateway
 import com.guideglasses.ai.speech.AndroidTtsAnnouncer
+import com.guideglasses.ai.ocr.MlKitTextRecognizer
 import com.guideglasses.glasses.camerax.CameraXFrameSource
 import com.guideglasses.core.common.DispatcherProvider
 import com.guideglasses.core.domain.announce.AnnouncementManager
@@ -16,6 +17,9 @@ import com.guideglasses.core.domain.assistant.LlmIntentGateway
 import com.guideglasses.core.domain.assistant.LocalCommandMatcher
 import com.guideglasses.core.domain.glasses.CameraSelfTestUseCase
 import com.guideglasses.core.domain.glasses.FrameSource
+import com.guideglasses.core.domain.ocr.ReadTextUseCase
+import com.guideglasses.core.domain.ocr.SpeechSegmenter
+import com.guideglasses.core.domain.ocr.TextRecognizer
 import com.guideglasses.core.domain.speech.SpeechRecognitionGateway
 import dagger.Module
 import dagger.Provides
@@ -104,4 +108,28 @@ object AssistantModule {
     @Singleton
     fun provideCameraSelfTest(frameSource: FrameSource): CameraSelfTestUseCase =
         CameraSelfTestUseCase(frameSource)
+
+    /**
+     * 端側 OCR。
+     *
+     * bundled ML Kit 中文模型隨 APK 安裝，不依賴 Google Play Services ——
+     * Rokid Glasses 是否預裝 Play Services 無法確認，這樣最保險。
+     */
+    @Provides
+    @Singleton
+    fun provideTextRecognizer(): TextRecognizer = MlKitTextRecognizer()
+
+    @Provides
+    @Singleton
+    fun provideReadTextUseCase(
+        frameSource: FrameSource,
+        recognizer: TextRecognizer,
+    ): ReadTextUseCase = ReadTextUseCase(
+        frameSource = frameSource,
+        onDeviceRecognizer = recognizer,
+        // 雲端 fallback 需要 BFF，目前不存在。端側結果不佳時會直接沿用，
+        // 有東西總比沒有好。
+        cloudRecognizer = null,
+        segmenter = SpeechSegmenter(),
+    )
 }

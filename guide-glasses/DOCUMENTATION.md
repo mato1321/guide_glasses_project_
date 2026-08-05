@@ -5,7 +5,7 @@
 | 定位 | **最終的完整導盲系統整合專案** |
 | 目標裝置 | Rokid Glasses（YodaOS-Sprite / Android 12 / API 32），APK 直接安裝 |
 | 撰寫日期 | 2026-08-05 |
-| 目前整體完成度 | **約 27%**（詳見 §8） |
+| 目前整體完成度 | **約 38%**（詳見 §8） |
 
 > 相關文件：[分析報告總覽](../docs/00_README.md)｜[前次分析的修正](../docs/08_CORRECTIONS_AND_REANALYSIS.md)｜[專案交接紀錄](../docs/07_HANDOVER.md)
 
@@ -116,6 +116,10 @@ guide-glasses/
 │   │           ├── AndroidTtsAnnouncer.kt              TextToSpeech 實作
 │   │           └── AndroidSpeechRecognitionGateway.kt  SpeechRecognizer 實作
 │   │
+│   ├── ai-ocr/                      端側中文 OCR
+│   │   └── src/main/kotlin/.../
+│   │       └── MlKitTextRecognizer.kt       ML Kit 中文（bundled，離線）
+│   │
 │   └── ai-agent/                    LLM function calling
 │       └── src/
 │           ├── main/kotlin/.../
@@ -137,6 +141,7 @@ guide-glasses/
 | `core/core-common/` | 需要 Android 相依的共用工具（Dispatcher 等） | 與 core-domain 分開，避免污染純 Kotlin 模組 |
 | `glasses/glasses-camerax/` | CameraX 影像來源 | Rokid Glasses 執行 Android 12，標準 CameraX 直接可用。同一個實作在手機上也能跑，眼鏡不在手邊照樣能開發 |
 | `ai/ai-speech/` | `android.speech.*` 的封裝 | 把 Android 語音 API 隔離在單一模組，未來要換成雲端 ASR 只改這裡 |
+| `ai/ai-ocr/` | ML Kit 中文文字辨識 | 用 bundled 版而非 play-services 版 —— **Rokid Glasses 是否預裝 Google Play Services 無法確認**，bundled 把模型打包進 APK 就沒有這個不確定性 |
 | `ai/ai-agent/` | LLM 協定、HTTP、JSON 序列化 | 換 LLM 供應商（Claude / Gemini / GPT）不需改其他模組，也不需發新版 App |
 | `feature/feature-assistant/` | 助理中樞的 ViewModel 與狀態 | 功能可獨立開發、獨立編譯、獨立測試 |
 
@@ -147,7 +152,6 @@ guide-glasses/
 | `glasses/glasses-cxrl` | CXR-L SDK 封裝（選用，主要為降噪音訊） | 需 `com.rokid.sprite.aiapp` 與 auth token |
 | `ai/ai-vision` | YOLO 障礙物偵測 + 距離估計 + 方位判定 | **需 Obstacle_Recognition 提供 `.tflite` 與規格** |
 | `ai/ai-face` | MediaPipe + MobileFaceNet 端側人臉 | 無，可立即開始 |
-| `ai/ai-ocr` | ML Kit Text Recognition v2（中文）+ Cloud fallback | 無，可立即開始 |
 | `core/core-database` | Room + 人臉向量索引 | 需先定義 ai-face 的 embedding 維度 |
 | `core/core-network` | 共用 HTTP 設定 | 無 |
 | `core/core-ui` | 共用無障礙元件 | 無 |
@@ -179,9 +183,12 @@ guide-glasses/
 |---|---|
 | 停 / 停止 / 安靜 / 別說了 / 閉嘴 | 立刻停止所有播報 |
 | 測試相機 / 相機測試 / 拍一張 | 相機自我檢測，回報解析度與耗時 |
+| 唸給我聽 / 上面寫什麼 / 幫我看字 | OCR 文件模式，完整朗讀 |
+| 這是哪裡 / 招牌寫什麼 / 什麼店 | OCR 招牌模式，只唸最大的字 |
+| 下一段 / 繼續唸 | 朗讀下一段 |
+| 上一段 / 前一段 | 回到上一段 |
 | 前面有什麼 / 看看前面 / 可以走嗎 / 有障礙物嗎 / 周圍有什麼 | 障礙物偵測 |
 | 這是誰 / 這個人是誰 / 前面是誰 / 誰在我前面 / 他是誰 | 人臉辨識 |
-| 唸給我聽 / 念給我聽 / 上面寫什麼 / 這寫什麼 / 幫我看字 | OCR 朗讀 |
 | 再說一次 / 重複 / 剛剛說什麼 / 沒聽清楚 | 重複上一則 |
 
 「停」的優先級最高 —— 說「停，前面有什麼」會先停下來。
@@ -271,7 +278,7 @@ Rokid Glasses 執行 YodaOS-Sprite（Android 12 / API 32），APK 可直接安�
 | **人臉資料庫** | ✅ Room（加密） | 🟡 | — | ❌ 絕不上雲 | ❌ 未實作 |
 | **障礙物偵測** | ✅ YOLO TFLite | 🟡 | — | — | ❌ 未實作 |
 | **距離估計** | ✅ | 🟡 | — | — | ❌ 未實作 |
-| **OCR（第一層）** | ✅ ML Kit 離線 | 🟡 | — | — | ❌ 未實作 |
+| **OCR（第一層）** | ✅ ML Kit 離線 | 🟡 | — | — | ✅ 已實作 |
 | **OCR（fallback）** | — | — | — | ✅ Cloud Vision | ❌ 未實作 |
 | **翻譯** | ✅ ML Kit 離線 | 🟡 | — | 🟡 長句 | ❌ 未實作 |
 | **GPS 定位** | ⚠️ 無法確認 | ✅ | — | — | ❌ 未實作 |
@@ -654,18 +661,21 @@ adb logcat -s TtsAnnouncer:* SpeechGateway:* AndroidRuntime:E
 cd guide-glasses && ./gradlew test
 ```
 
-目前 **81 個單元測試**，全部純 JVM，秒級完成。
+目前 **124 個單元測試**，全部純 JVM，秒級完成。
 
 | 測試類 | 數量 | 守護什麼 |
 |---|---|---|
 | `AnnouncementQueueTest` | 14 | 播報仲裁邏輯 |
 | `AnnouncementManagerTest` | 8 | 播報執行層與競態 |
-| `LocalCommandMatcherTest` | 16 | 意圖比對 |
+| `LocalCommandMatcherTest` | 20 | 意圖比對 |
 | `IntentRouterTest` | 10 | 雙層路由與降級 |
 | `RemoteLlmIntentGatewayTest` | 11 | BFF 協定與錯誤處理 |
 | `FrameRateLimiterTest` | 8 | 幀率節流 |
 | `ResolutionPlannerTest` | 7 | 解析度規劃 |
 | `CameraSelfTestUseCaseTest` | 7 | 相機自我檢測與錯誤訊息 |
+| `SpeechSegmenterTest` | 17 | 斷句朗讀（含兩個從原版修正的 bug） |
+| `ReadTextUseCaseTest` | 11 | OCR 三層策略與雙模式 |
+| `ReadingSessionTest` | 11 | 朗讀進度與控制 |
 
 完整建置（含 lint）：
 
@@ -748,18 +758,37 @@ adb logcat -s CameraXFrameSource:* TtsAnnouncer:*
 | 辨識成「未知人物」 | 相似度低於 0.4 閾值 / 註冊照片品質不佳 |
 | 連線失敗 | IP 變了（熱點重連會換 IP）/ 防火牆 |
 
-### 6.5 OCR（未實作）
-
-**目前無法測試 guide-glasses 的 OCR** —— 模組不存在。
-
-規劃中的測試方式：
+### 6.5 OCR（已實作，可實測）
 
 | | |
 |---|---|
-| **測試素材** | 藥袋、餐廳菜單、門牌、公車站牌、書本內頁 |
-| **預期結果** | 拍照後 1 秒內開始分段朗讀，可用「停」中斷 |
-| **驗收標準** | 常見場景成功率 >85% |
-| **失敗原因** | 光線不足、反光、字太小、角度傾斜、手震模糊 |
+| **前置** | App 已安裝、相機權限已授予 |
+| **測試素材** | 藥袋、餐廳菜單、門牌、公車站牌、書本內頁、公文 |
+
+**文件模式**
+
+1. 對著文件，說「唸給我聽」
+2. 聽到「正在辨識文字」
+3. 若內容較長，會先說「共 N 段」，再開始唸第一段
+4. 說「下一段」繼續，「上一段」往回，「停」中斷
+
+**招牌模式**
+
+1. 對著招牌或門牌，說「這是哪裡」
+2. 只會唸出畫面中**最大的那塊字** —— 不會把廣告、營業時間全部唸出來
+
+**驗收標準**：常見場景（藥袋、菜單、門牌）成功率 >85%
+
+| 現象 | 可能原因 | 處理 |
+|---|---|---|
+| 「沒有看到文字，請調整角度或靠近一點」 | 光線不足 / 反光 / 字太小 / 角度傾斜 / 手震模糊 | 依提示調整 |
+| 辨識出亂碼或缺字 | 端側模型的極限 | 目前沒有雲端 fallback（需 BFF）。記錄下來作為第三層的需求依據 |
+| 「目前沒有正在朗讀的內容」 | 還沒開始朗讀就說「下一段」 | 先說「唸給我聽」 |
+| 分段太長聽不完 | — | `SpeechSegmenter(maxSegmentLength)` 可調 |
+
+**斷句品質是這個功能的關鍵。** 分段邏輯移植自 `Text_Recognition` 並修正了
+兩個從原版繼承的 bug（見 §9.5），值得實測時特別留意：短行是否被正確標示為
+「標題」、句子有沒有被切在中間。
 
 ### 6.6 障礙物辨識（未實作）
 
@@ -878,7 +907,7 @@ DataSource（Local: Room/TFLite ／ Remote: HTTP ／ Glasses: CameraX/CXR-L）
 
 ## 8. 整合狀態
 
-### 8.1 整體完成度：約 27%
+### 8.1 整體完成度：約 38%
 
 計算方式：以 11 個必要模組加權，權重依預估工時。
 
@@ -893,7 +922,7 @@ DataSource（Local: Room/TFLite ／ Remote: HTTP ／ Glasses: CameraX/CXR-L）
 | 5 | **相機層**<br/>`FrameSource` CameraX 實作 | **80%** | `CameraXFrameSource` 連續串流與單張擷取、幀率節流、解析度規劃、旋轉處理、JPEG/RGBA 雙格式輸出、相機自我檢測、22 個測試 | 實機驗證、省電模式切換、多消費者共用同一條串流 |
 | 6 | **眼鏡整合**<br/>`GlassesGateway` / CXR-L | **10%** | 介面已定義（`GlassesGateway` / `GlassesCapabilities`） | CXR-L 實作（選用）、AI 鍵事件 |
 | 7 | **人臉辨識** | **0%** | — | MediaPipe、MobileFaceNet、Room 向量庫、方位與距離、註冊流程、同意機制 |
-| 8 | **OCR** | **0%** | — | ML Kit 中文、Cloud fallback、斷句朗讀、朗讀控制 |
+| 8 | **OCR** | **75%** | ML Kit 中文離線辨識、三層策略的前兩層、斷句朗讀（移植自 Text_Recognition 並修正兩個 bug）、朗讀控制（下一段／上一段／重聽）、文件與招牌雙模式、39 個測試 | 雲端 fallback（需 BFF）、Vision LLM 第三層、朗讀速度調整 |
 | 9 | **障礙物辨識** | **0%** | — | TFLite 整合、距離估計、方位判定、危險分級、相機模式管理 |
 | 10 | **導航** | **0%** | — | Directions、TDX、狀態機、Foreground Service、播報策略 |
 | 11 | **翻譯** | **0%** | — | ML Kit Translation |
@@ -906,14 +935,16 @@ DataSource（Local: Room/TFLite ／ Remote: HTTP ／ Glasses: CameraX/CXR-L）
 已完成                              未完成
 ─────────────────────            ─────────────────────
 耳朵（STT）           ✅          認人（人臉）           ❌
-嘴巴（TTS）           ✅          看字（OCR）            ❌
-決策中樞（意圖路由）    ✅          避障（障礙物）          ❌
-說話排序（播報仲裁）    ✅          帶路（導航）            ❌
+嘴巴（TTS）           ✅          避障（障礙物）          ❌
+決策中樞（意圖路由）    ✅          帶路（導航）            ❌
+說話排序（播報仲裁）    ✅
 眼睛（相機）          ✅
+看字（OCR）           ✅
 ```
 
-**眼睛已經裝上了，但還沒有接上任何「看懂」的能力。**
-相機能取像、能節流、能輸出給推論用的格式；缺的是拿這些影像去做辨識的模組。
+**第一個完整的視覺功能已經打通了** —— 從相機到辨識到分段朗讀到播報仲裁，
+整條鏈路可用。剩下的三個視覺功能（人臉、障礙物、導航）都走同一條鏈路，
+只是換掉中間的「辨識」那一段。
 
 ### 相機自我檢測（實機驗證用）
 
@@ -930,7 +961,7 @@ DataSource（Local: Room/TFLite ／ Remote: HTTP ／ Glasses: CameraX/CXR-L）
 | 順序 | 模組 | 預估工時 | 阻塞條件 | 為什麼是這個順序 |
 |---|---|---|---|---|
 | ~~0~~ | ~~`glasses/glasses-camerax`~~ | — | — | ✅ **已完成** |
-| 1 | `ai/ai-ocr` | 1–2 週 | 無（相機已就緒） | 技術風險最低、對日常價值最高（藥袋、菜單、門牌） |
+| ~~1~~ | ~~`ai/ai-ocr`~~ | — | — | ✅ **已完成** |
 | 2 | `ai/ai-face` + `core/core-database` | 2–3 週 | 無 | 情感價值高、技術可控。可參考 `Face_Recognition/` 的邏輯（複製後重構） |
 | 3 | `feature-navigation`（步行） | 2–3 週 | 需 GPS 驗證 | 價值高、風險中等 |
 | 4 | `ai/ai-vision` | 3–4 週 | **需 Obstacle_Recognition 提供 `.tflite`** | 價值最高但依賴外部產出 |
@@ -986,6 +1017,36 @@ DataSource（Local: Room/TFLite ／ Remote: HTTP ／ Glasses: CameraX/CXR-L）
 - **CameraX 在眼鏡上的可用解析度與幀率**（用「測試相機」指令即可量測）
 - 實際續航
 - 邊充邊用是否可行
+
+### 9.5 從 `Text_Recognition` 移植時修正的兩個 bug
+
+`SpeechSegmenter` 移植自 `Text_Recognition/.../MainActivity.java` 的
+`splitTextForSpeech()`。移植過程中發現原版有兩個問題，已在新版修正：
+
+**1. 標題判斷的時機錯了**
+
+原版先在標點後補空白，**再**判斷 `paragraph.endsWith("。")`。
+結果「請按鈴。」補完變成「請按鈴。 」（尾端有空白），`endsWith("。")` 為 false，
+一句正常的句子被誤標成「標題，請按鈴。 。」
+
+新版把標題判斷移到補空白**之前**。
+
+**2. 超長單句不會被拆開**
+
+原版只在「加入前」檢查長度：
+
+```java
+if (chunk.length() + sentence.length() > 80) { flush(); }
+chunk.append(sentence);   // 就算 sentence 自己就超過 80 也照樣塞
+```
+
+所以一個 200 字沒有句號的長句會變成單一段落，TTS 會一口氣唸完，
+聽的人根本記不住。新版遇到超長句子會依逗號、頓號再切，真的沒有停頓符號
+才硬切。
+
+這兩個修正都有對應的單元測試守著。
+
+---
 
 ### 9.4 API 與成本
 

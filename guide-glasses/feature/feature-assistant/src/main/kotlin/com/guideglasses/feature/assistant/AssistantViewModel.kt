@@ -10,6 +10,9 @@ import com.guideglasses.core.domain.assistant.AssistantIntent
 import com.guideglasses.core.domain.assistant.IntentRouter
 import com.guideglasses.core.domain.assistant.RoutedIntent
 import com.guideglasses.core.domain.glasses.CameraSelfTestUseCase
+import com.guideglasses.core.domain.ocr.OcrMode
+import com.guideglasses.core.domain.ocr.ReadTextUseCase
+import com.guideglasses.core.domain.ocr.ReadingSession
 import com.guideglasses.core.domain.speech.SpeechEvent
 import com.guideglasses.core.domain.speech.SpeechRecognitionGateway
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -33,6 +36,7 @@ class AssistantViewModel @Inject constructor(
     private val intentRouter: IntentRouter,
     private val announcementManager: AnnouncementManager,
     private val cameraSelfTest: CameraSelfTestUseCase,
+    private val readText: ReadTextUseCase,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(AssistantUiState())
@@ -42,6 +46,9 @@ class AssistantViewModel @Inject constructor(
 
     /** 上一次播報的內容，供「再說一次」使用。 */
     private var lastSpoken: String? = null
+
+    /** 目前進行中的朗讀。長文分段之後，使用者可以說「下一段」「上一段」。 */
+    private var readingSession: ReadingSession? = null
 
     /**
      * 使用者觸發助理（點畫面、或按下眼鏡的 AI 實體鍵）。
@@ -128,6 +135,14 @@ class AssistantViewModel @Inject constructor(
 
             AssistantIntent.CAMERA_TEST -> runCameraSelfTest()
 
+            AssistantIntent.READ_TEXT -> startReading(OcrMode.DOCUMENT)
+
+            AssistantIntent.READ_SIGN -> startReading(OcrMode.SIGN)
+
+            AssistantIntent.READING_NEXT -> readNextSegment()
+
+            AssistantIntent.READING_PREVIOUS -> readPreviousSegment()
+
             AssistantIntent.CHAT ->
                 announce(
                     routed.spokenReply ?: MESSAGE_GENERIC_FAILURE,
@@ -139,7 +154,6 @@ class AssistantViewModel @Inject constructor(
             // 對看不見畫面的使用者，沒有聲音等於系統當掉。
             AssistantIntent.DETECT_OBSTACLES,
             AssistantIntent.IDENTIFY_PERSON,
-            AssistantIntent.READ_TEXT,
             AssistantIntent.NAVIGATE,
             AssistantIntent.TRANSLATE,
             AssistantIntent.REGISTER_FACE,
@@ -162,6 +176,83 @@ class AssistantViewModel @Inject constructor(
             val report = cameraSelfTest.execute()
             announce(report.spoken, AnnouncementPriority.USER_RESPONSE)
         }
+    }
+
+    // ===== OCR 朗讀 =====
+
+    private fun startReading(mode: OcrMode) {
+        announce(MESSAGE_READING_CAPTURING, AnnouncementPriority.USER_RESPONSE)
+        readingSession = null
+
+        viewModelScope.launch {
+            when (val outcome = readText.execute(mode)) {
+                is ReadTextUseCase.Outcome.Success -> {
+                    readingSession = outcome.session
+                    announceReadingStart(outcome.session)
+                }
+
+                ReadTextUseCase.Outcome.NoTextFound ->
+                    announce(MESSAGE_NO_TEXT, AnnouncementPriority.USER_RESPONSE)
+
+                is ReadTextUseCase.Outcome.Failed ->
+                    announce(messageFor(outcome.error), AnnouncementPriority.USER_RESPONSE)
+            }
+        }
+    }
+
+    /**
+     * 先說共幾段，再唸第一段。
+     *
+     * 看得見的人一眼就知道這份文件有多長，看不見的人需要被告知 ——
+     * 否則他不知道該準備聽三十秒還是三分鐘。
+     */
+    private fun announceReadingStart(session: ReadingSession) {
+        if (session.total > 1) {
+            announce("共 ${session.total} 段", AnnouncementPriority.USER_RESPONSE)
+        }
+        speakSegment(session.next())
+    }
+
+    private fun readNextSegment() {
+        val session = readingSession
+        if (session == null) {
+            announce(MESSAGE_NOTHING_TO_READ, AnnouncementPriority.USER_RESPONSE)
+            return
+        }
+
+        val segment = session.next()
+        if (segment == null) {
+            announce(MESSAGE_READING_FINISHED, AnnouncementPriority.USER_RESPONSE)
+            return
+        }
+        speakSegment(segment)
+    }
+
+    private fun readPreviousSegment() {
+        val session = readingSession
+        if (session == null) {
+            announce(MESSAGE_NOTHING_TO_READ, AnnouncementPriority.USER_RESPONSE)
+            return
+        }
+        speakSegment(session.previous())
+    }
+
+    /**
+     * 朗讀一段。
+     *
+     * 用 AMBIENT 而不是 USER_RESPONSE —— 長文朗讀應該讓路給導航提示與
+     * 危險警示。`resumable = true` 讓它被打斷後能續播。
+     */
+    private fun speakSegment(segment: String?) {
+        if (segment == null) {
+            announce(MESSAGE_READING_FINISHED, AnnouncementPriority.USER_RESPONSE)
+            return
+        }
+        lastSpoken = segment
+        _state.update { it.copy(lastReply = segment) }
+        announcementManager.announce(
+            Announcement(segment, AnnouncementPriority.AMBIENT, resumable = true),
+        )
     }
 
     private fun announce(text: String, priority: AnnouncementPriority) {
@@ -202,5 +293,9 @@ class AssistantViewModel @Inject constructor(
         const val MESSAGE_GENERIC_FAILURE = "我現在無法處理，請再試一次"
         const val MESSAGE_NOTHING_TO_REPEAT = "目前沒有可以重複的內容"
         const val MESSAGE_CAMERA_TESTING = "正在測試相機"
+        const val MESSAGE_READING_CAPTURING = "正在辨識文字"
+        const val MESSAGE_NO_TEXT = "沒有看到文字，請調整角度或靠近一點"
+        const val MESSAGE_NOTHING_TO_READ = "目前沒有正在朗讀的內容"
+        const val MESSAGE_READING_FINISHED = "已經唸完了"
     }
 }

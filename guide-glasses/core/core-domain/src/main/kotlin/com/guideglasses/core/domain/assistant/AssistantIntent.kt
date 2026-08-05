@@ -31,7 +31,25 @@ enum class AssistantIntent(
 
     READ_TEXT(
         toolName = "read_text",
-        description = "拍攝並朗讀鏡頭前的文字，例如招牌、藥袋、菜單、信件",
+        description = "拍攝並朗讀鏡頭前的文字，例如藥袋、菜單、信件、公文",
+    ),
+
+    /** 招牌模式：只唸畫面中最大的那塊字。門牌、店名、站牌、路標。 */
+    READ_SIGN(
+        toolName = "read_sign",
+        description = "只唸出鏡頭前最大的字，用於門牌、店名、站牌、路標",
+    ),
+
+    /** 朗讀下一段。長文分成很多段，這是繼續往下聽。 */
+    READING_NEXT(
+        toolName = "reading_next",
+        description = "朗讀下一段",
+    ),
+
+    /** 朗讀上一段。漏聽時往回一段。 */
+    READING_PREVIOUS(
+        toolName = "reading_previous",
+        description = "回到上一段重新朗讀",
     ),
 
     NAVIGATE(

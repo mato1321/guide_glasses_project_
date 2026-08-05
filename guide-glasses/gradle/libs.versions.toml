@@ -21,6 +21,9 @@ material = "1.13.0"
 activity = "1.12.3"
 lifecycle = "2.9.4"
 camerax = "1.4.2"
+# 用 bundled 版（模型打包進 APK）而非 play-services 版 ——
+# Rokid Glasses 是否預裝 Google Play Services 無法確認，bundled 版沒有這個依賴。
+mlkitTextChinese = "16.0.1"
 coroutines = "1.10.2"
 
 # --- 網路 / 序列化 ---
@@ -45,6 +48,8 @@ material = { group = "com.google.android.material", name = "material", version.r
 androidx-camera-core = { group = "androidx.camera", name = "camera-core", version.ref = "camerax" }
 androidx-camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "camerax" }
 androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }
+
+mlkit-text-recognition-chinese = { group = "com.google.mlkit", name = "text-recognition-chinese", version.ref = "mlkitTextChinese" }
 
 androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycle" }
 androidx-lifecycle-viewmodel-ktx = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-ktx", version.ref = "lifecycle" }

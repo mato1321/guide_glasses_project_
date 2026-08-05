@@ -31,6 +31,7 @@ include(":glasses:glasses-camerax")
 // ===== Edge AI =====
 include(":ai:ai-speech")
 include(":ai:ai-agent")
+include(":ai:ai-ocr")
 
 // ===== 功能模組 =====
 include(":feature:feature-assistant")

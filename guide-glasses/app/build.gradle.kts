@@ -68,6 +68,7 @@ dependencies {
     implementation(project(":glasses:glasses-camerax"))
     implementation(project(":ai:ai-speech"))
     implementation(project(":ai:ai-agent"))
+    implementation(project(":ai:ai-ocr"))
     implementation(project(":feature:feature-assistant"))
 
     implementation(libs.androidx.core.ktx)

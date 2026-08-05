@@ -85,6 +85,23 @@ class LocalCommandMatcher {
                 "whoisthis", "whoisthat",
             ),
 
+            // 朗讀控制必須排在 READ_TEXT 之前 ——「唸下一段」同時含有
+            // 「唸」與「下一段」，使用者要的是往下不是重拍。
+            AssistantIntent.READING_NEXT to listOf(
+                "下一段", "繼續唸", "繼續念", "繼續讀", "繼續",
+                "next",
+            ),
+
+            AssistantIntent.READING_PREVIOUS to listOf(
+                "上一段", "前一段", "回上一段", "退回去",
+                "previous", "back",
+            ),
+
+            AssistantIntent.READ_SIGN to listOf(
+                "這是哪裡", "這是什麼地方", "招牌寫什麼", "門牌", "這站是哪",
+                "什麼店",
+            ),
+
             AssistantIntent.READ_TEXT to listOf(
                 "唸給我聽", "念給我聽", "讀給我聽", "唸出來", "念出來", "讀出來",
                 "上面寫什麼", "這寫什麼", "這是什麼字", "寫了什麼", "幫我看字",

@@ -85,6 +85,34 @@ class LocalCommandMatcherTest {
     }
 
     @Test
+    fun `朗讀控制的各種說法`() {
+        listOf("下一段", "繼續唸", "繼續念", "繼續")
+            .forEach { assertThat(matcher.match(it)).isEqualTo(AssistantIntent.READING_NEXT) }
+
+        listOf("上一段", "前一段", "回上一段", "退回去")
+            .forEach { assertThat(matcher.match(it)).isEqualTo(AssistantIntent.READING_PREVIOUS) }
+    }
+
+    @Test
+    fun `唸下一段是往下不是重拍`() {
+        // 「唸下一段」同時含有「唸」與「下一段」。
+        // READING_NEXT 排在 READ_TEXT 之前，確保語意正確。
+        assertThat(matcher.match("唸下一段")).isEqualTo(AssistantIntent.READING_NEXT)
+    }
+
+    @Test
+    fun `招牌模式的各種說法`() {
+        listOf("這是哪裡", "這是什麼地方", "招牌寫什麼", "什麼店")
+            .forEach { assertThat(matcher.match(it)).isEqualTo(AssistantIntent.READ_SIGN) }
+    }
+
+    @Test
+    fun `招牌模式與人臉辨識不會混淆`() {
+        assertThat(matcher.match("這是哪裡")).isEqualTo(AssistantIntent.READ_SIGN)
+        assertThat(matcher.match("這是誰")).isEqualTo(AssistantIntent.IDENTIFY_PERSON)
+    }
+
+    @Test
     fun `需要參數的指令不在本地處理而是交給 LLM`() {
         // 從自由語句抽取目的地或人名，本地規則做不可靠。
         assertThat(matcher.match("帶我去台北101")).isNull()
