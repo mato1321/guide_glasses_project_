@@ -5,9 +5,9 @@
 | 定位 | **最終的完整導盲系統整合專案** |
 | 目標裝置 | Rokid Glasses（YodaOS-Sprite / Android 12 / API 32），APK 直接安裝 |
 | 撰寫日期 | 2026-08-05 |
-| 目前整體完成度 | **約 53%**（詳見 §8） |
+| 目前整體完成度 | **約 55%**（詳見 §8） |
 
-> 相關文件：[分析報告總覽](../docs/00_README.md)｜[前次分析的修正](../docs/08_CORRECTIONS_AND_REANALYSIS.md)｜[專案交接紀錄](../docs/07_HANDOVER.md)
+> 相關文件：[文件導覽](../docs/README.md)｜[技術筆記](../docs/TECHNICAL_NOTES.md)｜[路線圖與待決策](../docs/ROADMAP.md)
 
 ---
 
@@ -121,11 +121,12 @@ guide-glasses/
 │   │           ├── AndroidTtsAnnouncer.kt              TextToSpeech 實作
 │   │           └── AndroidSpeechRecognitionGateway.kt  SpeechRecognizer 實作
 │   │
-│   ├── ai-face/                     端側人臉辨識
-│   │   ├── src/main/assets/README.md        【模型檔要放這裡】
+│   ├── ai-face/                     人臉辨識
+│   │   ├── src/main/assets/README.md        【端側模型檔要放這裡】
 │   │   └── src/main/kotlin/.../
 │   │       ├── MlKitFaceDetector.kt         人臉偵測（bundled）
-│   │       ├── TfLiteFaceEmbedder.kt        特徵抽取（需模型檔）
+│   │       ├── TfLiteFaceEmbedder.kt        端側特徵抽取（需模型檔）
+│   │       ├── RemoteFaceIdentification.kt  遠端辨識（沿用既有後端）
 │   │       └── FrameBitmaps.kt              裁切與轉檔
 │   │
 │   ├── ai-ocr/                      端側中文 OCR
@@ -288,7 +289,8 @@ Rokid Glasses 執行 YodaOS-Sprite（Android 12 / API 32），APK 可直接安�
 | **本地意圖路由** | ✅ | 🟡 | — | — | ✅ 已實作 |
 | **LLM 意圖理解** | — | — | — | ✅ BFF → Claude | 🟠 客戶端完成，BFF 不存在 |
 | **人臉偵測** | ✅ ML Kit | 🟡 | — | — | ✅ 已實作 |
-| **人臉特徵比對** | ✅ TFLite | 🟡 | — | ❌ 絕不上雲 | 🟠 程式完成，**缺模型檔** |
+| **人臉特徵比對（端側）** | ✅ TFLite | 🟡 | — | ❌ 絕不上雲 | 🟠 需 `.tflite` 模型檔 |
+| **人臉辨識（遠端）** | ✅ 端側偵測+裁切 | 🟡 | ✅ InsightFace | — | ✅ **已實作，今天可用** |
 | **人臉資料庫** | ✅ Room + Keystore 加密 | 🟡 | — | ❌ 絕不上雲 | ✅ 已實作 |
 | **障礙物偵測** | ✅ YOLO TFLite | 🟡 | — | — | ❌ 未實作 |
 | **距離估計** | ✅ | 🟡 | — | — | ❌ 未實作 |
@@ -321,7 +323,7 @@ Rokid Glasses 只有 **2 GB RAM**，這是硬限制。
 |---|---|---|
 | RAM | < 400 MB | YOLO INT8 ~10MB + MobileFaceNet ~5MB + ML Kit ~30MB + App 本身 |
 | 相機幀率 | **2–5 fps**，不是 30fps | 步行 1.4 m/s，5fps 等於每 28cm 判斷一次，足夠 |
-| 電量 | 內建 210mAh 約 4 小時（不開相機） | 需搭配行動電源，見 [08 §5](../docs/08_CORRECTIONS_AND_REANALYSIS.md) |
+| 電量 | 內建 210mAh 約 4 小時（不開相機） | 需搭配行動電源，見 [技術筆記 §2](../docs/TECHNICAL_NOTES.md) |
 
 ---
 
@@ -676,7 +678,7 @@ adb logcat -s TtsAnnouncer:* SpeechGateway:* AndroidRuntime:E
 cd guide-glasses && ./gradlew test
 ```
 
-目前 **189 個單元測試**，全部純 JVM，秒級完成。
+目前 **196 個單元測試**，全部純 JVM，秒級完成。
 
 | 測試類 | 數量 | 守護什麼 |
 |---|---|---|
@@ -692,6 +694,7 @@ cd guide-glasses && ./gradlew test
 | `ReadTextUseCaseTest` | 11 | OCR 三層策略與雙模式 |
 | `ReadingSessionTest` | 11 | 朗讀進度與控制 |
 | `FaceMatcherTest` | 15 | 三段式特徵比對 |
+| `FaceIdentificationStrategyTest` | 7 | 端側／遠端策略切換 |
 | `FaceDistanceEstimatorTest` | 7 | 距離估計 |
 | `BearingResolverTest` | 4 | 方位判定 |
 | `HeadingGuidanceTest` | 12 | 轉向指示（含跨零度的最短轉向） |
@@ -783,8 +786,14 @@ adb logcat -s CameraXFrameSource:* TtsAnnouncer:*
 
 ### 6.4 人臉辨識（程式完成，需模型檔）
 
-**前置：放入模型檔** —— 見 [`ai/ai-face/src/main/assets/README.md`](ai/ai-face/src/main/assets/README.md)。
-沒有模型時說「這是誰」會聽到「人臉特徵模型不可用」。
+**前置：二選一**
+
+- **遠端**（最快上手）：啟動 `Face_Recognition/Python` 後端，
+  在 `local.properties` 設 `guideglasses.faceEndpoint=http://<IP>:8000/recognize`
+- **端側**：放入 `.tflite`，見
+  [`ai/ai-face/src/main/assets/README.md`](ai/ai-face/src/main/assets/README.md)
+
+兩者都沒設定時，說「這是誰」會聽到「人臉辨識不可用」。
 
 **註冊**
 
@@ -810,7 +819,7 @@ adb logcat -s CameraXFrameSource:* TtsAnnouncer:*
 
 | 現象 | 可能原因 | 處理 |
 |---|---|---|
-| 「人臉特徵模型不可用」 | 缺 `.tflite` | 見 assets/README.md |
+| 「人臉辨識不可用」 | 端側缺模型且未設遠端 | 二選一設定，見上方 |
 | 「前方沒有偵測到人」 | 光線不足 / 太遠 / 臉太小（<10% 畫面寬） | 靠近一點 |
 | 一律認成「不認識」 | 模型前處理不符 / 換過模型但沒重新註冊 | 見 assets/README.md 的警告 |
 | 距離估計不準 | **相機視角未校正** | 見下方 |
@@ -972,7 +981,7 @@ DataSource（Local: Room/TFLite ／ Remote: HTTP ／ Glasses: CameraX/CXR-L）
 
 ## 8. 整合狀態
 
-### 8.1 整體完成度：約 53%
+### 8.1 整體完成度：約 55%
 
 計算方式：以 11 個必要模組加權，權重依預估工時。
 
@@ -986,7 +995,7 @@ DataSource（Local: Room/TFLite ／ Remote: HTTP ／ Glasses: CameraX/CXR-L）
 | 4 | **語音 STT / TTS** | **90%** | `SpeechRecognizer` + `TextToSpeech` 完整實作 | 實機驗證（眼鏡上是否有語音服務與中文語音資料） |
 | 5 | **相機層**<br/>`FrameSource` CameraX 實作 | **80%** | `CameraXFrameSource` 連續串流與單張擷取、幀率節流、解析度規劃、旋轉處理、JPEG/RGBA 雙格式輸出、相機自我檢測、22 個測試 | 實機驗證、省電模式切換、多消費者共用同一條串流 |
 | 6 | **眼鏡整合**<br/>`GlassesGateway` / CXR-L | **10%** | 介面已定義（`GlassesGateway` / `GlassesCapabilities`） | CXR-L 實作（選用）、AI 鍵事件 |
-| 7 | **人臉辨識** | **80%** | ML Kit 偵測、TFLite 特徵抽取、三段式比對（高／中／未知信心）、方位判定、距離估計、Room + Keystore 加密儲存、註冊流程與同意提示、26 個測試 | **缺 `.tflite` 模型檔**（見 `ai/ai-face/src/main/assets/README.md`）、多張照片註冊、相機視角校正 |
+| 7 | **人臉辨識** | **90%** | ML Kit 偵測、**端側與遠端雙策略自動切換**、三段式比對、方位判定、距離估計、Room + Keystore 加密儲存、註冊流程與同意提示、33 個測試 | 端側需 `.tflite`（遠端可代替）、多張照片註冊、相機視角校正 |
 | 8 | **OCR** | **75%** | ML Kit 中文離線辨識、三層策略的前兩層、斷句朗讀（移植自 Text_Recognition 並修正兩個 bug）、朗讀控制（下一段／上一段／重聽）、文件與招牌雙模式、39 個測試 | 雲端 fallback（需 BFF）、Vision LLM 第三層、朗讀速度調整 |
 | 9 | **障礙物辨識** | **0%** | — | TFLite 整合、距離估計、方位判定、危險分級、相機模式管理 |
 | 10 | **導航** | **0%** | — | Directions、TDX、狀態機、Foreground Service、播報策略 |
@@ -1006,14 +1015,31 @@ DataSource（Local: Room/TFLite ／ Remote: HTTP ／ Glasses: CameraX/CXR-L）
 說話排序（播報仲裁）    ✅
 眼睛（相機）          ✅
 看字（OCR）           ✅
-認人（人臉）          ⚠️ 缺模型檔
+認人（人臉）          ✅
 ```
 
-> ⚠️ **人臉辨識的程式碼完整可用，但需要一個 `.tflite` 模型檔才能實際運作。**
-> 本專案不含模型權重（各家模型有各自的授權條款）。
-> 放置方式見 [`ai/ai-face/src/main/assets/README.md`](ai/ai-face/src/main/assets/README.md)。
-> 沒有模型時助理會播報「人臉特徵模型不可用」—— 刻意不靜默失敗，
-> 其他功能不受影響。
+### 人臉辨識有兩條路，擇一即可
+
+| 策略 | 需要什麼 | 優點 |
+|---|---|---|
+| **端側**（優先） | `.tflite` 模型檔 | 隱私、離線、低延遲 |
+| **遠端**（備援） | 團隊既有的 InsightFace 後端 | **今天就能用，不需改後端** |
+
+DI 會自動挑可用的那個。兩條都沒有時才播報「人臉辨識不可用」。
+
+**遠端設定**：在 `local.properties` 或 `~/.gradle/gradle.properties` 加入
+
+```
+guideglasses.faceEndpoint=http://<你的後端IP>:8000/recognize
+```
+
+遠端路徑實作的是「**端側偵測 + 遠端辨識**」：先用 ML Kit 在眼鏡上找到臉，
+只把裁切後的臉（約 3–8KB）送出去，沒偵測到臉就完全不上傳。
+比 `Face_Recognition/` 現行的「每 5 秒上傳整張畫面」快得多，
+而且**用的是同一個 `/recognize` 端點，不需要修改後端**。
+
+**端側模型**放置方式見
+[`ai/ai-face/src/main/assets/README.md`](ai/ai-face/src/main/assets/README.md)。
 
 ### 相機自我檢測（實機驗證用）
 
@@ -1022,7 +1048,7 @@ DataSource（Local: Room/TFLite ／ Remote: HTTP ／ Glasses: CameraX/CXR-L）
 > 「相機正常。解析度 640 乘 480，影像 38 KB，耗時 145 毫秒」
 
 眼鏡戴在頭上時拿不到 logcat，這是用聽的就能確認相機通不通、多快的方式。
-它同時也是 [`docs/08` §2.4](../docs/08_CORRECTIONS_AND_REANALYSIS.md) 建議的
+它同時也是 [技術筆記 §3](../docs/TECHNICAL_NOTES.md) 建議的
 延遲量測的第一段 —— 先知道「擷取 + 轉檔」要多久，才知道後面該不該優化。
 
 ### 8.4 缺少的模組清單（依建議實作順序）
@@ -1071,7 +1097,7 @@ DataSource（Local: Room/TFLite ／ Remote: HTTP ／ Glasses: CameraX/CXR-L）
 | **YodaOS 是否允許 Device Owner** | **無法確認** | 需實測 `adb shell dpm set-device-owner` |
 | **眼鏡是否預裝 Google 語音服務** | **無法確認** —— 影響 `SpeechRecognizer` 可用性 | 需實機測試 |
 
-詳細解法見 [08 §6](../docs/08_CORRECTIONS_AND_REANALYSIS.md)。
+詳細解法見 [技術筆記 §5](../docs/TECHNICAL_NOTES.md)。
 
 ### 9.3 尚未驗證的事項
 

@@ -25,6 +25,14 @@ android {
             "\"${providers.gradleProperty("guideglasses.llmEndpoint").getOrElse("")}\"",
         )
 
+        // 人臉辨識後端（選用）。留空時只走端側，需要 .tflite 模型檔。
+        //   guideglasses.faceEndpoint=http://192.168.1.100:8000/recognize
+        buildConfigField(
+            "String",
+            "FACE_ENDPOINT",
+            "\"${providers.gradleProperty("guideglasses.faceEndpoint").getOrElse("")}\"",
+        )
+
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Rokid Glasses 是 ARM64。不打包 x86/x86_64，避免 APK 無謂膨脹。

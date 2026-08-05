@@ -40,9 +40,7 @@ interface PersonRepository {
 class IdentifyPersonUseCase(
     private val frameSource: FrameSource,
     private val detector: FaceDetector,
-    private val embedder: FaceEmbedder,
-    private val repository: PersonRepository,
-    private val matcher: FaceMatcher = FaceMatcher(),
+    private val identification: FaceIdentificationStrategy,
     private val distanceEstimator: FaceDistanceEstimator = FaceDistanceEstimator(),
 ) {
 
@@ -52,9 +50,12 @@ class IdentifyPersonUseCase(
                 AppError.CapabilityUnavailable("face-detector", "人臉偵測不可用"),
             )
         }
-        if (!embedder.isAvailable) {
+        if (!identification.isAvailable) {
             return Outcome.Failed(
-                AppError.CapabilityUnavailable("face-embedder", "人臉特徵模型不可用"),
+                AppError.CapabilityUnavailable(
+                    "face-identification",
+                    "人臉辨識不可用：端側缺模型檔，且未設定遠端後端",
+                ),
             )
         }
 
@@ -74,18 +75,16 @@ class IdentifyPersonUseCase(
         // 那也是使用者正在互動的對象。把畫面中每個人都唸出來只會很吵。
         val face = faces.maxByOrNull { it.area } ?: return Outcome.NoFaceDetected
 
-        val embedding = when (val result = embedder.embed(frame, face)) {
+        val match = when (val result = identification.identify(frame, face)) {
             is AppResult.Success -> result.data
             is AppResult.Failure -> return Outcome.Failed(result.error)
         }
-
-        val match = matcher.match(embedding, repository.all())
 
         return Outcome.Identified(
             match = match,
             bearing = BearingResolver.resolve(face.centerX),
             distanceDescription = distanceEstimator.describe(face.width),
-            embedding = embedding,
+            source = identification.name,
         )
     }
 
@@ -95,8 +94,8 @@ class IdentifyPersonUseCase(
             val match: FaceMatch,
             val bearing: BearingResolver.Bearing,
             val distanceDescription: String?,
-            /** 保留下來讓使用者可以緊接著說「把他記起來」。 */
-            val embedding: FaceEmbedding,
+            /** 哪一條路徑判斷出來的（端側／遠端），供觀測與除錯。 */
+            val source: String,
         ) : Outcome {
 
             /**

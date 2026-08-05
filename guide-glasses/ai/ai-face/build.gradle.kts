@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
@@ -39,6 +40,10 @@ dependencies {
     implementation(libs.mlkit.face.detection)
 
     implementation(libs.tensorflow.lite)
+
+    // 遠端辨識沿用團隊既有的 InsightFace 後端
+    implementation(libs.okhttp)
+    implementation(libs.kotlinx.serialization.json)
 
     testImplementation(libs.junit)
     testImplementation(libs.truth)

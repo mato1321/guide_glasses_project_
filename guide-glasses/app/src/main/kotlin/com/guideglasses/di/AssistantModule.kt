@@ -7,6 +7,7 @@ import com.guideglasses.ai.agent.RemoteLlmIntentGateway
 import com.guideglasses.ai.speech.AndroidSpeechRecognitionGateway
 import com.guideglasses.ai.speech.AndroidTtsAnnouncer
 import com.guideglasses.ai.face.MlKitFaceDetector
+import com.guideglasses.ai.face.RemoteFaceIdentification
 import com.guideglasses.ai.face.TfLiteFaceEmbedder
 import com.guideglasses.ai.ocr.MlKitTextRecognizer
 import com.guideglasses.glasses.camerax.CameraXFrameSource
@@ -21,7 +22,10 @@ import com.guideglasses.core.domain.assistant.LocalCommandMatcher
 import com.guideglasses.core.domain.glasses.CameraSelfTestUseCase
 import com.guideglasses.core.database.PersonStorageFactory
 import com.guideglasses.core.domain.face.FaceDetector
+import com.guideglasses.core.domain.face.CompositeFaceIdentification
 import com.guideglasses.core.domain.face.FaceEmbedder
+import com.guideglasses.core.domain.face.FaceIdentificationStrategy
+import com.guideglasses.core.domain.face.OnDeviceFaceIdentification
 import com.guideglasses.core.domain.face.IdentifyPersonUseCase
 import com.guideglasses.core.domain.face.PersonRepository
 import com.guideglasses.core.domain.face.RegisterFaceUseCase
@@ -167,18 +171,40 @@ object AssistantModule {
     fun providePersonRepository(@ApplicationContext context: Context): PersonRepository =
         PersonStorageFactory.create(context)
 
+    /**
+     * 人臉辨識策略：端側優先，遠端備援。
+     *
+     * 端側需要 .tflite 模型檔；沒有模型時自動改走遠端（團隊既有的
+     * InsightFace 後端），所以**放不放模型都能運作**。
+     *
+     * 遠端位址設定方式（與 LLM 相同）：在 local.properties 或
+     * ~/.gradle/gradle.properties 加入
+     *   guideglasses.faceEndpoint=http://192.168.1.100:8000/recognize
+     */
+    @Provides
+    @Singleton
+    fun provideFaceIdentification(
+        embedder: FaceEmbedder,
+        repository: PersonRepository,
+    ): FaceIdentificationStrategy = CompositeFaceIdentification(
+        listOfNotNull(
+            OnDeviceFaceIdentification(embedder, repository),
+            BuildConfig.FACE_ENDPOINT
+                .takeIf { it.isNotBlank() }
+                ?.let { RemoteFaceIdentification(it) },
+        ),
+    )
+
     @Provides
     @Singleton
     fun provideIdentifyPersonUseCase(
         frameSource: FrameSource,
         detector: FaceDetector,
-        embedder: FaceEmbedder,
-        repository: PersonRepository,
+        identification: FaceIdentificationStrategy,
     ): IdentifyPersonUseCase = IdentifyPersonUseCase(
         frameSource = frameSource,
         detector = detector,
-        embedder = embedder,
-        repository = repository,
+        identification = identification,
     )
 
     @Provides
