@@ -65,6 +65,7 @@ kotlin {
 dependencies {
     implementation(project(":core:core-common"))
     implementation(project(":core:core-domain"))
+    implementation(project(":glasses:glasses-camerax"))
     implementation(project(":ai:ai-speech"))
     implementation(project(":ai:ai-agent"))
     implementation(project(":feature:feature-assistant"))

@@ -70,6 +70,21 @@ class LocalCommandMatcherTest {
     }
 
     @Test
+    fun `相機自我檢測的各種說法`() {
+        listOf("測試相機", "相機測試", "檢查相機", "相機正常嗎", "拍一張")
+            .forEach { utterance ->
+                assertThat(matcher.match(utterance)).isEqualTo(AssistantIntent.CAMERA_TEST)
+            }
+    }
+
+    @Test
+    fun `再拍一張是拍照不是重播`() {
+        // 「再拍一張」同時含有「再」與「拍一張」。
+        // CAMERA_TEST 的規則排在 REPEAT_LAST 之前，確保語意正確。
+        assertThat(matcher.match("再拍一張")).isEqualTo(AssistantIntent.CAMERA_TEST)
+    }
+
+    @Test
     fun `需要參數的指令不在本地處理而是交給 LLM`() {
         // 從自由語句抽取目的地或人名，本地規則做不可靠。
         assertThat(matcher.match("帶我去台北101")).isNull()

@@ -23,16 +23,25 @@ interface FrameSource {
 
 /**
  * @param targetFps 期望的張數／秒。實作會夾在自身能力上限內。
+ *   眼鏡只有 2GB RAM 與 210mAh，**不要為了「越高越好」而拉滿 30fps** ——
+ *   步行速度 1.4 m/s 之下，5fps 等於每 28 公分判斷一次，對避障已足夠。
  * @param longEdgePixels 期望的長邊像素。YOLO 類模型通常 640 就夠，
- *   拉高只會增加傳輸延遲與耗電。
+ *   拉高只會增加編碼延遲與耗電。
+ * @param outputFormat 期望的輸出格式。
+ *   端側推論（MediaPipe / TFLite / ML Kit）請用 [CameraFrame.Format.RGBA_8888]，
+ *   避免多一次 JPEG 編碼再解碼的來回；要上傳到遠端才用 [CameraFrame.Format.JPEG]。
+ * @param jpegQuality 只在 [outputFormat] 為 JPEG 時有意義，1..100。
  */
 data class CaptureRequest(
     val targetFps: Float = 2f,
     val longEdgePixels: Int = 640,
+    val outputFormat: CameraFrame.Format = CameraFrame.Format.JPEG,
+    val jpegQuality: Int = 80,
 ) {
     init {
         require(targetFps > 0f) { "targetFps 必須大於 0" }
         require(longEdgePixels > 0) { "longEdgePixels 必須大於 0" }
+        require(jpegQuality in 1..100) { "jpegQuality 必須介於 1 到 100" }
     }
 }
 

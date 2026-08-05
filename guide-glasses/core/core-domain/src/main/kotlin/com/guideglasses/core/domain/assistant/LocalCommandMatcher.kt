@@ -66,6 +66,13 @@ class LocalCommandMatcher {
                 "停",
             ),
 
+            // 放在 REPEAT_LAST 之前：「再拍一張」同時含有「再」與「拍一張」，
+            // 使用者的意思是拍照而不是重播。
+            AssistantIntent.CAMERA_TEST to listOf(
+                "測試相機", "相機測試", "檢查相機", "相機正常嗎", "拍一張",
+                "cameratest", "testcamera",
+            ),
+
             AssistantIntent.REPEAT_LAST to listOf(
                 "再說一次", "再講一次", "重複", "重覆", "剛剛說什麼", "剛才說什麼",
                 "沒聽清楚", "再念一次", "再唸一次",

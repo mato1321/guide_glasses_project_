@@ -25,6 +25,9 @@ include(":app")
 include(":core:core-common")
 include(":core:core-domain")
 
+// ===== 眼鏡硬體抽象的實作 =====
+include(":glasses:glasses-camerax")
+
 // ===== Edge AI =====
 include(":ai:ai-speech")
 include(":ai:ai-agent")

@@ -9,6 +9,7 @@ import com.guideglasses.core.domain.announce.AnnouncementPriority
 import com.guideglasses.core.domain.assistant.AssistantIntent
 import com.guideglasses.core.domain.assistant.IntentRouter
 import com.guideglasses.core.domain.assistant.RoutedIntent
+import com.guideglasses.core.domain.glasses.CameraSelfTestUseCase
 import com.guideglasses.core.domain.speech.SpeechEvent
 import com.guideglasses.core.domain.speech.SpeechRecognitionGateway
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -31,6 +32,7 @@ class AssistantViewModel @Inject constructor(
     private val speechGateway: SpeechRecognitionGateway,
     private val intentRouter: IntentRouter,
     private val announcementManager: AnnouncementManager,
+    private val cameraSelfTest: CameraSelfTestUseCase,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(AssistantUiState())
@@ -124,6 +126,8 @@ class AssistantViewModel @Inject constructor(
                 }
             }
 
+            AssistantIntent.CAMERA_TEST -> runCameraSelfTest()
+
             AssistantIntent.CHAT ->
                 announce(
                     routed.spokenReply ?: MESSAGE_GENERIC_FAILURE,
@@ -143,6 +147,20 @@ class AssistantViewModel @Inject constructor(
                 "「${routed.intent.description}」這個功能還在開發中",
                 AnnouncementPriority.USER_RESPONSE,
             )
+        }
+    }
+
+    /**
+     * 相機自我檢測。
+     *
+     * 先講「正在測試相機」再開始擷取 —— 擷取可能要一兩秒，
+     * 中間完全沒有聲音會讓看不見畫面的使用者以為系統當掉了。
+     */
+    private fun runCameraSelfTest() {
+        announce(MESSAGE_CAMERA_TESTING, AnnouncementPriority.USER_RESPONSE)
+        viewModelScope.launch {
+            val report = cameraSelfTest.execute()
+            announce(report.spoken, AnnouncementPriority.USER_RESPONSE)
         }
     }
 
@@ -183,5 +201,6 @@ class AssistantViewModel @Inject constructor(
         const val MESSAGE_NO_ASR = "這台裝置沒有可用的語音辨識服務"
         const val MESSAGE_GENERIC_FAILURE = "我現在無法處理，請再試一次"
         const val MESSAGE_NOTHING_TO_REPEAT = "目前沒有可以重複的內容"
+        const val MESSAGE_CAMERA_TESTING = "正在測試相機"
     }
 }

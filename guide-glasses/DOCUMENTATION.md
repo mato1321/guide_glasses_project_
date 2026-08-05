@@ -5,7 +5,7 @@
 | 定位 | **最終的完整導盲系統整合專案** |
 | 目標裝置 | Rokid Glasses（YodaOS-Sprite / Android 12 / API 32），APK 直接安裝 |
 | 撰寫日期 | 2026-08-05 |
-| 目前整體完成度 | **約 18%**（詳見 §8） |
+| 目前整體完成度 | **約 27%**（詳見 §8） |
 
 > 相關文件：[分析報告總覽](../docs/00_README.md)｜[前次分析的修正](../docs/08_CORRECTIONS_AND_REANALYSIS.md)｜[專案交接紀錄](../docs/07_HANDOVER.md)
 
@@ -89,13 +89,23 @@ guide-glasses/
 │   │       │   │   └── ConversationHistory.kt   有界對話歷史
 │   │       │   ├── glasses/
 │   │       │   │   ├── GlassesGateway.kt        眼鏡連線 + 能力查詢
-│   │       │   │   └── FrameSource.kt           影像來源介面 + CameraFrame
+│   │       │   │   ├── FrameSource.kt           影像來源介面 + CameraFrame
+│   │       │   │   ├── FrameRateLimiter.kt      幀率節流 + 解析度規劃
+│   │       │   │   └── CameraSelfTest.kt        相機自我檢測 UseCase
 │   │       │   └── speech/
 │   │       │       └── SpeechRecognitionGateway.kt   ASR 介面 + SpeechEvent
-│   │       └── test/kotlin/...                  4 個測試類，46 個測試
+│   │       └── test/kotlin/...                  7 個測試類，70 個測試
 │   │
 │   └── core-common/                 Android 相依的共用工具
 │       └── src/main/kotlin/.../DispatcherProvider.kt
+│
+├── glasses/                         【眼鏡硬體抽象的實作】
+│   └── glasses-camerax/             CameraX 影像來源
+│       └── src/main/
+│           ├── AndroidManifest.xml              CAMERA 權限
+│           └── kotlin/.../
+│               ├── CameraXFrameSource.kt        FrameSource 的 CameraX 實作
+│               └── ImageProxyConverter.kt       ImageProxy → CameraFrame
 │
 ├── ai/                              【Edge AI 與雲端 AI 實作】
 │   │
@@ -125,6 +135,7 @@ guide-glasses/
 | `app/` | 組裝層。只放 Application、Activity、Hilt Module、Manifest、資源 | 讓所有實作細節都在別的模組，app 保持極薄，換 UI 框架時衝擊最小 |
 | `core/core-domain/` | Entity、業務規則、介面定義、播報仲裁、意圖路由 | **刻意只套用 `kotlin.jvm`，不套用任何 Android plugin。** 任何 `android.*` 或 `com.rokid.*` 的 import 都會編譯失敗 —— 這是建置層面強制的架構約束。副作用是核心邏輯能用純 JVM 測試，秒級完成、不需模擬器 |
 | `core/core-common/` | 需要 Android 相依的共用工具（Dispatcher 等） | 與 core-domain 分開，避免污染純 Kotlin 模組 |
+| `glasses/glasses-camerax/` | CameraX 影像來源 | Rokid Glasses 執行 Android 12，標準 CameraX 直接可用。同一個實作在手機上也能跑，眼鏡不在手邊照樣能開發 |
 | `ai/ai-speech/` | `android.speech.*` 的封裝 | 把 Android 語音 API 隔離在單一模組，未來要換成雲端 ASR 只改這裡 |
 | `ai/ai-agent/` | LLM 協定、HTTP、JSON 序列化 | 換 LLM 供應商（Claude / Gemini / GPT）不需改其他模組，也不需發新版 App |
 | `feature/feature-assistant/` | 助理中樞的 ViewModel 與狀態 | 功能可獨立開發、獨立編譯、獨立測試 |
@@ -133,7 +144,6 @@ guide-glasses/
 
 | 模組 | 用途 | 依賴什麼才能開始 |
 |---|---|---|
-| `glasses/glasses-camerax` | CameraX 影像來源實作（`FrameSource`） | 無，可立即開始 |
 | `glasses/glasses-cxrl` | CXR-L SDK 封裝（選用，主要為降噪音訊） | 需 `com.rokid.sprite.aiapp` 與 auth token |
 | `ai/ai-vision` | YOLO 障礙物偵測 + 距離估計 + 方位判定 | **需 Obstacle_Recognition 提供 `.tflite` 與規格** |
 | `ai/ai-face` | MediaPipe + MobileFaceNet 端側人臉 | 無，可立即開始 |
@@ -168,6 +178,7 @@ guide-glasses/
 | 說法 | 動作 |
 |---|---|
 | 停 / 停止 / 安靜 / 別說了 / 閉嘴 | 立刻停止所有播報 |
+| 測試相機 / 相機測試 / 拍一張 | 相機自我檢測，回報解析度與耗時 |
 | 前面有什麼 / 看看前面 / 可以走嗎 / 有障礙物嗎 / 周圍有什麼 | 障礙物偵測 |
 | 這是誰 / 這個人是誰 / 前面是誰 / 誰在我前面 / 他是誰 | 人臉辨識 |
 | 唸給我聽 / 念給我聽 / 上面寫什麼 / 這寫什麼 / 幫我看字 | OCR 朗讀 |
@@ -248,7 +259,7 @@ Rokid Glasses 執行 YodaOS-Sprite（Android 12 / API 32），APK 可直接安�
 
 | 功能 | Rokid Glasses | 手機 | 本地伺服器 | 雲端 | 目前狀態 |
 |---|:---:|:---:|:---:|:---:|---|
-| **相機影像擷取** | ✅ CameraX | 🟡 備援 | — | — | 未實作 |
+| **相機影像擷取** | ✅ CameraX | 🟡 備援 | — | — | ✅ 已實作 |
 | **麥克風收音** | ✅ | 🟡 備援 | — | — | ✅ 已實作 |
 | **語音辨識 STT** | ✅ SpeechRecognizer | 🟡 | — | 🟡 fallback | ✅ 已實作 |
 | **語音合成 TTS** | ✅ TextToSpeech | 🟡 | — | — | ✅ 已實作 |
@@ -643,15 +654,18 @@ adb logcat -s TtsAnnouncer:* SpeechGateway:* AndroidRuntime:E
 cd guide-glasses && ./gradlew test
 ```
 
-目前 **57 個單元測試**，全部純 JVM，秒級完成。
+目前 **81 個單元測試**，全部純 JVM，秒級完成。
 
 | 測試類 | 數量 | 守護什麼 |
 |---|---|---|
 | `AnnouncementQueueTest` | 14 | 播報仲裁邏輯 |
 | `AnnouncementManagerTest` | 8 | 播報執行層與競態 |
-| `LocalCommandMatcherTest` | 14 | 意圖比對 |
+| `LocalCommandMatcherTest` | 16 | 意圖比對 |
 | `IntentRouterTest` | 10 | 雙層路由與降級 |
 | `RemoteLlmIntentGatewayTest` | 11 | BFF 協定與錯誤處理 |
+| `FrameRateLimiterTest` | 8 | 幀率節流 |
+| `ResolutionPlannerTest` | 7 | 解析度規劃 |
+| `CameraSelfTestUseCaseTest` | 7 | 相機自我檢測與錯誤訊息 |
 
 完整建置（含 lint）：
 
@@ -689,7 +703,30 @@ cd guide-glasses && ./gradlew build
 | 「需要麥克風權限」 | 權限未授予 | 見 Step 10 |
 | 一直聽不懂 | 離線模型不支援中文 | 試著把 `preferOffline` 改成 false 比較 |
 
-### 6.3 人臉辨識（未實作）
+### 6.3 相機（已實作，可實測）
+
+| | |
+|---|---|
+| **前置** | App 已安裝、相機權限已授予 |
+| **測試步驟** | 1. 開啟 App<br/>2. 點畫面<br/>3. 說「測試相機」 |
+| **預期結果** | 先聽到「正在測試相機」，接著「相機正常。解析度 640 乘 480，影像 XX KB，耗時 XX 毫秒」 |
+
+**這個數字要記下來** —— 它是後續所有視覺功能的延遲基線。
+
+| 現象 | 可能原因 | 處理 |
+|---|---|---|
+| 「沒有相機權限，請到設定中開啟」 | 權限未授予 | `adb shell pm grant com.guideglasses android.permission.CAMERA` |
+| 「這台裝置的相機無法使用」 | CameraX 綁定失敗 | 看 logcat 的 `CameraXFrameSource` tag |
+| 耗時 >500ms | 解析度太高 / 裝置效能不足 | 調低 `CaptureRequest.longEdgePixels` |
+| 完全沒有回應 | 擷取卡住 | 相機被其他 App 佔用？重開 App |
+
+用 adb 看詳細 log：
+
+```bash
+adb logcat -s CameraXFrameSource:* TtsAnnouncer:*
+```
+
+### 6.4 人臉辨識（未實作）
 
 **目前無法測試 guide-glasses 的人臉辨識** —— 模組不存在。
 
@@ -711,7 +748,7 @@ cd guide-glasses && ./gradlew build
 | 辨識成「未知人物」 | 相似度低於 0.4 閾值 / 註冊照片品質不佳 |
 | 連線失敗 | IP 變了（熱點重連會換 IP）/ 防火牆 |
 
-### 6.4 OCR（未實作）
+### 6.5 OCR（未實作）
 
 **目前無法測試 guide-glasses 的 OCR** —— 模組不存在。
 
@@ -724,7 +761,7 @@ cd guide-glasses && ./gradlew build
 | **驗收標準** | 常見場景成功率 >85% |
 | **失敗原因** | 光線不足、反光、字太小、角度傾斜、手震模糊 |
 
-### 6.5 障礙物辨識（未實作）
+### 6.6 障礙物辨識（未實作）
 
 **目前無法測試** —— `ai-vision` 模組不存在，且尚未拿到訓練好的 `.tflite`。
 
@@ -739,7 +776,7 @@ cd guide-glasses && ./gradlew build
 | 誤報率 | 走 10 分鐘計算誤報次數 | <1 次/分鐘 |
 | 端到端延遲 | 打時間戳 | <400ms |
 
-### 6.6 導航（未實作）
+### 6.7 導航（未實作）
 
 **目前無法測試** —— `feature-navigation` 模組不存在。
 
@@ -752,7 +789,7 @@ cd guide-glasses && ./gradlew build
 | 偏離重規劃 | 刻意走錯方向 30m | 10 秒後播報「偏離路線，重新規劃」 |
 | GPS 精度 | 在台北高樓區實測 | 記錄實際誤差，據此調整 30m 閾值 |
 
-### 6.7 公車（未實作，MVP 策略）
+### 6.8 公車（未實作，MVP 策略）
 
 **目前無法測試。** 且需注意：**公車辨識目前是 MVP 人工策略，不是完成的功能。**
 
@@ -769,7 +806,7 @@ cd guide-glasses && ./gradlew build
 
 **不測試的項目**：自動辨識車頭號碼。這不在 MVP 範圍內。
 
-### 6.8 語音辨識與翻譯
+### 6.9 語音辨識與翻譯
 
 STT 已實作（見 6.2）。翻譯未實作。
 
@@ -841,7 +878,7 @@ DataSource（Local: Room/TFLite ／ Remote: HTTP ／ Glasses: CameraX/CXR-L）
 
 ## 8. 整合狀態
 
-### 8.1 整體完成度：約 18%
+### 8.1 整體完成度：約 27%
 
 計算方式：以 11 個必要模組加權，權重依預估工時。
 
@@ -853,7 +890,7 @@ DataSource（Local: Room/TFLite ／ Remote: HTTP ／ Glasses: CameraX/CXR-L）
 | 2 | **播報仲裁**<br/>`AnnouncementQueue` / `Manager` / `Announcer` | **100%** | 優先級、去抖動、續播、競態處理、22 個測試 | — |
 | 3 | **AI 助理中樞**<br/>意圖路由 | **85%** | 本地快捷指令、雙層路由、對話歷史、BFF 協定與客戶端、31 個測試 | BFF 後端本身、眼鏡 AI 實體鍵整合、喚醒詞 |
 | 4 | **語音 STT / TTS** | **90%** | `SpeechRecognizer` + `TextToSpeech` 完整實作 | 實機驗證（眼鏡上是否有語音服務與中文語音資料） |
-| 5 | **相機層**<br/>`FrameSource` CameraX 實作 | **10%** | 介面已定義（`FrameSource` / `CameraFrame` / `CaptureRequest`） | 整個 CameraX 實作 |
+| 5 | **相機層**<br/>`FrameSource` CameraX 實作 | **80%** | `CameraXFrameSource` 連續串流與單張擷取、幀率節流、解析度規劃、旋轉處理、JPEG/RGBA 雙格式輸出、相機自我檢測、22 個測試 | 實機驗證、省電模式切換、多消費者共用同一條串流 |
 | 6 | **眼鏡整合**<br/>`GlassesGateway` / CXR-L | **10%** | 介面已定義（`GlassesGateway` / `GlassesCapabilities`） | CXR-L 實作（選用）、AI 鍵事件 |
 | 7 | **人臉辨識** | **0%** | — | MediaPipe、MobileFaceNet、Room 向量庫、方位與距離、註冊流程、同意機制 |
 | 8 | **OCR** | **0%** | — | ML Kit 中文、Cloud fallback、斷句朗讀、朗讀控制 |
@@ -868,27 +905,38 @@ DataSource（Local: Room/TFLite ／ Remote: HTTP ／ Glasses: CameraX/CXR-L）
 ```
 已完成                              未完成
 ─────────────────────            ─────────────────────
-耳朵（STT）           ✅          眼睛（相機）           ❌
-嘴巴（TTS）           ✅          認人（人臉）           ❌
-決策中樞（意圖路由）    ✅          看字（OCR）            ❌
-說話排序（播報仲裁）    ✅          避障（障礙物）          ❌
-                                 帶路（導航）            ❌
+耳朵（STT）           ✅          認人（人臉）           ❌
+嘴巴（TTS）           ✅          看字（OCR）            ❌
+決策中樞（意圖路由）    ✅          避障（障礙物）          ❌
+說話排序（播報仲裁）    ✅          帶路（導航）            ❌
+眼睛（相機）          ✅
 ```
 
-換句話說：**目前這套系統聽得懂你說什麼、也能正確回答你，但它還看不見。**
+**眼睛已經裝上了，但還沒有接上任何「看懂」的能力。**
+相機能取像、能節流、能輸出給推論用的格式；缺的是拿這些影像去做辨識的模組。
+
+### 相機自我檢測（實機驗證用）
+
+對眼鏡說「**測試相機**」，系統會擷取一張影像並播報：
+
+> 「相機正常。解析度 640 乘 480，影像 38 KB，耗時 145 毫秒」
+
+眼鏡戴在頭上時拿不到 logcat，這是用聽的就能確認相機通不通、多快的方式。
+它同時也是 [`docs/08` §2.4](../docs/08_CORRECTIONS_AND_REANALYSIS.md) 建議的
+延遲量測的第一段 —— 先知道「擷取 + 轉檔」要多久，才知道後面該不該優化。
 
 ### 8.4 缺少的模組清單（依建議實作順序）
 
 | 順序 | 模組 | 預估工時 | 阻塞條件 | 為什麼是這個順序 |
 |---|---|---|---|---|
-| 1 | `glasses/glasses-camerax` | 3–5 天 | 無 | **所有視覺功能的前提**。沒有影像，7/8/9 都做不了 |
-| 2 | `ai/ai-ocr` | 1–2 週 | 需 1 | 技術風險最低、對日常價值最高（藥袋、菜單、門牌） |
-| 3 | `ai/ai-face` + `core/core-database` | 2–3 週 | 需 1 | 情感價值高、技術可控。可參考 `Face_Recognition/` 的邏輯（複製後重構） |
-| 4 | `feature-navigation`（步行） | 2–3 週 | 需 GPS 驗證 | 價值高、風險中等 |
-| 5 | `ai/ai-vision` | 3–4 週 | **需 Obstacle_Recognition 提供 `.tflite`** | 價值最高但依賴外部產出 |
-| 6 | `feature-navigation`（公車 MVP） | 2 週 | 需 TDX 金鑰 | 依賴 4 先驗證播報體驗 |
-| 7 | BFF 後端 | 1 週 | 需雲端帳號 | 可與上述並行 |
-| 8 | 翻譯 | 3 天 | 無 | 最簡單，隨時可插入 |
+| ~~0~~ | ~~`glasses/glasses-camerax`~~ | — | — | ✅ **已完成** |
+| 1 | `ai/ai-ocr` | 1–2 週 | 無（相機已就緒） | 技術風險最低、對日常價值最高（藥袋、菜單、門牌） |
+| 2 | `ai/ai-face` + `core/core-database` | 2–3 週 | 無 | 情感價值高、技術可控。可參考 `Face_Recognition/` 的邏輯（複製後重構） |
+| 3 | `feature-navigation`（步行） | 2–3 週 | 需 GPS 驗證 | 價值高、風險中等 |
+| 4 | `ai/ai-vision` | 3–4 週 | **需 Obstacle_Recognition 提供 `.tflite`** | 價值最高但依賴外部產出 |
+| 5 | `feature-navigation`（公車 MVP） | 2 週 | 需 TDX 金鑰 | 依賴 3 先驗證播報體驗 |
+| 6 | BFF 後端 | 1 週 | 需雲端帳號 | 可與上述並行 |
+| 7 | 翻譯 | 3 天 | 無 | 最簡單，隨時可插入 |
 
 ### 8.5 需要其他組員提供的東西
 
@@ -935,7 +983,7 @@ DataSource（Local: Room/TFLite ／ Remote: HTTP ／ Glasses: CameraX/CXR-L）
 - **在 Rokid Glasses 上安裝與執行**
 - `SpeechRecognizer` 在眼鏡上是否可用
 - `TextToSpeech` 在眼鏡上是否有中文語音資料
-- CameraX 在眼鏡上的可用解析度與幀率
+- **CameraX 在眼鏡上的可用解析度與幀率**（用「測試相機」指令即可量測）
 - 實際續航
 - 邊充邊用是否可行
 

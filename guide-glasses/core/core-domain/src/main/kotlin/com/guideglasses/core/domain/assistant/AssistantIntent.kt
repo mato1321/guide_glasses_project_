@@ -57,6 +57,18 @@ enum class AssistantIntent(
         description = "重複剛才播報的內容",
     ),
 
+    /**
+     * 相機自我檢測。
+     *
+     * 這不是給一般使用者的功能，是給開發與實機驗證用的 ——
+     * 擷取一張影像並播報解析度、位元組數與端到端耗時。
+     * 在拿不到 logcat 的情況下（眼鏡戴在頭上），用聽的就能知道相機通不通、多快。
+     */
+    CAMERA_TEST(
+        toolName = "camera_test",
+        description = "測試相機是否正常，並回報解析度與耗時",
+    ),
+
     /** 不對應任何工具，交給 LLM 一般對話回覆。 */
     CHAT(
         toolName = "chat",

@@ -35,10 +35,19 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnTalk: Button
     private lateinit var btnStop: Button
 
-    private val requestMicPermission = registerForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        if (granted) {
+    /**
+     * 麥克風與相機一起要。
+     *
+     * 分兩次問會讓看不見畫面的使用者連續面對兩個對話框，體驗很差；
+     * 而且這兩個權限本來就是「用這套系統」的最低門檻。
+     */
+    private val requestPermissions = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { results ->
+        val micGranted = results[Manifest.permission.RECORD_AUDIO] == true
+
+        // 沒有相機只是視覺功能不能用，語音助理仍可運作，所以不擋。
+        if (micGranted) {
             viewModel.onAssistantTriggered()
         } else {
             tvStatus.text = getString(R.string.status_need_mic)
@@ -63,15 +72,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun triggerAssistant() {
-        val granted = ContextCompat.checkSelfPermission(
-            this,
-            Manifest.permission.RECORD_AUDIO,
-        ) == PackageManager.PERMISSION_GRANTED
+        val missing = REQUIRED_PERMISSIONS.filter { permission ->
+            ContextCompat.checkSelfPermission(this, permission) !=
+                PackageManager.PERMISSION_GRANTED
+        }
 
-        if (granted) {
+        if (missing.isEmpty()) {
             viewModel.onAssistantTriggered()
         } else {
-            requestMicPermission.launch(Manifest.permission.RECORD_AUDIO)
+            requestPermissions.launch(missing.toTypedArray())
         }
     }
 
@@ -103,5 +112,12 @@ class MainActivity : AppCompatActivity() {
 
         tvReply.text = state.lastReply
         tvReply.visibility = if (state.lastReply.isBlank()) View.GONE else View.VISIBLE
+    }
+
+    private companion object {
+        val REQUIRED_PERMISSIONS = listOf(
+            Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.CAMERA,
+        )
     }
 }

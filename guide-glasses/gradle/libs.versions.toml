@@ -20,6 +20,7 @@ appcompat = "1.7.1"
 material = "1.13.0"
 activity = "1.12.3"
 lifecycle = "2.9.4"
+camerax = "1.4.2"
 coroutines = "1.10.2"
 
 # --- 網路 / 序列化 ---
@@ -40,6 +41,10 @@ androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = 
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
 androidx-activity = { group = "androidx.activity", name = "activity-ktx", version.ref = "activity" }
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
+
+androidx-camera-core = { group = "androidx.camera", name = "camera-core", version.ref = "camerax" }
+androidx-camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "camerax" }
+androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }
 
 androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycle" }
 androidx-lifecycle-viewmodel-ktx = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-ktx", version.ref = "lifecycle" }

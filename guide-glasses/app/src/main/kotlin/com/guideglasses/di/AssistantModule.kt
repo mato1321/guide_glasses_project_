@@ -6,6 +6,7 @@ import com.guideglasses.ai.agent.OfflineLlmIntentGateway
 import com.guideglasses.ai.agent.RemoteLlmIntentGateway
 import com.guideglasses.ai.speech.AndroidSpeechRecognitionGateway
 import com.guideglasses.ai.speech.AndroidTtsAnnouncer
+import com.guideglasses.glasses.camerax.CameraXFrameSource
 import com.guideglasses.core.common.DispatcherProvider
 import com.guideglasses.core.domain.announce.AnnouncementManager
 import com.guideglasses.core.domain.announce.Announcer
@@ -13,6 +14,8 @@ import com.guideglasses.core.domain.assistant.ConversationHistory
 import com.guideglasses.core.domain.assistant.IntentRouter
 import com.guideglasses.core.domain.assistant.LlmIntentGateway
 import com.guideglasses.core.domain.assistant.LocalCommandMatcher
+import com.guideglasses.core.domain.glasses.CameraSelfTestUseCase
+import com.guideglasses.core.domain.glasses.FrameSource
 import com.guideglasses.core.domain.speech.SpeechRecognitionGateway
 import dagger.Module
 import dagger.Provides
@@ -85,4 +88,20 @@ object AssistantModule {
         llmGateway: LlmIntentGateway,
         history: ConversationHistory,
     ): IntentRouter = IntentRouter(LocalCommandMatcher(), llmGateway, history)
+
+    /**
+     * 影像來源。
+     *
+     * Rokid Glasses 執行 Android 12，標準 CameraX 直接可用 —— 不需要 CXR SDK。
+     * 同一個實作在手機上也能跑，眼鏡不在手邊照樣能開發。
+     */
+    @Provides
+    @Singleton
+    fun provideFrameSource(@ApplicationContext context: Context): FrameSource =
+        CameraXFrameSource(context)
+
+    @Provides
+    @Singleton
+    fun provideCameraSelfTest(frameSource: FrameSource): CameraSelfTestUseCase =
+        CameraSelfTestUseCase(frameSource)
 }
