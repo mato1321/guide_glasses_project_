@@ -87,6 +87,17 @@ enum class AssistantIntent(
         description = "測試相機是否正常，並回報解析度與耗時",
     ),
 
+    /**
+     * 感測器自我檢測。
+     *
+     * 眼鏡的 IMU 規格說法不一（6 軸還是 9 軸），而有沒有磁力計會決定
+     * 能不能提供絕對方位。與其猜，不如讓裝置自己講。
+     */
+    SENSOR_TEST(
+        toolName = "sensor_test",
+        description = "測試動作感測器，回報可用的能力",
+    ),
+
     /** 不對應任何工具，交給 LLM 一般對話回覆。 */
     CHAT(
         toolName = "chat",

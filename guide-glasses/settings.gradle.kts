@@ -28,6 +28,7 @@ include(":core:core-database")
 
 // ===== 眼鏡硬體抽象的實作 =====
 include(":glasses:glasses-camerax")
+include(":glasses:glasses-sensors")
 
 // ===== Edge AI =====
 include(":ai:ai-speech")

@@ -12,6 +12,7 @@ import com.guideglasses.core.domain.assistant.RoutedIntent
 import com.guideglasses.core.domain.face.IdentifyPersonUseCase
 import com.guideglasses.core.domain.face.RegisterFaceUseCase
 import com.guideglasses.core.domain.glasses.CameraSelfTestUseCase
+import com.guideglasses.core.domain.motion.MotionSensorGateway
 import com.guideglasses.core.domain.ocr.OcrMode
 import com.guideglasses.core.domain.ocr.ReadTextUseCase
 import com.guideglasses.core.domain.ocr.ReadingSession
@@ -41,6 +42,7 @@ class AssistantViewModel @Inject constructor(
     private val readText: ReadTextUseCase,
     private val identifyPerson: IdentifyPersonUseCase,
     private val registerFace: RegisterFaceUseCase,
+    private val motionSensors: MotionSensorGateway,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(AssistantUiState())
@@ -138,6 +140,12 @@ class AssistantViewModel @Inject constructor(
             }
 
             AssistantIntent.CAMERA_TEST -> runCameraSelfTest()
+
+            AssistantIntent.SENSOR_TEST ->
+                announce(
+                    motionSensors.capabilities.spokenSummary,
+                    AnnouncementPriority.USER_RESPONSE,
+                )
 
             AssistantIntent.READ_TEXT -> startReading(OcrMode.DOCUMENT)
 

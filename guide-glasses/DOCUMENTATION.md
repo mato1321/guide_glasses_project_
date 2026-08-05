@@ -5,7 +5,7 @@
 | 定位 | **最終的完整導盲系統整合專案** |
 | 目標裝置 | Rokid Glasses（YodaOS-Sprite / Android 12 / API 32），APK 直接安裝 |
 | 撰寫日期 | 2026-08-05 |
-| 目前整體完成度 | **約 48%**（詳見 §8） |
+| 目前整體完成度 | **約 53%**（詳見 §8） |
 
 > 相關文件：[分析報告總覽](../docs/00_README.md)｜[前次分析的修正](../docs/08_CORRECTIONS_AND_REANALYSIS.md)｜[專案交接紀錄](../docs/07_HANDOVER.md)
 
@@ -105,9 +105,9 @@ guide-glasses/
 │           └── PersonStorage.kt             Room + PersonRepository 實作
 │
 ├── glasses/                         【眼鏡硬體抽象的實作】
-│   └── glasses-camerax/             CameraX 影像來源
-│       └── src/main/
-│           ├── AndroidManifest.xml              CAMERA 權限
+│   ├── glasses-camerax/             CameraX 影像來源
+│   │   └── src/main/
+│   │       ├── AndroidManifest.xml          CAMERA 權限
 │           └── kotlin/.../
 │               ├── CameraXFrameSource.kt        FrameSource 的 CameraX 實作
 │               └── ImageProxyConverter.kt       ImageProxy → CameraFrame
@@ -154,6 +154,7 @@ guide-glasses/
 | `glasses/glasses-camerax/` | CameraX 影像來源 | Rokid Glasses 執行 Android 12，標準 CameraX 直接可用。同一個實作在手機上也能跑，眼鏡不在手邊照樣能開發 |
 | `ai/ai-speech/` | `android.speech.*` 的封裝 | 把 Android 語音 API 隔離在單一模組，未來要換成雲端 ASR 只改這裡 |
 | `core/core-database/` | Room + Keystore 加密 | 人臉特徵是生物特徵，不該以明文躺在 SQLite 檔案裡。金鑰由 Keystore 保管，程式碼拿不到金鑰本體 |
+| `glasses/glasses-sensors/` | IMU 動作感測 | 眼鏡沒有 GPS，IMU 是唯一能感知「使用者在做什麼」的東西 —— 相機省電、方位修正、步態導航都靠它 |
 | `ai/ai-face/` | 人臉偵測與特徵抽取 | 端側完成，影像與特徵都不離開裝置 |
 | `ai/ai-ocr/` | ML Kit 中文文字辨識 | 用 bundled 版而非 play-services 版 —— **Rokid Glasses 是否預裝 Google Play Services 無法確認**，bundled 把模型打包進 APK 就沒有這個不確定性 |
 | `ai/ai-agent/` | LLM 協定、HTTP、JSON 序列化 | 換 LLM 供應商（Claude / Gemini / GPT）不需改其他模組，也不需發新版 App |
@@ -195,6 +196,7 @@ guide-glasses/
 |---|---|
 | 停 / 停止 / 安靜 / 別說了 / 閉嘴 | 立刻停止所有播報 |
 | 測試相機 / 相機測試 / 拍一張 | 相機自我檢測，回報解析度與耗時 |
+| 測試感測器 / 有沒有羅盤 | 感測器自我檢測，回報實際可用的能力 |
 | 這是誰 / 這個人是誰 / 誰在我前面 | 人臉辨識，回報方位、距離、是誰 |
 | 唸給我聽 / 上面寫什麼 / 幫我看字 | OCR 文件模式，完整朗讀 |
 | 這是哪裡 / 招牌寫什麼 / 什麼店 | OCR 招牌模式，只唸最大的字 |
@@ -293,7 +295,8 @@ Rokid Glasses 執行 YodaOS-Sprite（Android 12 / API 32），APK 可直接安�
 | **OCR（第一層）** | ✅ ML Kit 離線 | 🟡 | — | — | ✅ 已實作 |
 | **OCR（fallback）** | — | — | — | ✅ Cloud Vision | ❌ 未實作 |
 | **翻譯** | ✅ ML Kit 離線 | 🟡 | — | 🟡 長句 | ❌ 未實作 |
-| **GPS 定位** | ⚠️ 無法確認 | ✅ | — | — | ❌ 未實作 |
+| **GPS 定位** | ❌ **眼鏡沒有 GPS** | ✅ | — | — | ❌ 未實作，見 §9.6 |
+| **IMU 動作感測** | ✅ | 🟡 | — | — | ✅ 已實作（能力待實機確認） |
 | **路線規劃** | — | — | — | ✅ Google Directions | ❌ 未實作 |
 | **公車即時到站** | — | — | — | ✅ TDX | ❌ 未實作 |
 | **眼鏡 HUD 顯示** | 🟡 CXR-L CustomView | — | — | — | ❌ 未實作（低優先） |
@@ -673,7 +676,7 @@ adb logcat -s TtsAnnouncer:* SpeechGateway:* AndroidRuntime:E
 cd guide-glasses && ./gradlew test
 ```
 
-目前 **150 個單元測試**，全部純 JVM，秒級完成。
+目前 **189 個單元測試**，全部純 JVM，秒級完成。
 
 | 測試類 | 數量 | 守護什麼 |
 |---|---|---|
@@ -691,6 +694,11 @@ cd guide-glasses && ./gradlew test
 | `FaceMatcherTest` | 15 | 三段式特徵比對 |
 | `FaceDistanceEstimatorTest` | 7 | 距離估計 |
 | `BearingResolverTest` | 4 | 方位判定 |
+| `HeadingGuidanceTest` | 12 | 轉向指示（含跨零度的最短轉向） |
+| `CameraModeControllerTest` | 7 | 相機模式自動切換 |
+| `WalkingStateDebouncerTest` | 6 | 步態去抖動 |
+| `StepDistanceEstimatorTest` | 7 | 步數距離估計 |
+| `SensorCapabilitiesTest` | 7 | 感測器能力判定 |
 
 完整建置（含 lint）：
 
@@ -750,6 +758,28 @@ cd guide-glasses && ./gradlew build
 ```bash
 adb logcat -s CameraXFrameSource:* TtsAnnouncer:*
 ```
+
+### 6.35 感測器（已實作，可實測）
+
+**這一項請優先測，它會決定導航要怎麼做。**
+
+| | |
+|---|---|
+| **測試步驟** | 開啟 App → 點畫面 → 說「測試感測器」 |
+| **預期播報** | 「動作感測正常。可以偵測走路。可以追蹤轉向。沒有電子羅盤。」 |
+
+**每一句都是實測結果，不是規格書。** 請把聽到的內容記下來：
+
+| 聽到 | 代表 | 對導航的影響 |
+|---|---|---|
+| 「可以偵測走路」 | 有計步器或加速度計 | 相機模式能自動切換（省電） |
+| 「可以追蹤轉向」 | 有陀螺儀或旋轉向量 | 能給「往右轉 30 度」這類指示 |
+| **「有電子羅盤」** | **有磁力計** | **能提供絕對方位，導航難度大幅下降** |
+| **「沒有電子羅盤」** | 6 軸 IMU | 只有相對方位，且會漂移，需頻繁重設基準 |
+| 「這台裝置沒有動作感測器」 | Android 層沒開放 | IMU 完全用不上 |
+
+社群文件指出 Rokid Glasses 用的是 ICM-4x6xx（6 軸，無磁力計），
+但 Rokid Max 那款標示 9 軸 —— 兩個不同產品。**所以要實測，不要相信規格頁。**
 
 ### 6.4 人臉辨識（程式完成，需模型檔）
 
@@ -942,7 +972,7 @@ DataSource（Local: Room/TFLite ／ Remote: HTTP ／ Glasses: CameraX/CXR-L）
 
 ## 8. 整合狀態
 
-### 8.1 整體完成度：約 48%
+### 8.1 整體完成度：約 53%
 
 計算方式：以 11 個必要模組加權，權重依預估工時。
 
@@ -960,7 +990,8 @@ DataSource（Local: Room/TFLite ／ Remote: HTTP ／ Glasses: CameraX/CXR-L）
 | 8 | **OCR** | **75%** | ML Kit 中文離線辨識、三層策略的前兩層、斷句朗讀（移植自 Text_Recognition 並修正兩個 bug）、朗讀控制（下一段／上一段／重聽）、文件與招牌雙模式、39 個測試 | 雲端 fallback（需 BFF）、Vision LLM 第三層、朗讀速度調整 |
 | 9 | **障礙物辨識** | **0%** | — | TFLite 整合、距離估計、方位判定、危險分級、相機模式管理 |
 | 10 | **導航** | **0%** | — | Directions、TDX、狀態機、Foreground Service、播報策略 |
-| 11 | **翻譯** | **0%** | — | ML Kit Translation |
+| 11 | **動作感測**<br/>IMU、步態、方位、相機模式 | **75%** | 能力探測、步態偵測與去抖動、相對方位追蹤、轉向指示、步數距離估計、相機模式自動切換、39 個測試 | 實機確認實際感測器、接上障礙物偵測、漂移校正 |
+| 12 | **翻譯** | **0%** | — | ML Kit Translation |
 
 ### 8.3 是否已符合「完整導盲系統」？
 
@@ -1001,8 +1032,8 @@ DataSource（Local: Room/TFLite ／ Remote: HTTP ／ Glasses: CameraX/CXR-L）
 | ~~0~~ | ~~`glasses/glasses-camerax`~~ | — | — | ✅ **已完成** |
 | ~~1~~ | ~~`ai/ai-ocr`~~ | — | — | ✅ **已完成** |
 | ~~2~~ | ~~`ai/ai-face` + `core/core-database`~~ | — | **缺模型檔** | 🟠 程式已完成 |
-| 3 | `feature-navigation`（步行） | 2–3 週 | 需 GPS 驗證 | 價值高、風險中等 |
-| 4 | `ai/ai-vision` | 3–4 週 | **需 Obstacle_Recognition 提供 `.tflite`** | 價值最高但依賴外部產出 |
+| 3 | `feature-navigation`（步行） | 2–3 週 | 🔴 **眼鏡無 GPS，需先做架構決策**（見 §9.6） | 在決策之前不應開工 |
+| 4 | `ai/ai-vision` | 3–4 週 | **需 Obstacle_Recognition 提供 `.tflite`** | 價值最高但依賴外部產出。相機模式控制已就緒，可直接接上 |
 | 5 | `feature-navigation`（公車 MVP） | 2 週 | 需 TDX 金鑰 | 依賴 3 先驗證播報體驗 |
 | 6 | BFF 後端 | 1 週 | 需雲端帳號 | 可與上述並行 |
 | 7 | 翻譯 | 3 天 | 無 | 最簡單，隨時可插入 |
@@ -1055,6 +1086,37 @@ DataSource（Local: Room/TFLite ／ Remote: HTTP ／ Glasses: CameraX/CXR-L）
 - **CameraX 在眼鏡上的可用解析度與幀率**（用「測試相機」指令即可量測）
 - 實際續航
 - 邊充邊用是否可行
+
+### 9.6 🔴 眼鏡沒有 GPS —— 這擋住了導航
+
+已確認 Rokid Glasses **沒有 GPS**。App 跑在眼鏡上，所以拿不到定位。
+這不是可以靠寫程式解決的問題，需要架構決策。
+
+**IMU 能給什麼、不能給什麼**
+
+| 能 | 不能 |
+|---|---|
+| 相對轉向（「往右轉 30 度」） | 絕對方位（沒有磁力計時） |
+| 步數 → 走了多遠 | 我在哪裡 |
+| 走路 / 靜止狀態 | 路網、目的地方向 |
+
+**IMU 可以做「跟著走」，做不到「知道在哪」。** 沒有絕對位置就沒有路線規劃、
+沒有偏離偵測、沒有到站提醒。
+
+**三個可能的方向**
+
+| 方案 | 做法 | 代價 |
+|---|---|---|
+| **A. 手機提供定位** | 手機跑一個 companion，透過網路或 CXR 把 GPS 座標送給眼鏡 | 需要第二個 App 與一條通訊管道，架構複雜度明顯上升 |
+| **B. 導航跑在手機、感測跑在眼鏡** | 手機負責路線與播報，眼鏡負責相機與 IMU | 兩邊都要維護；播報仲裁要跨裝置，會很難做對 |
+| **C. 網路定位** | 若眼鏡有 Wi-Fi / 基地台定位（`NETWORK_PROVIDER`） | 精度 20–100m+，**且通常需要 Google Play Services（眼鏡是否有，無法確認）**。對步行導航精度不足 |
+
+**待決定，且需要先實測 C 是否可行**（在眼鏡上查 `LocationManager` 有哪些
+provider）。若 C 不可行，A 與 B 之間的選擇會決定後續相當大的工作量。
+
+在此之前，**導航功能不應該開工** —— 先做架構決策，不要先寫程式。
+
+---
 
 ### 9.5 從 `Text_Recognition` 移植時修正的兩個 bug
 

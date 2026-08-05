@@ -10,6 +10,7 @@ import com.guideglasses.ai.face.MlKitFaceDetector
 import com.guideglasses.ai.face.TfLiteFaceEmbedder
 import com.guideglasses.ai.ocr.MlKitTextRecognizer
 import com.guideglasses.glasses.camerax.CameraXFrameSource
+import com.guideglasses.glasses.sensors.AndroidMotionSensorGateway
 import com.guideglasses.core.common.DispatcherProvider
 import com.guideglasses.core.domain.announce.AnnouncementManager
 import com.guideglasses.core.domain.announce.Announcer
@@ -25,6 +26,7 @@ import com.guideglasses.core.domain.face.IdentifyPersonUseCase
 import com.guideglasses.core.domain.face.PersonRepository
 import com.guideglasses.core.domain.face.RegisterFaceUseCase
 import com.guideglasses.core.domain.glasses.FrameSource
+import com.guideglasses.core.domain.motion.MotionSensorGateway
 import com.guideglasses.core.domain.ocr.ReadTextUseCase
 import com.guideglasses.core.domain.ocr.SpeechSegmenter
 import com.guideglasses.core.domain.ocr.TextRecognizer
@@ -192,4 +194,17 @@ object AssistantModule {
         embedder = embedder,
         repository = repository,
     )
+
+    /**
+     * 動作感測。
+     *
+     * 眼鏡沒有 GPS，IMU 因此是唯一能感知「使用者在做什麼」的東西 ——
+     * 相機模式自動切換（省電）、方位修正、步態導航輔助都靠它。
+     * 實際能力以裝置回報為準，可用語音指令「測試感測器」確認。
+     */
+    @Provides
+    @Singleton
+    fun provideMotionSensorGateway(
+        @ApplicationContext context: Context,
+    ): MotionSensorGateway = AndroidMotionSensorGateway(context)
 }

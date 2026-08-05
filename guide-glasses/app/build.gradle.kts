@@ -66,6 +66,7 @@ dependencies {
     implementation(project(":core:core-common"))
     implementation(project(":core:core-domain"))
     implementation(project(":glasses:glasses-camerax"))
+    implementation(project(":glasses:glasses-sensors"))
     implementation(project(":ai:ai-speech"))
     implementation(project(":ai:ai-agent"))
     implementation(project(":ai:ai-ocr"))
