@@ -1,0 +1,1398 @@
+From 9a8507bdc58b89ad90793b0ef73528e9658d8648 Mon Sep 17 00:00:00 2001
+From: "copilot-swe-agent[bot]" <198982749+Copilot@users.noreply.github.com>
+Date: Mon, 23 Mar 2026 15:16:33 +0000
+Subject: [PATCH 2/3] Refactor AI Assistant as central command dispatcher with
+ module architecture
+
+Co-authored-by: jerrylin819 <186662986+jerrylin819@users.noreply.github.com>
+Agent-Logs-Url: https://github.com/mato1321/guide_glasses_project_/sessions/14e20fff-833c-4d0e-91c5-af133fc7ab16
+---
+ AI_Assistant/python/core/__init__.py          |   4 +
+ .../core/__pycache__/__init__.cpython-312.pyc | Bin 0 -> 342 bytes
+ .../command_router.cpython-312.pyc            | Bin 0 -> 6434 bytes
+ .../module_manager.cpython-312.pyc            | Bin 0 -> 3571 bytes
+ AI_Assistant/python/core/command_router.py    | 134 ++++++++++
+ AI_Assistant/python/core/module_manager.py    |  69 +++++
+ AI_Assistant/python/main.py                   | 247 ++++++++++++------
+ AI_Assistant/python/modules/__init__.py       |  36 +++
+ .../__pycache__/__init__.cpython-312.pyc      | Bin 0 -> 1773 bytes
+ .../__pycache__/audio_module.cpython-312.pyc  | Bin 0 -> 3597 bytes
+ .../obstacle_module.cpython-312.pyc           | Bin 0 -> 3132 bytes
+ .../translation_module.cpython-312.pyc        | Bin 0 -> 4927 bytes
+ AI_Assistant/python/modules/audio_module.py   |  78 ++++++
+ .../python/modules/face_recognition_module.py | 128 +++++++++
+ .../python/modules/obstacle_module.py         |  71 +++++
+ .../python/modules/translation_module.py      | 110 ++++++++
+ 16 files changed, 795 insertions(+), 82 deletions(-)
+ create mode 100644 AI_Assistant/python/core/__init__.py
+ create mode 100644 AI_Assistant/python/core/__pycache__/__init__.cpython-312.pyc
+ create mode 100644 AI_Assistant/python/core/__pycache__/command_router.cpython-312.pyc
+ create mode 100644 AI_Assistant/python/core/__pycache__/module_manager.cpython-312.pyc
+ create mode 100644 AI_Assistant/python/core/command_router.py
+ create mode 100644 AI_Assistant/python/core/module_manager.py
+ create mode 100644 AI_Assistant/python/modules/__init__.py
+ create mode 100644 AI_Assistant/python/modules/__pycache__/__init__.cpython-312.pyc
+ create mode 100644 AI_Assistant/python/modules/__pycache__/audio_module.cpython-312.pyc
+ create mode 100644 AI_Assistant/python/modules/__pycache__/obstacle_module.cpython-312.pyc
+ create mode 100644 AI_Assistant/python/modules/__pycache__/translation_module.cpython-312.pyc
+ create mode 100644 AI_Assistant/python/modules/audio_module.py
+ create mode 100644 AI_Assistant/python/modules/face_recognition_module.py
+ create mode 100644 AI_Assistant/python/modules/obstacle_module.py
+ create mode 100644 AI_Assistant/python/modules/translation_module.py
+
+diff --git a/AI_Assistant/python/core/__init__.py b/AI_Assistant/python/core/__init__.py
+new file mode 100644
+index 0000000..3ee3ed5
+--- /dev/null
++++ b/AI_Assistant/python/core/__init__.py
+@@ -0,0 +1,4 @@
++from .command_router import CommandRouter
++from .module_manager import ModuleManager
++
++__all__ = ["CommandRouter", "ModuleManager"]
+diff --git a/AI_Assistant/python/core/__pycache__/__init__.cpython-312.pyc b/AI_Assistant/python/core/__pycache__/__init__.cpython-312.pyc
+new file mode 100644
+index 0000000000000000000000000000000000000000..3e63b42b48979c0fc785c7d2eaf001fff96dedcd
+GIT binary patch
+literal 342
+zcmZ{fy-ve05XbE#rO+zfSeRKN0e%65R539WB&I6M$%?Hs;E%|5gfhZQz$@?=%q+~2
+zkdT<zkh*o^lETR8bpGGn?|k-anobDX@$#j5!1J?D{w(?x>q8WeL=Zt0(KM&D*O7{J
+zoX4nRk(5!Mw4-e2iz1rQE<Lweb0e;86Qt`43o9BW7u@htIu|465)7BwsGAjA7~DV)
+z&2FZL0l-^^i5~9809+}6XR^kWYy?|bEtzYKk&fM2cgxDA5)w+qy_X(pXK!Q?;J@<x
+z0_NUVK5!FQ-G-GltgucpfXY+>;G}LhyQkZ?oVh73?SJU^F?`3A(sz=fe@qXauHGg`
+J_hYw*ogZ`0V#5Fc
+
+literal 0
+HcmV?d00001
+
+diff --git a/AI_Assistant/python/core/__pycache__/command_router.cpython-312.pyc b/AI_Assistant/python/core/__pycache__/command_router.cpython-312.pyc
+new file mode 100644
+index 0000000000000000000000000000000000000000..01e6cffa25b66fedc2edbbd2aaf5c3cfe90ea3db
+GIT binary patch
+literal 6434
+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
+
+literal 0
+HcmV?d00001
+
+diff --git a/AI_Assistant/python/core/__pycache__/module_manager.cpython-312.pyc b/AI_Assistant/python/core/__pycache__/module_manager.cpython-312.pyc
+new file mode 100644
+index 0000000000000000000000000000000000000000..d6f46fc1df812a2fa7b6b5f617545966b9cd6b2e
+GIT binary patch
+literal 3571
+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
+
+literal 0
+HcmV?d00001
+
+diff --git a/AI_Assistant/python/core/command_router.py b/AI_Assistant/python/core/command_router.py
+new file mode 100644
+index 0000000..9274e76
+--- /dev/null
++++ b/AI_Assistant/python/core/command_router.py
+@@ -0,0 +1,134 @@
++"""Centralized command router / dispatcher.
++
++Implements a Facade pattern: the AI Assistant delegates every user request to
++this router, which detects the user's intent and forwards the request to the
++appropriate registered module.  If no module matches, execution falls back to
++the general-purpose LangChain conversation chain.
++"""
++import logging
++import re
++from typing import Any, Callable, Dict, List, Optional
++
++from core.module_manager import ModuleManager
++from modules import BaseModule
++
++logger = logging.getLogger(__name__)
++
++
++class CommandRouter:
++    """Routes user commands to the correct feature module.
++
++    Usage::
++
++        router = CommandRouter(module_manager, fallback_fn)
++        result = await router.route("幫我辨識人臉")
++    """
++
++    def __init__(
++        self,
++        module_manager: ModuleManager,
++        fallback: Callable[[str], Any],
++    ) -> None:
++        """
++        Args:
++            module_manager: Populated :class:`ModuleManager` instance.
++            fallback: Async-compatible callable used when no module matches.
++                      Should accept a ``str`` and return a reply string.
++        """
++        self._manager = module_manager
++        self._fallback = fallback
++
++    # ------------------------------------------------------------------
++    # Public API
++    # ------------------------------------------------------------------
++
++    async def route(self, command: str, **kwargs: Any) -> Dict[str, Any]:
++        """Detect intent and dispatch to the matching module(s).
++
++        Supports simple command chaining via 「和」/「並且」/「AND」 separators.
++        When multiple intents are detected the results are merged.
++
++        Args:
++            command: Raw user text input.
++            **kwargs: Extra data forwarded to each module (e.g. uploaded files).
++
++        Returns:
++            A dict with:
++            - ``module``:  name of the matched module (or ``"chat"`` for fallback)
++            - ``result``:  module response
++            - ``user_text``: the original command
++        """
++        sub_commands = self._split_chained(command)
++
++        if len(sub_commands) == 1:
++            return await self._dispatch_single(command, **kwargs)
++
++        # --- command chaining ---
++        results = []
++        for sub in sub_commands:
++            results.append(await self._dispatch_single(sub.strip(), **kwargs))
++        return {
++            "module": "chained",
++            "result": results,
++            "user_text": command,
++        }
++
++    # ------------------------------------------------------------------
++    # Intent detection helpers
++    # ------------------------------------------------------------------
++
++    def detect_intent(self, command: str) -> Optional[BaseModule]:
++        """Return the best-matching module for *command*, or None."""
++        command_lower = command.lower()
++        best_module: Optional[BaseModule] = None
++        best_count = 0
++
++        for module in self._manager.all_modules():
++            count = sum(
++                1 for kw in module.keywords if kw.lower() in command_lower
++            )
++            if count > best_count:
++                best_count = count
++                best_module = module
++
++        return best_module if best_count > 0 else None
++
++    # ------------------------------------------------------------------
++    # Internal helpers
++    # ------------------------------------------------------------------
++
++    async def _dispatch_single(self, command: str, **kwargs: Any) -> Dict[str, Any]:
++        module = self.detect_intent(command)
++
++        if module is None:
++            logger.debug("No module matched '%s'; falling back to chat.", command)
++            reply = await self._call_fallback(command)
++            return {"module": "chat", "result": reply, "user_text": command}
++
++        logger.info("Routing '%s' → module '%s'", command, module.name)
++        try:
++            result = await module.execute(command, **kwargs)
++            return {"module": module.name, "result": result, "user_text": command}
++        except Exception as exc:  # pragma: no cover
++            logger.exception("Module '%s' raised an error: %s", module.name, exc)
++            return {
++                "module": module.name,
++                "result": {"error": str(exc)},
++                "user_text": command,
++            }
++
++    async def _call_fallback(self, command: str) -> str:
++        """Call the fallback (may be sync or async)."""
++        import asyncio
++        import inspect
++        if inspect.iscoroutinefunction(self._fallback):
++            return await self._fallback(command)
++        loop = asyncio.get_event_loop()
++        return await loop.run_in_executor(None, self._fallback, command)
++
++    @staticmethod
++    def _split_chained(command: str) -> List[str]:
++        """Split compound commands joined by 和/並且/AND."""
++        pattern = r"\s+(?:和|並且|and|AND)\s+"
++        parts = re.split(pattern, command)
++        return parts if len(parts) > 1 else [command]
+diff --git a/AI_Assistant/python/core/module_manager.py b/AI_Assistant/python/core/module_manager.py
+new file mode 100644
+index 0000000..4963076
+--- /dev/null
++++ b/AI_Assistant/python/core/module_manager.py
+@@ -0,0 +1,69 @@
++"""Module lifecycle manager.
++
++Supports dynamic module registration and provides health-check utilities.
++"""
++import logging
++from typing import Dict, List, Optional, Type
++
++from modules import BaseModule
++
++logger = logging.getLogger(__name__)
++
++
++class ModuleManager:
++    """Manages registration, lookup, and health of feature modules."""
++
++    def __init__(self) -> None:
++        self._modules: Dict[str, BaseModule] = {}
++
++    # ------------------------------------------------------------------
++    # Registration
++    # ------------------------------------------------------------------
++
++    def register(self, module: BaseModule) -> None:
++        """Register a module instance.
++
++        Args:
++            module: An instance of a :class:`BaseModule` subclass.
++        """
++        if module.name in self._modules:
++            logger.warning("Module '%s' is already registered; overwriting.", module.name)
++        self._modules[module.name] = module
++        logger.info("Module registered: %s", module.name)
++
++    def unregister(self, name: str) -> bool:
++        """Unregister a module by name.
++
++        Returns:
++            True if the module was found and removed, False otherwise.
++        """
++        if name in self._modules:
++            del self._modules[name]
++            logger.info("Module unregistered: %s", name)
++            return True
++        logger.warning("Tried to unregister unknown module: %s", name)
++        return False
++
++    # ------------------------------------------------------------------
++    # Lookup
++    # ------------------------------------------------------------------
++
++    def get(self, name: str) -> Optional[BaseModule]:
++        """Return the module with the given name, or None."""
++        return self._modules.get(name)
++
++    def all_modules(self) -> List[BaseModule]:
++        """Return all registered modules."""
++        return list(self._modules.values())
++
++    def list_names(self) -> List[str]:
++        """Return the names of all registered modules."""
++        return list(self._modules.keys())
++
++    # ------------------------------------------------------------------
++    # Health
++    # ------------------------------------------------------------------
++
++    def health_report(self) -> Dict[str, bool]:
++        """Return a dict mapping each module name to its health status."""
++        return {name: mod.health_check() for name, mod in self._modules.items()}
+diff --git a/AI_Assistant/python/main.py b/AI_Assistant/python/main.py
+index 7f50f71..e73c18a 100644
+--- a/AI_Assistant/python/main.py
++++ b/AI_Assistant/python/main.py
+@@ -1,49 +1,130 @@
++import logging
+ import os
++import time
++import base64
++import traceback
++
+ from dotenv import load_dotenv
+ from openai import OpenAI
+ from langchain_openai import ChatOpenAI
+ from langchain.memory import ConversationBufferMemory
+ from langchain.chains import ConversationChain
+ from fastapi import FastAPI, UploadFile, File
+-from pydantic import BaseModel
+-from fastapi.responses import FileResponse
+ from fastapi.middleware.cors import CORSMiddleware
++from fastapi.responses import FileResponse, JSONResponse
++from pydantic import BaseModel
+ from starlette.background import BackgroundTask
+-import time
+-import base64
+ 
+-# 加载 .env 文件
++from core.command_router import CommandRouter
++from core.module_manager import ModuleManager
++from modules.audio_module import AudioNavigationModule
++from modules.face_recognition_module import FaceRecognitionModule
++from modules.obstacle_module import ObstacleModule
++from modules.translation_module import TranslationModule
++
++# ---------------------------------------------------------------------------
++# Bootstrap
++# ---------------------------------------------------------------------------
++
+ load_dotenv()
++logging.basicConfig(level=logging.INFO)
++logger = logging.getLogger(__name__)
++
++app = FastAPI(
++    title="Rokid AI Assistant API",
++    description="Centralised AI assistant that dispatches to feature modules",
++    version="2.0.0",
++)
++
++app.add_middleware(
++    CORSMiddleware,
++    allow_origins=["*"],
++    allow_credentials=True,
++    allow_methods=["*"],
++    allow_headers=["*"],
++)
+ 
+-app = FastAPI()
++# ---------------------------------------------------------------------------
++# OpenAI / LangChain setup
++# ---------------------------------------------------------------------------
+ 
+-client = OpenAI(api_key=os.getenv("api_key"))
+ key = os.getenv("api_key")
++client = OpenAI(api_key=key)
+ 
+ llm = ChatOpenAI(
+-    model = "gpt-4o-mini",
++    model="gpt-4o-mini",
+     api_key=key,
+-    temperature=0
++    temperature=0,
+ )
+ 
+ memory = ConversationBufferMemory()
+ 
+ conversation = ConversationChain(
+-    llm = llm,
+-    memory = memory
++    llm=llm,
++    memory=memory,
+ )
+ 
++# ---------------------------------------------------------------------------
++# Module manager & command router
++# ---------------------------------------------------------------------------
++
++module_manager = ModuleManager()
++module_manager.register(FaceRecognitionModule())
++module_manager.register(ObstacleModule())
++module_manager.register(AudioNavigationModule())
++module_manager.register(TranslationModule())
++
++
++def _chat_fallback(text: str) -> str:
++    """LangChain conversation chain used as the router fallback."""
++    return conversation.predict(input=text)
++
++
++router = CommandRouter(module_manager=module_manager, fallback=_chat_fallback)
++
++# ---------------------------------------------------------------------------
++# Pydantic models
++# ---------------------------------------------------------------------------
++
++
+ class chatrequest(BaseModel):
+-    message : str
++    message: str
++
++
++# ---------------------------------------------------------------------------
++# Utility helpers
++# ---------------------------------------------------------------------------
++
++
++def cleanup_file(file_path: str) -> None:
++    """刪除臨時檔案"""
++    try:
++        if os.path.exists(file_path):
++            os.remove(file_path)
++            logger.info("已刪除臨時檔案: %s", file_path)
++    except Exception as exc:
++        logger.error("刪除檔案失敗: %s", exc)
++
++
++# ---------------------------------------------------------------------------
++# Routes
++# ---------------------------------------------------------------------------
++
++
++@app.get("/")
++async def root():
++    """健康檢查"""
++    return {"status": "ok", "message": "FastAPI is running"}
+ 
+ 
+ @app.post("/chat")
+ async def chat(request: chatrequest):
+-    response = conversation.predict(input=request.message)
++    """文字對話 — 透過命令路由器分派，無匹配模組時回退到一般對話。"""
++    result = await router.route(request.message)
++    if result["module"] == "chat":
++        return {"reply": result["result"]}
++    return result
+ 
+-    return {
+-        "reply": response
+-    }
+ 
+ @app.post("/chat_audio")
+ async def chat_audio(file: UploadFile = File(...)):
+@@ -51,119 +132,121 @@ async def chat_audio(file: UploadFile = File(...)):
+     語音對話完整流程：
+     1. 接收語音檔案
+     2. Whisper STT (語音轉文字)
+-    3. LangChain + OpenAI 對話
++    3. CommandRouter 分派 (可能觸發特定模組或回退至 LangChain 對話)
+     4. OpenAI TTS (文字轉語音)
+     5. 回傳音檔 + 文字
+     """
+     try:
+-        print(f"收到音檔: {file.filename}, Content-Type: {file.content_type}")
+-        
++        logger.info("收到音檔: %s, Content-Type: %s", file.filename, file.content_type)
++
+         # 1) 存成臨時檔案
+         temp_path = f"temp_{file.filename}"
++        content = await file.read()
+         with open(temp_path, "wb") as f:
+-            content = await file.read()
+             f.write(content)
+-        
+-        print(f"音檔大小: {len(content)} bytes")
+-        
+-        # 2) 用 OpenAI Whisper API 轉文字（支援多種格式）
++
++        logger.info("音檔大小: %d bytes", len(content))
++
++        # 2) Whisper STT
+         with open(temp_path, "rb") as audio_file:
+             transcript = client.audio.transcriptions.create(
+                 model="gpt-4o-transcribe",
+                 file=audio_file,
+-                language="zh"  # 指定中文
++                language="zh",
+             )
+-        
+-        # 3) 刪除臨時檔案
++
++        # 3) 刪除輸入臨時檔案
+         os.remove(temp_path)
+-        
++
+         user_text = transcript.text
+-        print(f"辨識文字: {user_text}")
+-        
+-        # 4) 送到 LangChain 對話
+-        response = conversation.predict(input=user_text)
+-        print(f"AI 回覆: {response}")
+-        
+-        output_audio_path = f"temp_output_{int(time.time() * 1000)}.mp3"
++        logger.info("辨識文字: %s", user_text)
++
++        # 4) 命令路由
++        route_result = await router.route(user_text)
++        if route_result["module"] == "chat":
++            reply_text = route_result["result"]
++        else:
++            # Summarise the structured result as a spoken sentence
++            reply_text = str(route_result.get("result", ""))
+ 
++        logger.info("AI 回覆: %s", reply_text)
++
++        # 5) TTS
++        output_audio_path = f"temp_output_{int(time.time() * 1000)}.mp3"
+         with client.audio.speech.with_streaming_response.create(
+-            model = "tts-1",
+-            voice = "alloy",  # 可選聲音
+-            input = response,
++            model="tts-1",
++            voice="alloy",
++            input=reply_text,
+         ) as tts_response:
+-
+             with open(output_audio_path, "wb") as f:
+                 for chunk in tts_response.iter_bytes():
+                     f.write(chunk)
+ 
+-            print(f"TTS 音檔已生成: {output_audio_path}")
+-        
+-        user_text = base64.b64encode(user_text.encode("utf-8")).decode("ascii")
+-        response = base64.b64encode(response.encode("utf-8")).decode("ascii")
++        logger.info("TTS 音檔已生成: %s", output_audio_path)
++
++        # 6) 回傳
++        encoded_user_text = base64.b64encode(user_text.encode("utf-8")).decode("ascii")
++        encoded_reply = base64.b64encode(reply_text.encode("utf-8")).decode("ascii")
+ 
+-         # 5) 回傳音檔
+         return FileResponse(
+             path=output_audio_path,
+             media_type="audio/mpeg",
+             headers={
+-                "X-User-Text": user_text,  # 自訂 header 回傳文字
+-                "X-Reply-Text": response
++                "X-User-Text": encoded_user_text,
++                "X-Reply-Text": encoded_reply,
+             },
+-            background=BackgroundTask(cleanup_file, output_audio_path)  # 回傳後刪除檔案
++            background=BackgroundTask(cleanup_file, output_audio_path),
+         )
+-    
+-    except Exception as e:
+-        import traceback
++
++    except Exception as exc:
+         traceback.print_exc()
+-        return {
+-            "error": str(e),
+-            "user_text": "",
+-            "reply": ""
+-        }
++        return JSONResponse(
++            status_code=500,
++            content={"error": str(exc), "user_text": "", "reply": ""},
++        )
+ 
+ 
++@app.post("/tts")
+ async def text_to_speech(request: chatrequest):
+-    """
+-    純 TTS 服務（給文字，回傳語音）
+-    """
++    """純 TTS 服務（給文字，回傳語音）"""
+     try:
+-        output_audio_path = f"temp_tts_{int(os.time.time() * 1000)}.mp3"
+-        
++        output_audio_path = f"temp_tts_{int(time.time() * 1000)}.mp3"
++
+         with client.audio.speech.with_streaming_response.create(
+-            model = "tts-1",
+-            voice = "alloy",  # 可選聲音
+-            input = request.message,
++            model="tts-1",
++            voice="alloy",
++            input=request.message,
+         ) as tts_response:
+-
+             with open(output_audio_path, "wb") as f:
+                 for chunk in tts_response.iter_bytes():
+                     f.write(chunk)
+ 
+-            print(f"TTS 音檔已生成: {output_audio_path}")
++        logger.info("TTS 音檔已生成: %s", output_audio_path)
+ 
+-         # 5) 回傳音檔
+         return FileResponse(
+             path=output_audio_path,
+             media_type="audio/mpeg",
+-            background=BackgroundTask(cleanup_file, output_audio_path)  # 回傳後刪除檔案
++            background=BackgroundTask(cleanup_file, output_audio_path),
+         )
+-    except Exception as e:
+-        return {"error": str(e)}
++    except Exception as exc:
++        return JSONResponse(status_code=500, content={"error": str(exc)})
+ 
+ 
+-def cleanup_file(file_path: str):
+-    """清理臨時檔案"""
+-    try:
+-        if os.path.exists(file_path):
+-            os.remove(file_path)
+-            print(f"已刪除臨時檔案: {file_path}")
+-    except Exception as e:
+-        print(f"刪除檔案失敗: {e}")
+-
++@app.get("/modules")
++async def list_modules():
++    """列出所有已註冊模組及其健康狀態。"""
++    health = module_manager.health_report()
++    return {
++        "modules": [
++            {"name": name, "healthy": status}
++            for name, status in health.items()
++        ]
++    }
+ 
+-@app.get("/")
+-async def root():
+-    """測試 API 是否正常"""
+-    return {"status": "ok", "message": "FastAPI is running"}
+ 
++@app.post("/command")
++async def command(request: chatrequest):
++    """直接透過命令路由器分派請求（回傳結構化結果）。"""
++    result = await router.route(request.message)
++    return result
+ 
+diff --git a/AI_Assistant/python/modules/__init__.py b/AI_Assistant/python/modules/__init__.py
+new file mode 100644
+index 0000000..8895c30
+--- /dev/null
++++ b/AI_Assistant/python/modules/__init__.py
+@@ -0,0 +1,36 @@
++from abc import ABC, abstractmethod
++from typing import Any, Dict, List
++
++
++class BaseModule(ABC):
++    """Abstract base class for all feature modules."""
++
++    @property
++    @abstractmethod
++    def name(self) -> str:
++        """Unique module identifier (e.g. 'face_recognition')."""
++
++    @property
++    @abstractmethod
++    def keywords(self) -> List[str]:
++        """Keyword list used for intent matching (Chinese and/or English)."""
++
++    @abstractmethod
++    async def execute(self, command: str, **kwargs: Any) -> Dict[str, Any]:
++        """Execute the module's primary action.
++
++        Args:
++            command: The user command / text input.
++            **kwargs: Additional data (e.g. uploaded files, ``image`` ndarray).
++
++        Returns:
++            A dict with at least ``action`` and ``data`` keys, e.g.::
++
++                {"action": "recognize", "data": {...}}
++
++            On error the ``data`` value should contain an ``"error"`` key.
++        """
++
++    def health_check(self) -> bool:
++        """Return True if the module is operational. Override as needed."""
++        return True
+diff --git a/AI_Assistant/python/modules/__pycache__/__init__.cpython-312.pyc b/AI_Assistant/python/modules/__pycache__/__init__.cpython-312.pyc
+new file mode 100644
+index 0000000000000000000000000000000000000000..a1bc4688957d42bd4c43e1201d10b4bb268304cf
+GIT binary patch
+literal 1773
+zcmah}J!~9B6rTOP^Wh(eO$Z>NQHbPh1a}1zg#|%pCqgK2NRUWqoAr2S?r!n^TxMo*
+z?ka*@LE{3+rlXA_BueN^O+^RWBoYmDCtr{t74Pls;Y$>hk@meeZ{ED0@4eZdmzEj?
+z*6W}A6n$+G@;h#3%c+FPWe^StC)|ihV)#a4`lf+<Gqw`jw-d*A64!SPVv=_WxAqCQ
+zg>e`B;qq%k$8-Ng(K8FHy}4B^vmK=+3w0uNKjWSS>U3DxSE5iC_WP02A)3$DLM2ST
+z1mTbf;v1a!CO3Rb*uvqaaJwdiweMDjGw#=_^SW?fgfp<RpJ25BJ{;k4S2V!aGXi+m
+zEbU!hJGJ*0;dBXn)c0+FdAQ&;ipC~W;)9Imu^7G9u8N{Nprm2Ul%m~CQWnRwE11ru
+zph;<~nuRL`DALfVQl2pcZDIpCBtye9M{nFnqnr8cB8|96b<~Z7q!&fA*QD!R7K%WM
+zFzcm}j<R&!Yj*CCJ4RtE5qA~(rw@CrewK)q%+plJ)?OxeTfH271wG7Cs9+$oPerJM
+z|5LZ$3))ISV_2$NgCTS+ZB@0jf*^v>LC_pP3saVe(aI?-O;pseC=<wSG671STJ<~E
+z#1OLNG=`8gSAv&FMyZDKX~J~akJ28!xCKlA*evBOK>BLhgA08?KrTWUxddd2fLsBw
+zsP9hQs?q9PhBGBv%jb}sLE~DOB?&k#+}%AUdn&{NW((!7;G1BaYs4tq^_{hcEjzh-
+zON6-=RQG3nTUT@-qlC#Jg{g-wH5(0Dtv2}H_-}{GD)0uq4i2DrIn&S<)#8?>Q98(V
+z^N~B3E={xCpl!~}L0~cEOtWfE@<E(2jyOiKP~KepkIF%OEQL1Z@D}M_r2CX<8Vd$}
+zV03$13YEutdz%7krx{G~_AI#!aLDJ8oCTtAnxUX6`ZY1dWpri^{7Q$2D;LNg<nP<$
+zAB8XA3)429Iw@~Y)2G)ZJd&t8hdGTD%?3g;#GA!U`r&6nN*H>|6itNyFq+q&JSU5N
+z!D8JH!oCQ1M=#8!JAd#B=8Qkd&&mCj)pBS$-bzsq0-X6EC>lX9eIp<*2Eomo#nnkI
+z2zVBPx(*Kya@0eK6&Du#7Ui=b$r_S1Bp5*=H1Zsf!rsZUSiXe&a>fz45?_hG$&%m=
+zbpT|a{ARy--&y+ASsj~(vuPZJCj|M#BJLWJ<*|+Xu?u2l)iI7P9I0<SwCp@)*(oj8
+z#^!>v`0dAI0_^*(lKpVyc=b3uKKEni1hr*=(rkRzbk>ge0|KnXs7$fr)eDR5gc2uY
+zTDz-<19;SP^_CcvRXtki!}?oOTrbNDa2<bf3IQ2ghGE<zuihi)e<9}|xGx)P2djS(
+IU}fNc0WW>QasU7T
+
+literal 0
+HcmV?d00001
+
+diff --git a/AI_Assistant/python/modules/__pycache__/audio_module.cpython-312.pyc b/AI_Assistant/python/modules/__pycache__/audio_module.cpython-312.pyc
+new file mode 100644
+index 0000000000000000000000000000000000000000..4a2dc0b2e1ce631f5e0af864652946cc1e9ec727
+GIT binary patch
+literal 3597
+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
+HHU0h{8M@kC
+
+literal 0
+HcmV?d00001
+
+diff --git a/AI_Assistant/python/modules/__pycache__/obstacle_module.cpython-312.pyc b/AI_Assistant/python/modules/__pycache__/obstacle_module.cpython-312.pyc
+new file mode 100644
+index 0000000000000000000000000000000000000000..bbb32f9446b722de8b801d6ba6dc378e83154cc8
+GIT binary patch
+literal 3132
+zcmaJ@ZEPGz8J_*TyY=~_v1>a{6OHTyWkER`i4T(&B&QA$YH_NhQtAEK+w6?*&e_{N
+zW_NSBlLIb9$N?&Xgs@vG6c9fenF@;!kqQdQ@BXnBP|T_lk!aHR-!(2$RrtX>`*A*}
+zz(_mu?#w$g@8|Q*+r7OSg7(d?-Ksv5L+Bs;Cv8eX>?{DWf(R-iA`sCQiUN$1E!L!>
+zRFjKxO(`k@Uz2UMmMLZgBqAy-45SC`jx@I>#D7IiM5ho@E+eAS%$k(U_B2I3(|Y^#
+zInOsOo8npOQ_HWq4z9T*fQbe(>vhTsn)U)v9`-8~yD2xLmRokJ5&wMPL>o=J>NoK`
+zb8A|ul%8vx+2x$9H~ot1OxDb*Q>Zsfr2@t;RHzdj9XNzCyIFP0TmWk0s)rrd*USrM
+z)i%$8KwN-CHbTqHB-Fz&Sad$H?PfvS=9<mvQYg(h%}}1LT7D=$TlIWh2(=TYN52{=
+zX2k}G`)u;F^Bo{o5Jg~dR1}F&l&DNZs?3W-x-73HY(+Ji%}`}O%)px5wU#9cRlvqM
+z*r!p2=H|tSOC_1ha<PYGKei&19IWJlzZcHZfbMJd==rcOwO%Z7>(lWF7BGDbKACq}
+z&D(XxB#;Z>JWNs_7DAO#KVXiP1VJJ{Lfrj3GIT4bDd^%{xG(jo(b;_+T^B;xqxQVV
+zx8skT$%<Q}lPqu?$|f5wJ3m<ts)QP4+w?r@8Fl7z0gV4OJ@XY~#`C}xrsH>_Ao7Mc
+z*||UVEd)j=J7$fx2KQQ_z$f>CJRVP%C3LrcVh0GcM@11PA{BYEt)MdG%Fl(f2o%+O
+z0!TZw{pxG){o<APu3Qh)&R>{KWeC;S2+`ubmwtEu#xElh__x=76y#w`JR2VqpYhV4
+z;V&W|{Qg%ddGE^0_ka9mYv57OFn$K>g)X)&>jyH-o~KPPEAd(*k0_lk4D%g)?-F__
+zO9NUPNjZ%@#y4jyw^lP95~}ALCM$auH$vLDmfwSK=UwQYK>`?MQCxU5DqxKWDPUZZ
+z7Nw;Ok%&x`szB7&#Iq=e7STci9l+dai&AHoOr%9Q=AJ-453#5nMr`Vm;&VBow!ppc
+zNF$j=Wi62!;0<o}dr}ryNu-TsvBVb<5icp<P|hY}LujCj(u=4eydgCNJ!|T);kh_V
+zc9WzN-54N_LkYy}1&CpSt2MJs0k<H$0PJwmW-N==eGi)scIzDHOdFR<5pSu46SrWn
+zcTl5_k1f~n0oFKtnVmCAB`2uWn+1oMjF|v<_~?mKXY}~SuDi}exe9k-0-%K(Rljn)
+zbI38c){FqQR5}jyc&y2IskDcMn7+vw@Gc5qM!moW9bCrMpo{@gqn-!)cJ_u!q|+Q5
+z0*i-A#1woA=<RFE_kVEp-9P;#G0^=hFF*M9TiZ*&e(<yJcd{tX23-u*Sj14~a<mSn
+zQQRfWJm5Gb$MF$QS3{{x{jkpfMA?O%Fn97Iw>j84RBg9hrYy|S&XnZ&OjlVSh{kv}
+zuo2#Igbg!^qM-!r9uKwHiE(me=tXJ;K5Y%BQpIpuNaha$zqbtC1N7k%Y7e2uMpm>R
+zYO9~WJutDXZ1oH*fAQ|v_||^BF@Abu^ttyHX{Zm<ueYzQDY=uv*6`S!VSRI0fBneq
+z;i=_QTZcZep4l9n-pEgX_)h=mLnH#zJNbQg@=t8$pV&C~)D7z|`4gOL<c||KtUnyx
+zn0k71aQ3hH*?+Ya&iij~3WWLAfte}cr;mRI{YC)dx4D^P(pyJnj!L)21t4!tC@_2L
+zsKV)E63~$)_M|>f*9Z$aY{08R05lYNGV4<7jWa=<1u61%ISO!?+Fj9k`T_(6WC{->
+zdeNs2f&78$T%%CU32ywK3f_sbs^jyL?Nb6Ze>dFgHk9v*YeVTzf)xjjU$uFHI)%>e
+z*74MHd&T6>6h=+bd@^}6z=HudsgJv^gV@X@F(2kqZM_JFbuo@69z!07AB>}jVTXX;
+zjo~C(_6F-0_@2k1gNWIOMxPh9_8)-A=mzFJg$X!6R(qfS@5LZrp{DIu468z|^Q{A^
+z>WLWLi(lqK#MN-Ce=w>Bb9#T6H4I)W4I|VH1H1`l0y=LPUk^+>S;-g%aV?n60uI8H
+z!f&#1IF0eAB;!Xit{mg>!#I|+BfR5=3FULHYqL-C|EQSpA{5(=zor=Pcv17d3*BY(
+zH~GoCN^e^fl*3o8hX{rp38{V2L|ct0S<zMxuX?ZO4-t^bGEnXOuyRtkcD9Z9xc+oJ
+z-k7~Pc+<K$`sUnDG~b@?QM7BY2*c~M>x1jo`sj67gWvX;pbV{&58&3J$U2d5dY%<P
+zv@pXl1^_!${bn7;E@im^AZ+3n3gdth<^ZvtjX;TUbYz%!k-~e8@KN@uc;A=UXMu&+
+zF7I>DwIx9i-WL@?-pM1O|L<sg6OG?PhwkRamPhX7#x`?ftJAl0hnLh3)M;VpYVn^4
+IhDhrF01ky|XaE2J
+
+literal 0
+HcmV?d00001
+
+diff --git a/AI_Assistant/python/modules/__pycache__/translation_module.cpython-312.pyc b/AI_Assistant/python/modules/__pycache__/translation_module.cpython-312.pyc
+new file mode 100644
+index 0000000000000000000000000000000000000000..8f8c495be96c6c04e309eac206fa773cc0e87448
+GIT binary patch
+literal 4927
+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
+
+literal 0
+HcmV?d00001
+
+diff --git a/AI_Assistant/python/modules/audio_module.py b/AI_Assistant/python/modules/audio_module.py
+new file mode 100644
+index 0000000..4b8460f
+--- /dev/null
++++ b/AI_Assistant/python/modules/audio_module.py
+@@ -0,0 +1,78 @@
++"""Audio Navigation module wrapper.
++
++Wraps audio-based spatial navigation from ``Audio_Navigation/python/main.py``.
++"""
++import logging
++from typing import Any, Dict, List
++
++from modules import BaseModule
++
++logger = logging.getLogger(__name__)
++
++
++class AudioNavigationModule(BaseModule):
++    """Module that provides audio-based navigation guidance."""
++
++    @property
++    def name(self) -> str:
++        return "audio_navigation"
++
++    @property
++    def keywords(self) -> List[str]:
++        return [
++            "導航", "音頻導航", "navigation", "audio navigation",
++            "引導", "方向", "路線", "navigate", "guide", "指路",
++        ]
++
++    async def execute(self, command: str, **kwargs: Any) -> Dict[str, Any]:
++        """Generate audio navigation guidance.
++
++        Accepts an optional ``destination`` keyword argument.
++
++        Returns a dict with:
++        - ``action``: ``"navigate"``
++        - ``data``:   navigation instructions or an error message
++        """
++        destination = kwargs.get("destination", "")
++        if not destination:
++            # Try to extract destination from the command text
++            destination = self._extract_destination(command)
++
++        try:
++            guidance = self._generate_guidance(destination)
++            return {"action": "navigate", "data": guidance}
++        except Exception as exc:
++            logger.exception("Audio navigation failed: %s", exc)
++            return {"action": "navigate", "data": {"error": str(exc)}}
++
++    # ------------------------------------------------------------------
++    # Internal helpers
++    # ------------------------------------------------------------------
++
++    def _extract_destination(self, command: str) -> str:
++        """Attempt a simple extraction of a destination from the command."""
++        for kw in ("到", "去", "前往", "navigate to", "go to"):
++            if kw in command:
++                idx = command.index(kw) + len(kw)
++                return command[idx:].strip()
++        return ""
++
++    def _generate_guidance(self, destination: str) -> Dict[str, Any]:
++        """Generate navigation instructions.
++
++        TODO: integrate the real audio navigation logic from
++              Audio_Navigation/python/main.py when available.
++        """
++        if not destination:
++            return {
++                "message": "請提供目的地以開始導航。",
++                "instructions": [],
++            }
++        return {
++            "destination": destination,
++            "message": f"正在為您導航到：{destination}",
++            "instructions": [],  # Populated by real navigation model
++        }
++
++    def health_check(self) -> bool:
++        return True
+diff --git a/AI_Assistant/python/modules/face_recognition_module.py b/AI_Assistant/python/modules/face_recognition_module.py
+new file mode 100644
+index 0000000..4b65f64
+--- /dev/null
++++ b/AI_Assistant/python/modules/face_recognition_module.py
+@@ -0,0 +1,128 @@
++"""Face Recognition module wrapper.
++
++Wraps the FaceEngine from ``Face_Recognition/Python/face_engine.py``.
++When the underlying library (InsightFace) is not installed the module
++degrades gracefully and reports an informative error.
++"""
++import logging
++import sys
++import os
++from typing import Any, Dict, List
++
++from modules import BaseModule
++
++logger = logging.getLogger(__name__)
++
++# ---------------------------------------------------------------------------
++# Try to import the real FaceEngine.  Add its directory to sys.path so that
++# the import works regardless of working-directory.
++# ---------------------------------------------------------------------------
++_FACE_ENGINE_DIR = os.environ.get(
++    "FACE_ENGINE_DIR",
++    os.path.join(
++        os.path.dirname(__file__),
++        "../../../../Face_Recognition/Python",
++    ),
++)
++
++_face_engine_available = False
++FaceEngine = None  # type: ignore
++
++try:
++    if _FACE_ENGINE_DIR not in sys.path:
++        sys.path.insert(0, os.path.abspath(_FACE_ENGINE_DIR))
++    from face_engine import FaceEngine  # type: ignore  # noqa: F811
++    _face_engine_available = True
++except Exception as _exc:  # pragma: no cover
++    logger.warning("FaceEngine not available: %s", _exc)
++
++
++class FaceRecognitionModule(BaseModule):
++    """Module that exposes face recognition through the common BaseModule API."""
++
++    def __init__(
++        self,
++        db_path: str = "face_database",
++        similarity_threshold: float = 0.4,
++    ) -> None:
++        self._db_path = db_path
++        self._threshold = similarity_threshold
++        self._engine = None
++
++        if _face_engine_available:
++            try:
++                self._engine = FaceEngine(
++                    db_path=self._db_path,
++                    similarity_threshold=self._threshold,
++                )
++                self._engine.load_database()
++            except Exception as exc:  # pragma: no cover
++                logger.error("Failed to initialise FaceEngine: %s", exc)
++
++    # ------------------------------------------------------------------
++    # BaseModule interface
++    # ------------------------------------------------------------------
++
++    @property
++    def name(self) -> str:
++        return "face_recognition"
++
++    @property
++    def keywords(self) -> List[str]:
++        return [
++            "人臉", "臉部", "辨識人臉", "face", "recognize", "recognition",
++            "register face", "人臉辨識", "辨識", "誰", "who",
++        ]
++
++    async def execute(self, command: str, **kwargs: Any) -> Dict[str, Any]:
++        """Recognize or register faces depending on the command keyword.
++
++        Accepts an optional ``image`` keyword argument containing a
++        ``numpy.ndarray`` (BGR) image.
++
++        Returns a dict with:
++        - ``action``: one of ``"recognize"``, ``"register"``, ``"list"``
++        - ``data``:   action-specific payload
++        """
++        if self._engine is None:
++            return {
++                "error": (
++                    "Face recognition engine is not available. "
++                    "Please ensure InsightFace is installed."
++                )
++            }
++
++        cmd_lower = command.lower()
++
++        # --- list registered faces ---
++        if any(kw in cmd_lower for kw in ("list", "列表", "已註冊", "names")):
++            names = self._engine.get_registered_names()
++            return {"action": "list", "data": {"faces": names, "total": len(names)}}
++
++        # --- register ---
++        if any(kw in cmd_lower for kw in ("register", "註冊", "新增", "add")):
++            image = kwargs.get("image")
++            name = kwargs.get("name", "")
++            if image is None or not name:
++                return {
++                    "action": "register",
++                    "data": {"error": "須提供 name 和 image 才能完成人臉註冊"},
++                }
++            result = self._engine.register_face(name, image)
++            return {"action": "register", "data": result}
++
++        # --- recognize (default) ---
++        image = kwargs.get("image")
++        if image is None:
++            return {
++                "action": "recognize",
++                "data": {"error": "須提供 image 才能進行人臉辨識"},
++            }
++        faces = self._engine.recognize(image)
++        return {
++            "action": "recognize",
++            "data": {"face_count": len(faces), "faces": faces},
++        }
++
++    def health_check(self) -> bool:
++        return self._engine is not None
+diff --git a/AI_Assistant/python/modules/obstacle_module.py b/AI_Assistant/python/modules/obstacle_module.py
+new file mode 100644
+index 0000000..aee87bf
+--- /dev/null
++++ b/AI_Assistant/python/modules/obstacle_module.py
+@@ -0,0 +1,71 @@
++"""Obstacle Detection module wrapper.
++
++Wraps the obstacle recognition functionality from
++``Obstacle_Recognition/python/main.py``.  When the underlying model is not
++available the module degrades gracefully.
++"""
++import logging
++from typing import Any, Dict, List
++
++from modules import BaseModule
++
++logger = logging.getLogger(__name__)
++
++
++class ObstacleModule(BaseModule):
++    """Module that performs obstacle / object detection."""
++
++    @property
++    def name(self) -> str:
++        return "obstacle_detection"
++
++    @property
++    def keywords(self) -> List[str]:
++        return [
++            "障礙物", "障礙", "obstacle", "detect", "偵測", "物體",
++            "偵測障礙", "避障", "路障", "前方", "object detection",
++        ]
++
++    async def execute(self, command: str, **kwargs: Any) -> Dict[str, Any]:
++        """Perform obstacle detection on the provided image frame.
++
++        Accepts an optional ``image`` keyword argument containing a
++        ``numpy.ndarray`` (BGR) image.
++
++        Returns a dict with:
++        - ``action``: ``"detect"``
++        - ``data``:   detection results or an error message
++        """
++        image = kwargs.get("image")
++        if image is None:
++            return {
++                "action": "detect",
++                "data": {"error": "須提供 image 才能進行障礙物偵測"},
++            }
++
++        try:
++            results = self._run_detection(image)
++            return {"action": "detect", "data": results}
++        except Exception as exc:
++            logger.exception("Obstacle detection failed: %s", exc)
++            return {"action": "detect", "data": {"error": str(exc)}}
++
++    # ------------------------------------------------------------------
++    # Internal helpers
++    # ------------------------------------------------------------------
++
++    def _run_detection(self, image: Any) -> Dict[str, Any]:
++        """Run the obstacle detection model.
++
++        Override or extend this method when the underlying model is
++        integrated.  Returns a placeholder result until then.
++        """
++        # TODO: integrate the real YOLO / detection model from
++        #       Obstacle_Recognition/python/main.py when available.
++        return {
++            "message": "Obstacle detection module ready; model not yet integrated.",
++            "obstacles": [],
++        }
++
++    def health_check(self) -> bool:
++        return True
+diff --git a/AI_Assistant/python/modules/translation_module.py b/AI_Assistant/python/modules/translation_module.py
+new file mode 100644
+index 0000000..f2e0e8d
+--- /dev/null
++++ b/AI_Assistant/python/modules/translation_module.py
+@@ -0,0 +1,110 @@
++"""Translation module wrapper.
++
++Wraps translation functionality from ``Translate/python/main.py``.
++"""
++import logging
++import os
++from typing import Any, Dict, List
++
++from modules import BaseModule
++
++logger = logging.getLogger(__name__)
++
++# Attempt to reuse the OpenAI client already configured in the environment.
++_openai_available = False
++try:
++    from openai import OpenAI as _OpenAI
++    _openai_available = True
++except ImportError:  # pragma: no cover
++    pass
++
++
++class TranslationModule(BaseModule):
++    """Module that translates text between languages."""
++
++    def __init__(self, model: str = "gpt-4o-mini") -> None:
++        self._model = model
++        self._client = None
++        if _openai_available:
++            try:
++                self._client = _OpenAI(api_key=os.getenv("api_key"))
++            except Exception as exc:  # pragma: no cover
++                logger.warning("Failed to initialise OpenAI client for translation: %s", exc)
++
++    # ------------------------------------------------------------------
++    # BaseModule interface
++    # ------------------------------------------------------------------
++
++    @property
++    def name(self) -> str:
++        return "translation"
++
++    @property
++    def keywords(self) -> List[str]:
++        return [
++            "翻譯", "translate", "translation", "轉換語言", "語言轉換",
++            "英文翻譯", "中文翻譯", "日文翻譯", "韓文翻譯",
++        ]
++
++    async def execute(self, command: str, **kwargs: Any) -> Dict[str, Any]:
++        """Translate text found in *command* or in ``kwargs["text"]``.
++
++        Keyword args:
++            text (str): Text to translate (falls back to *command*).
++            target_language (str): Target language (default: ``"英文"``).
++
++        Returns a dict with:
++        - ``action``: ``"translate"``
++        - ``data``:   translation result or error
++        """
++        text = kwargs.get("text") or command
++        target_language = kwargs.get("target_language", "英文")
++
++        # Basic sanitization: strip leading/trailing whitespace and limit length
++        text = str(text).strip()[:4000]
++        target_language = str(target_language).strip()[:50]
++
++        if self._client is None:
++            return {
++                "action": "translate",
++                "data": {
++                    "error": "Translation service not available (OpenAI client not initialised)."
++                },
++            }
++
++        try:
++            translated = await self._translate(text, target_language)
++            return {
++                "action": "translate",
++                "data": {
++                    "original": text,
++                    "translated": translated,
++                    "target_language": target_language,
++                },
++            }
++        except Exception as exc:
++            logger.exception("Translation failed: %s", exc)
++            return {"action": "translate", "data": {"error": str(exc)}}
++
++    # ------------------------------------------------------------------
++    # Internal helpers
++    # ------------------------------------------------------------------
++
++    async def _translate(self, text: str, target_language: str) -> str:
++        import asyncio
++        loop = asyncio.get_event_loop()
++        return await loop.run_in_executor(
++            None, self._translate_sync, text, target_language
++        )
++
++    def _translate_sync(self, text: str, target_language: str) -> str:
++        prompt = f"請將以下文字翻譯成{target_language}，只回覆翻譯結果：\n{text}"
++        response = self._client.chat.completions.create(
++            model=self._model,
++            messages=[{"role": "user", "content": prompt}],
++            temperature=0,
++        )
++        return response.choices[0].message.content.strip()
++
++    def health_check(self) -> bool:
++        return self._client is not None
+-- 
+2.52.0.windows.1
+
