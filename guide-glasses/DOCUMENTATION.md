@@ -5,7 +5,7 @@
 | 定位 | **最終的完整導盲系統整合專案** |
 | 目標裝置 | Rokid Glasses（YodaOS-Sprite / Android 12 / API 32），APK 直接安裝 |
 | 撰寫日期 | 2026-08-05 |
-| 目前整體完成度 | **約 38%**（詳見 §8） |
+| 目前整體完成度 | **約 48%**（詳見 §8） |
 
 > 相關文件：[分析報告總覽](../docs/00_README.md)｜[前次分析的修正](../docs/08_CORRECTIONS_AND_REANALYSIS.md)｜[專案交接紀錄](../docs/07_HANDOVER.md)
 
@@ -96,8 +96,13 @@ guide-glasses/
 │   │       │       └── SpeechRecognitionGateway.kt   ASR 介面 + SpeechEvent
 │   │       └── test/kotlin/...                  7 個測試類，70 個測試
 │   │
-│   └── core-common/                 Android 相依的共用工具
-│       └── src/main/kotlin/.../DispatcherProvider.kt
+│   ├── core-common/                 Android 相依的共用工具
+│   │   └── src/main/kotlin/.../DispatcherProvider.kt
+│   │
+│   └── core-database/               本地加密儲存
+│       └── src/main/kotlin/.../
+│           ├── EmbeddingCipher.kt           Keystore AES/GCM 加解密
+│           └── PersonStorage.kt             Room + PersonRepository 實作
 │
 ├── glasses/                         【眼鏡硬體抽象的實作】
 │   └── glasses-camerax/             CameraX 影像來源
@@ -115,6 +120,13 @@ guide-glasses/
 │   │       └── kotlin/.../
 │   │           ├── AndroidTtsAnnouncer.kt              TextToSpeech 實作
 │   │           └── AndroidSpeechRecognitionGateway.kt  SpeechRecognizer 實作
+│   │
+│   ├── ai-face/                     端側人臉辨識
+│   │   ├── src/main/assets/README.md        【模型檔要放這裡】
+│   │   └── src/main/kotlin/.../
+│   │       ├── MlKitFaceDetector.kt         人臉偵測（bundled）
+│   │       ├── TfLiteFaceEmbedder.kt        特徵抽取（需模型檔）
+│   │       └── FrameBitmaps.kt              裁切與轉檔
 │   │
 │   ├── ai-ocr/                      端側中文 OCR
 │   │   └── src/main/kotlin/.../
@@ -141,6 +153,8 @@ guide-glasses/
 | `core/core-common/` | 需要 Android 相依的共用工具（Dispatcher 等） | 與 core-domain 分開，避免污染純 Kotlin 模組 |
 | `glasses/glasses-camerax/` | CameraX 影像來源 | Rokid Glasses 執行 Android 12，標準 CameraX 直接可用。同一個實作在手機上也能跑，眼鏡不在手邊照樣能開發 |
 | `ai/ai-speech/` | `android.speech.*` 的封裝 | 把 Android 語音 API 隔離在單一模組，未來要換成雲端 ASR 只改這裡 |
+| `core/core-database/` | Room + Keystore 加密 | 人臉特徵是生物特徵，不該以明文躺在 SQLite 檔案裡。金鑰由 Keystore 保管，程式碼拿不到金鑰本體 |
+| `ai/ai-face/` | 人臉偵測與特徵抽取 | 端側完成，影像與特徵都不離開裝置 |
 | `ai/ai-ocr/` | ML Kit 中文文字辨識 | 用 bundled 版而非 play-services 版 —— **Rokid Glasses 是否預裝 Google Play Services 無法確認**，bundled 把模型打包進 APK 就沒有這個不確定性 |
 | `ai/ai-agent/` | LLM 協定、HTTP、JSON 序列化 | 換 LLM 供應商（Claude / Gemini / GPT）不需改其他模組，也不需發新版 App |
 | `feature/feature-assistant/` | 助理中樞的 ViewModel 與狀態 | 功能可獨立開發、獨立編譯、獨立測試 |
@@ -151,8 +165,6 @@ guide-glasses/
 |---|---|---|
 | `glasses/glasses-cxrl` | CXR-L SDK 封裝（選用，主要為降噪音訊） | 需 `com.rokid.sprite.aiapp` 與 auth token |
 | `ai/ai-vision` | YOLO 障礙物偵測 + 距離估計 + 方位判定 | **需 Obstacle_Recognition 提供 `.tflite` 與規格** |
-| `ai/ai-face` | MediaPipe + MobileFaceNet 端側人臉 | 無，可立即開始 |
-| `core/core-database` | Room + 人臉向量索引 | 需先定義 ai-face 的 embedding 維度 |
 | `core/core-network` | 共用 HTTP 設定 | 無 |
 | `core/core-ui` | 共用無障礙元件 | 無 |
 | `feature/feature-face` | 人臉辨識畫面與流程 | 需 ai-face |
@@ -183,12 +195,12 @@ guide-glasses/
 |---|---|
 | 停 / 停止 / 安靜 / 別說了 / 閉嘴 | 立刻停止所有播報 |
 | 測試相機 / 相機測試 / 拍一張 | 相機自我檢測，回報解析度與耗時 |
+| 這是誰 / 這個人是誰 / 誰在我前面 | 人臉辨識，回報方位、距離、是誰 |
 | 唸給我聽 / 上面寫什麼 / 幫我看字 | OCR 文件模式，完整朗讀 |
 | 這是哪裡 / 招牌寫什麼 / 什麼店 | OCR 招牌模式，只唸最大的字 |
 | 下一段 / 繼續唸 | 朗讀下一段 |
 | 上一段 / 前一段 | 回到上一段 |
 | 前面有什麼 / 看看前面 / 可以走嗎 / 有障礙物嗎 / 周圍有什麼 | 障礙物偵測 |
-| 這是誰 / 這個人是誰 / 前面是誰 / 誰在我前面 / 他是誰 | 人臉辨識 |
 | 再說一次 / 重複 / 剛剛說什麼 / 沒聽清楚 | 重複上一則 |
 
 「停」的優先級最高 —— 說「停，前面有什麼」會先停下來。
@@ -273,9 +285,9 @@ Rokid Glasses 執行 YodaOS-Sprite（Android 12 / API 32），APK 可直接安�
 | **播報仲裁** | ✅ | 🟡 | — | — | ✅ 已實作 |
 | **本地意圖路由** | ✅ | 🟡 | — | — | ✅ 已實作 |
 | **LLM 意圖理解** | — | — | — | ✅ BFF → Claude | 🟠 客戶端完成，BFF 不存在 |
-| **人臉偵測** | ✅ MediaPipe | 🟡 | — | — | ❌ 未實作 |
-| **人臉特徵比對** | ✅ MobileFaceNet | 🟡 | 🟡 過渡期 InsightFace | ❌ 絕不上雲 | ❌ 未實作 |
-| **人臉資料庫** | ✅ Room（加密） | 🟡 | — | ❌ 絕不上雲 | ❌ 未實作 |
+| **人臉偵測** | ✅ ML Kit | 🟡 | — | — | ✅ 已實作 |
+| **人臉特徵比對** | ✅ TFLite | 🟡 | — | ❌ 絕不上雲 | 🟠 程式完成，**缺模型檔** |
+| **人臉資料庫** | ✅ Room + Keystore 加密 | 🟡 | — | ❌ 絕不上雲 | ✅ 已實作 |
 | **障礙物偵測** | ✅ YOLO TFLite | 🟡 | — | — | ❌ 未實作 |
 | **距離估計** | ✅ | 🟡 | — | — | ❌ 未實作 |
 | **OCR（第一層）** | ✅ ML Kit 離線 | 🟡 | — | — | ✅ 已實作 |
@@ -661,7 +673,7 @@ adb logcat -s TtsAnnouncer:* SpeechGateway:* AndroidRuntime:E
 cd guide-glasses && ./gradlew test
 ```
 
-目前 **124 個單元測試**，全部純 JVM，秒級完成。
+目前 **150 個單元測試**，全部純 JVM，秒級完成。
 
 | 測試類 | 數量 | 守護什麼 |
 |---|---|---|
@@ -676,6 +688,9 @@ cd guide-glasses && ./gradlew test
 | `SpeechSegmenterTest` | 17 | 斷句朗讀（含兩個從原版修正的 bug） |
 | `ReadTextUseCaseTest` | 11 | OCR 三層策略與雙模式 |
 | `ReadingSessionTest` | 11 | 朗讀進度與控制 |
+| `FaceMatcherTest` | 15 | 三段式特徵比對 |
+| `FaceDistanceEstimatorTest` | 7 | 距離估計 |
+| `BearingResolverTest` | 4 | 方位判定 |
 
 完整建置（含 lint）：
 
@@ -736,27 +751,47 @@ cd guide-glasses && ./gradlew build
 adb logcat -s CameraXFrameSource:* TtsAnnouncer:*
 ```
 
-### 6.4 人臉辨識（未實作）
+### 6.4 人臉辨識（程式完成，需模型檔）
 
-**目前無法測試 guide-glasses 的人臉辨識** —— 模組不存在。
+**前置：放入模型檔** —— 見 [`ai/ai-face/src/main/assets/README.md`](ai/ai-face/src/main/assets/README.md)。
+沒有模型時說「這是誰」會聽到「人臉特徵模型不可用」。
 
-若要測試現有的 `Face_Recognition/`（獨立專案）：
+**註冊**
 
-| | |
+1. 請對方站在鏡頭前，**先取得他的同意**
+2. 說「把他記起來，他叫小明」（需要 BFF 抽人名；未設 BFF 時此指令走不通）
+3. 聽到「正在記住這個人的臉，請確認對方同意」→「已經記住小明了」
+
+**辨識**
+
+1. 說「這是誰」
+2. 預期播報格式：「**右前方，大約 2 公尺，是小明**」
+
+播報依信心分三段：
+
+| 相似度 | 播報 |
 |---|---|
-| **前置** | 後端已啟動、`ApiClient.kt` 的 IP 正確、眼鏡與後端在同一網路 |
-| **步驟** | 1. 啟動後端 `uvicorn main:app --host 0.0.0.0 --port 8000`<br/>2. 開啟 `/admin` 註冊人臉<br/>3. 眼鏡上開啟 App<br/>4. 讓已註冊的人站在鏡頭前 |
-| **預期結果** | 5 秒內播報「你面前的人是 XXX」 |
-| **延遲量測** | 見 [08 §2.4](../docs/08_CORRECTIONS_AND_REANALYSIS.md) |
+| ≥ 0.6 | 「右前方，大約 2 公尺，是小明」 |
+| 0.45–0.6 | 「右前方，大約 2 公尺，可能是小明，不太確定」 |
+| < 0.45 | 「右前方，大約 2 公尺有一個人，我不認識」 |
 
-**失敗原因對照**
+中間那一段是刻意的 —— 舊後端單一閾值 0.4，相似度 0.41 時就會信誓旦旦地
+喊名字。認錯人對使用者是很尷尬的事，系統寧可表達不確定。
 
-| 現象 | 可能原因 |
-|---|---|
-| 延遲很高 | 見 [08 §2](../docs/08_CORRECTIONS_AND_REANALYSIS.md) 的 L1–L9 |
-| 「未偵測到人臉」 | 光線不足 / 距離太遠 / `det_size` 太小 |
-| 辨識成「未知人物」 | 相似度低於 0.4 閾值 / 註冊照片品質不佳 |
-| 連線失敗 | IP 變了（熱點重連會換 IP）/ 防火牆 |
+| 現象 | 可能原因 | 處理 |
+|---|---|---|
+| 「人臉特徵模型不可用」 | 缺 `.tflite` | 見 assets/README.md |
+| 「前方沒有偵測到人」 | 光線不足 / 太遠 / 臉太小（<10% 畫面寬） | 靠近一點 |
+| 一律認成「不認識」 | 模型前處理不符 / 換過模型但沒重新註冊 | 見 assets/README.md 的警告 |
+| 距離估計不準 | **相機視角未校正** | 見下方 |
+| 註冊時說「看到 N 個人」 | 鏡頭裡不只一個人 | 註冊時只能有一個人，避免把路人存錯名字 |
+
+**相機視角校正（影響距離準確度）**
+
+`FaceDistanceEstimator` 預設水平視角 66 度 —— 這是一般手機廣角鏡的概略值，
+**Rokid Glasses 的實際視角官方規格未載明**。校正方式：請人站在**實際量測
+的 2 公尺處**，說「這是誰」，比較播報的距離與實際值，再調整
+`DEFAULT_HORIZONTAL_FOV_DEGREES`。
 
 ### 6.5 OCR（已實作，可實測）
 
@@ -907,7 +942,7 @@ DataSource（Local: Room/TFLite ／ Remote: HTTP ／ Glasses: CameraX/CXR-L）
 
 ## 8. 整合狀態
 
-### 8.1 整體完成度：約 38%
+### 8.1 整體完成度：約 48%
 
 計算方式：以 11 個必要模組加權，權重依預估工時。
 
@@ -921,7 +956,7 @@ DataSource（Local: Room/TFLite ／ Remote: HTTP ／ Glasses: CameraX/CXR-L）
 | 4 | **語音 STT / TTS** | **90%** | `SpeechRecognizer` + `TextToSpeech` 完整實作 | 實機驗證（眼鏡上是否有語音服務與中文語音資料） |
 | 5 | **相機層**<br/>`FrameSource` CameraX 實作 | **80%** | `CameraXFrameSource` 連續串流與單張擷取、幀率節流、解析度規劃、旋轉處理、JPEG/RGBA 雙格式輸出、相機自我檢測、22 個測試 | 實機驗證、省電模式切換、多消費者共用同一條串流 |
 | 6 | **眼鏡整合**<br/>`GlassesGateway` / CXR-L | **10%** | 介面已定義（`GlassesGateway` / `GlassesCapabilities`） | CXR-L 實作（選用）、AI 鍵事件 |
-| 7 | **人臉辨識** | **0%** | — | MediaPipe、MobileFaceNet、Room 向量庫、方位與距離、註冊流程、同意機制 |
+| 7 | **人臉辨識** | **80%** | ML Kit 偵測、TFLite 特徵抽取、三段式比對（高／中／未知信心）、方位判定、距離估計、Room + Keystore 加密儲存、註冊流程與同意提示、26 個測試 | **缺 `.tflite` 模型檔**（見 `ai/ai-face/src/main/assets/README.md`）、多張照片註冊、相機視角校正 |
 | 8 | **OCR** | **75%** | ML Kit 中文離線辨識、三層策略的前兩層、斷句朗讀（移植自 Text_Recognition 並修正兩個 bug）、朗讀控制（下一段／上一段／重聽）、文件與招牌雙模式、39 個測試 | 雲端 fallback（需 BFF）、Vision LLM 第三層、朗讀速度調整 |
 | 9 | **障礙物辨識** | **0%** | — | TFLite 整合、距離估計、方位判定、危險分級、相機模式管理 |
 | 10 | **導航** | **0%** | — | Directions、TDX、狀態機、Foreground Service、播報策略 |
@@ -934,17 +969,20 @@ DataSource（Local: Room/TFLite ／ Remote: HTTP ／ Glasses: CameraX/CXR-L）
 ```
 已完成                              未完成
 ─────────────────────            ─────────────────────
-耳朵（STT）           ✅          認人（人臉）           ❌
-嘴巴（TTS）           ✅          避障（障礙物）          ❌
-決策中樞（意圖路由）    ✅          帶路（導航）            ❌
+耳朵（STT）           ✅          避障（障礙物）          ❌
+嘴巴（TTS）           ✅          帶路（導航）            ❌
+決策中樞（意圖路由）    ✅
 說話排序（播報仲裁）    ✅
 眼睛（相機）          ✅
 看字（OCR）           ✅
+認人（人臉）          ⚠️ 缺模型檔
 ```
 
-**第一個完整的視覺功能已經打通了** —— 從相機到辨識到分段朗讀到播報仲裁，
-整條鏈路可用。剩下的三個視覺功能（人臉、障礙物、導航）都走同一條鏈路，
-只是換掉中間的「辨識」那一段。
+> ⚠️ **人臉辨識的程式碼完整可用，但需要一個 `.tflite` 模型檔才能實際運作。**
+> 本專案不含模型權重（各家模型有各自的授權條款）。
+> 放置方式見 [`ai/ai-face/src/main/assets/README.md`](ai/ai-face/src/main/assets/README.md)。
+> 沒有模型時助理會播報「人臉特徵模型不可用」—— 刻意不靜默失敗，
+> 其他功能不受影響。
 
 ### 相機自我檢測（實機驗證用）
 
@@ -962,7 +1000,7 @@ DataSource（Local: Room/TFLite ／ Remote: HTTP ／ Glasses: CameraX/CXR-L）
 |---|---|---|---|---|
 | ~~0~~ | ~~`glasses/glasses-camerax`~~ | — | — | ✅ **已完成** |
 | ~~1~~ | ~~`ai/ai-ocr`~~ | — | — | ✅ **已完成** |
-| 2 | `ai/ai-face` + `core/core-database` | 2–3 週 | 無 | 情感價值高、技術可控。可參考 `Face_Recognition/` 的邏輯（複製後重構） |
+| ~~2~~ | ~~`ai/ai-face` + `core/core-database`~~ | — | **缺模型檔** | 🟠 程式已完成 |
 | 3 | `feature-navigation`（步行） | 2–3 週 | 需 GPS 驗證 | 價值高、風險中等 |
 | 4 | `ai/ai-vision` | 3–4 週 | **需 Obstacle_Recognition 提供 `.tflite`** | 價值最高但依賴外部產出 |
 | 5 | `feature-navigation`（公車 MVP） | 2 週 | 需 TDX 金鑰 | 依賴 3 先驗證播報體驗 |

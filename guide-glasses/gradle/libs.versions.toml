@@ -24,6 +24,9 @@ camerax = "1.4.2"
 # 用 bundled 版（模型打包進 APK）而非 play-services 版 ——
 # Rokid Glasses 是否預裝 Google Play Services 無法確認，bundled 版沒有這個依賴。
 mlkitTextChinese = "16.0.1"
+mlkitFaceDetection = "16.1.7"
+tensorflowLite = "2.17.0"
+room = "2.7.2"
 coroutines = "1.10.2"
 
 # --- 網路 / 序列化 ---
@@ -48,6 +51,14 @@ material = { group = "com.google.android.material", name = "material", version.r
 androidx-camera-core = { group = "androidx.camera", name = "camera-core", version.ref = "camerax" }
 androidx-camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "camerax" }
 androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }
+
+mlkit-face-detection = { group = "com.google.mlkit", name = "face-detection", version.ref = "mlkitFaceDetection" }
+tensorflow-lite = { group = "org.tensorflow", name = "tensorflow-lite", version.ref = "tensorflowLite" }
+tensorflow-lite-gpu = { group = "org.tensorflow", name = "tensorflow-lite-gpu", version.ref = "tensorflowLite" }
+
+androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
+androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
+androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 
 mlkit-text-recognition-chinese = { group = "com.google.mlkit", name = "text-recognition-chinese", version.ref = "mlkitTextChinese" }
 

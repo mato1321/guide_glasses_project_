@@ -69,6 +69,8 @@ dependencies {
     implementation(project(":ai:ai-speech"))
     implementation(project(":ai:ai-agent"))
     implementation(project(":ai:ai-ocr"))
+    implementation(project(":ai:ai-face"))
+    implementation(project(":core:core-database"))
     implementation(project(":feature:feature-assistant"))
 
     implementation(libs.androidx.core.ktx)

@@ -24,6 +24,7 @@ include(":app")
 // ===== 共用基礎 =====
 include(":core:core-common")
 include(":core:core-domain")
+include(":core:core-database")
 
 // ===== 眼鏡硬體抽象的實作 =====
 include(":glasses:glasses-camerax")
@@ -32,6 +33,7 @@ include(":glasses:glasses-camerax")
 include(":ai:ai-speech")
 include(":ai:ai-agent")
 include(":ai:ai-ocr")
+include(":ai:ai-face")
 
 // ===== 功能模組 =====
 include(":feature:feature-assistant")

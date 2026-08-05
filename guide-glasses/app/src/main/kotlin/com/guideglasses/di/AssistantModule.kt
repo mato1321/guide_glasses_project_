@@ -6,6 +6,8 @@ import com.guideglasses.ai.agent.OfflineLlmIntentGateway
 import com.guideglasses.ai.agent.RemoteLlmIntentGateway
 import com.guideglasses.ai.speech.AndroidSpeechRecognitionGateway
 import com.guideglasses.ai.speech.AndroidTtsAnnouncer
+import com.guideglasses.ai.face.MlKitFaceDetector
+import com.guideglasses.ai.face.TfLiteFaceEmbedder
 import com.guideglasses.ai.ocr.MlKitTextRecognizer
 import com.guideglasses.glasses.camerax.CameraXFrameSource
 import com.guideglasses.core.common.DispatcherProvider
@@ -16,6 +18,12 @@ import com.guideglasses.core.domain.assistant.IntentRouter
 import com.guideglasses.core.domain.assistant.LlmIntentGateway
 import com.guideglasses.core.domain.assistant.LocalCommandMatcher
 import com.guideglasses.core.domain.glasses.CameraSelfTestUseCase
+import com.guideglasses.core.database.PersonStorageFactory
+import com.guideglasses.core.domain.face.FaceDetector
+import com.guideglasses.core.domain.face.FaceEmbedder
+import com.guideglasses.core.domain.face.IdentifyPersonUseCase
+import com.guideglasses.core.domain.face.PersonRepository
+import com.guideglasses.core.domain.face.RegisterFaceUseCase
 import com.guideglasses.core.domain.glasses.FrameSource
 import com.guideglasses.core.domain.ocr.ReadTextUseCase
 import com.guideglasses.core.domain.ocr.SpeechSegmenter
@@ -131,5 +139,57 @@ object AssistantModule {
         // 有東西總比沒有好。
         cloudRecognizer = null,
         segmenter = SpeechSegmenter(),
+    )
+
+    // ===== 人臉辨識 =====
+
+    @Provides
+    @Singleton
+    fun provideFaceDetector(): FaceDetector = MlKitFaceDetector()
+
+    /**
+     * 人臉特徵抽取。
+     *
+     * **需要模型檔才能運作** —— 見 `ai/ai-face/src/main/assets/README.md`。
+     * 沒有模型時 isAvailable 為 false，助理會播報「人臉特徵模型不可用」，
+     * 其他功能不受影響。
+     */
+    @Provides
+    @Singleton
+    fun provideFaceEmbedder(@ApplicationContext context: Context): FaceEmbedder =
+        TfLiteFaceEmbedder(context)
+
+    /** 人臉資料只存在裝置上，且特徵向量以 Keystore 金鑰加密。 */
+    @Provides
+    @Singleton
+    fun providePersonRepository(@ApplicationContext context: Context): PersonRepository =
+        PersonStorageFactory.create(context)
+
+    @Provides
+    @Singleton
+    fun provideIdentifyPersonUseCase(
+        frameSource: FrameSource,
+        detector: FaceDetector,
+        embedder: FaceEmbedder,
+        repository: PersonRepository,
+    ): IdentifyPersonUseCase = IdentifyPersonUseCase(
+        frameSource = frameSource,
+        detector = detector,
+        embedder = embedder,
+        repository = repository,
+    )
+
+    @Provides
+    @Singleton
+    fun provideRegisterFaceUseCase(
+        frameSource: FrameSource,
+        detector: FaceDetector,
+        embedder: FaceEmbedder,
+        repository: PersonRepository,
+    ): RegisterFaceUseCase = RegisterFaceUseCase(
+        frameSource = frameSource,
+        detector = detector,
+        embedder = embedder,
+        repository = repository,
     )
 }

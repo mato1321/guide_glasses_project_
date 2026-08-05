@@ -9,6 +9,8 @@ import com.guideglasses.core.domain.announce.AnnouncementPriority
 import com.guideglasses.core.domain.assistant.AssistantIntent
 import com.guideglasses.core.domain.assistant.IntentRouter
 import com.guideglasses.core.domain.assistant.RoutedIntent
+import com.guideglasses.core.domain.face.IdentifyPersonUseCase
+import com.guideglasses.core.domain.face.RegisterFaceUseCase
 import com.guideglasses.core.domain.glasses.CameraSelfTestUseCase
 import com.guideglasses.core.domain.ocr.OcrMode
 import com.guideglasses.core.domain.ocr.ReadTextUseCase
@@ -37,6 +39,8 @@ class AssistantViewModel @Inject constructor(
     private val announcementManager: AnnouncementManager,
     private val cameraSelfTest: CameraSelfTestUseCase,
     private val readText: ReadTextUseCase,
+    private val identifyPerson: IdentifyPersonUseCase,
+    private val registerFace: RegisterFaceUseCase,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(AssistantUiState())
@@ -143,6 +147,13 @@ class AssistantViewModel @Inject constructor(
 
             AssistantIntent.READING_PREVIOUS -> readPreviousSegment()
 
+            AssistantIntent.IDENTIFY_PERSON -> identifyPersonAhead()
+
+            AssistantIntent.REGISTER_FACE -> registerPerson(
+                name = routed.arguments["name"].orEmpty(),
+                relation = routed.arguments["relation"],
+            )
+
             AssistantIntent.CHAT ->
                 announce(
                     routed.spokenReply ?: MESSAGE_GENERIC_FAILURE,
@@ -153,7 +164,6 @@ class AssistantViewModel @Inject constructor(
             // 明確說「還在開發中」，而不是靜默無回應 ——
             // 對看不見畫面的使用者，沒有聲音等於系統當掉。
             AssistantIntent.DETECT_OBSTACLES,
-            AssistantIntent.IDENTIFY_PERSON,
             AssistantIntent.NAVIGATE,
             AssistantIntent.TRANSLATE,
             AssistantIntent.REGISTER_FACE,
@@ -255,6 +265,71 @@ class AssistantViewModel @Inject constructor(
         )
     }
 
+    // ===== 人臉辨識 =====
+
+    private fun identifyPersonAhead() {
+        viewModelScope.launch {
+            when (val outcome = identifyPerson.execute()) {
+                is IdentifyPersonUseCase.Outcome.Identified -> {
+                    lastSpoken = outcome.spoken
+                    _state.update { it.copy(lastReply = outcome.spoken) }
+                    // 用 dedupeKey 讓同一個人連續被辨識到時不會一直重複播報。
+                    announcementManager.announce(
+                        Announcement(
+                            text = outcome.spoken,
+                            priority = AnnouncementPriority.USER_RESPONSE,
+                            dedupeKey = outcome.dedupeKey,
+                        ),
+                    )
+                }
+
+                IdentifyPersonUseCase.Outcome.NoFaceDetected ->
+                    announce(MESSAGE_NO_FACE, AnnouncementPriority.USER_RESPONSE)
+
+                is IdentifyPersonUseCase.Outcome.Failed ->
+                    announce(messageFor(outcome.error), AnnouncementPriority.USER_RESPONSE)
+            }
+        }
+    }
+
+    /**
+     * 把眼前的人記起來。
+     *
+     * **人臉是生物特徵，未經同意建檔在臺灣涉及個資法。** 因此註冊前一定
+     * 先播報一句提示，讓當事人知道正在發生什麼事 —— 這不只是法律要求，
+     * 也是基本的尊重。
+     */
+    private fun registerPerson(name: String, relation: String?) {
+        if (name.isBlank()) {
+            announce(MESSAGE_REGISTER_NEED_NAME, AnnouncementPriority.USER_RESPONSE)
+            return
+        }
+
+        announce(MESSAGE_REGISTER_CONSENT, AnnouncementPriority.USER_RESPONSE)
+
+        viewModelScope.launch {
+            when (val outcome = registerFace.execute(name, relation)) {
+                is RegisterFaceUseCase.Outcome.Registered ->
+                    announce(outcome.spoken, AnnouncementPriority.USER_RESPONSE)
+
+                RegisterFaceUseCase.Outcome.NoFaceDetected ->
+                    announce(MESSAGE_NO_FACE, AnnouncementPriority.USER_RESPONSE)
+
+                is RegisterFaceUseCase.Outcome.MultipleFaces ->
+                    announce(
+                        "看到 ${outcome.count} 個人，請確認只有一個人在鏡頭前",
+                        AnnouncementPriority.USER_RESPONSE,
+                    )
+
+                RegisterFaceUseCase.Outcome.InvalidName ->
+                    announce(MESSAGE_REGISTER_NEED_NAME, AnnouncementPriority.USER_RESPONSE)
+
+                is RegisterFaceUseCase.Outcome.Failed ->
+                    announce(messageFor(outcome.error), AnnouncementPriority.USER_RESPONSE)
+            }
+        }
+    }
+
     private fun announce(text: String, priority: AnnouncementPriority) {
         lastSpoken = text
         _state.update { it.copy(lastReply = text) }
@@ -297,5 +372,8 @@ class AssistantViewModel @Inject constructor(
         const val MESSAGE_NO_TEXT = "沒有看到文字，請調整角度或靠近一點"
         const val MESSAGE_NOTHING_TO_READ = "目前沒有正在朗讀的內容"
         const val MESSAGE_READING_FINISHED = "已經唸完了"
+        const val MESSAGE_NO_FACE = "前方沒有偵測到人"
+        const val MESSAGE_REGISTER_NEED_NAME = "請告訴我要記成什麼名字"
+        const val MESSAGE_REGISTER_CONSENT = "正在記住這個人的臉，請確認對方同意"
     }
 }
