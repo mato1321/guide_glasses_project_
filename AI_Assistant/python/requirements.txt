@@ -1,8 +1,19 @@
 fastapi>=0.110.0
 uvicorn[standard]>=0.27.0
 python-dotenv>=1.0.0
+python-multipart>=0.0.9
+pydantic>=2.0.0
+
+# LLM / 語音
 openai>=1.0.0
 langchain>=0.2.0
 langchain-openai>=0.1.0
-pydantic>=2.0.0
-python-multipart>=0.0.9
+
+# 影像與人臉辨識（原本缺漏，照舊版 requirements 安裝必定失敗）
+opencv-python>=4.9.0
+numpy>=1.26.0
+insightface>=0.7.3
+onnxruntime>=1.17.0
+
+# 繁簡轉換
+opencc-python-reimplemented>=0.1.7

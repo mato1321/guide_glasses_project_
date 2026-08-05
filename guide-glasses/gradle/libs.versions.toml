@@ -1,0 +1,70 @@
+[versions]
+# --- 建置工具 ---
+# 注意：不要升到 AGP 9.x。AGP 9 移除了 BaseExtension，Hilt Gradle plugin
+# （至 2.57.1）套用時會失敗（"Android BaseExtension not found"）；
+# AGP 9 亦內建 Kotlin 支援，與 org.jetbrains.kotlin.android 衝突。
+# 待 Hilt 正式支援 AGP 9 後再評估升級。
+agp = "8.13.2"
+kotlin = "2.2.10"
+ksp = "2.2.10-2.0.2"
+# compileSdk 36 = Android 16。Rokid Glasses 的 YodaOS 基於 Android 12 (API 32)，
+# 而 CXR-M SDK 要求 minSdk >= 28，故 minSdk 取 28。
+compileSdk = "36"
+minSdk = "28"
+targetSdk = "36"
+jvmTarget = "17"
+
+# --- AndroidX ---
+coreKtx = "1.17.0"
+appcompat = "1.7.1"
+material = "1.13.0"
+activity = "1.12.3"
+lifecycle = "2.9.4"
+coroutines = "1.10.2"
+
+# --- 網路 / 序列化 ---
+okhttp = "4.12.0"
+kotlinxSerialization = "1.9.0"
+
+# --- DI ---
+hilt = "2.57.1"
+
+# --- 測試 ---
+junit = "4.13.2"
+androidxJunit = "1.3.0"
+truth = "1.4.5"
+turbine = "1.2.1"
+
+[libraries]
+androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
+androidx-activity = { group = "androidx.activity", name = "activity-ktx", version.ref = "activity" }
+material = { group = "com.google.android.material", name = "material", version.ref = "material" }
+
+androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycle" }
+androidx-lifecycle-viewmodel-ktx = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-ktx", version.ref = "lifecycle" }
+
+kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
+kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
+
+okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
+okhttp-mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver", version.ref = "okhttp" }
+kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
+
+hilt-android = { group = "com.google.dagger", name = "hilt-android", version.ref = "hilt" }
+hilt-compiler = { group = "com.google.dagger", name = "hilt-android-compiler", version.ref = "hilt" }
+
+junit = { group = "junit", name = "junit", version.ref = "junit" }
+androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxJunit" }
+truth = { group = "com.google.truth", name = "truth", version.ref = "truth" }
+turbine = { group = "app.cash.turbine", name = "turbine", version.ref = "turbine" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }

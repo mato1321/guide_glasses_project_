@@ -17,13 +17,19 @@ import numpy as np
 from face_engine import FaceEngine
 from opencc import OpenCC
 
-# 加载 .env 文件
+# 載入 .env（見 .env.example）。金鑰絕不可寫死在程式碼或提交進版控。
 load_dotenv()
+
+key = os.getenv("OPENAI_API_KEY")
+if not key:
+    raise RuntimeError(
+        "缺少環境變數 OPENAI_API_KEY。\n"
+        "請複製 .env.example 為 .env，並填入你的 OpenAI API 金鑰。"
+    )
 
 app = FastAPI()
 
-client = OpenAI(api_key=os.getenv("api_key"))
-key = os.getenv("api_key")
+client = OpenAI(api_key=key)
 
 llm = ChatOpenAI(
     model = "gpt-4o-mini",
@@ -161,10 +167,8 @@ async def recognize(file: UploadFile = File(...)):
             content={"error": "無法解析圖片"}
         )
 
-    # debug - 儲存收到的圖片到本地，方便檢查
-    import cv2
-    cv2.imwrite("debug.jpg", image)
-    print(f"Debug image saved to debug.jpg")
+    # 注意：不要在此落地儲存影像。收到的畫面可能包含未同意的路人臉部，
+    # 屬於生物特徵個資，辨識完即應丟棄。
     results = engine.recognize(image)
     return {
         "success": True,

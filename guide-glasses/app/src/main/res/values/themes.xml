@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+
+    <!--
+        高對比深色主題。
+        對低視力使用者（本系統的次要使用族群）而言，深底淺字 + 大字級
+        是最容易辨識的組合；完全失明的使用者則以語音為主，畫面不影響。
+    -->
+    <style name="Theme.GuideGlasses" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">#FFD54F</item>
+        <item name="colorOnPrimary">#000000</item>
+        <item name="android:windowBackground">#000000</item>
+        <item name="android:textColorPrimary">#FFFFFF</item>
+        <item name="android:statusBarColor" tools:targetApi="21">#000000</item>
+    </style>
+
+</resources>
