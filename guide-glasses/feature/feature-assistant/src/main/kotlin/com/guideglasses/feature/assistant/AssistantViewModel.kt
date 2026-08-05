@@ -174,7 +174,6 @@ class AssistantViewModel @Inject constructor(
             AssistantIntent.DETECT_OBSTACLES,
             AssistantIntent.NAVIGATE,
             AssistantIntent.TRANSLATE,
-            AssistantIntent.REGISTER_FACE,
             -> announce(
                 "「${routed.intent.description}」這個功能還在開發中",
                 AnnouncementPriority.USER_RESPONSE,
