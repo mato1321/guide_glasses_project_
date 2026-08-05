@@ -9,6 +9,7 @@
 | 你要做什麼 | 看這份 |
 |---|---|
 | **執行 / 測試 App** | [`../guide-glasses/DOCUMENTATION.md`](../guide-glasses/DOCUMENTATION.md) ← 主文件 |
+| **實作某個功能 / 了解它怎麼運作** | [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) ← 含 Mermaid 圖與整合步驟 |
 | 了解技術選型與硬體限制 | [`TECHNICAL_NOTES.md`](TECHNICAL_NOTES.md) |
 | 知道接下來要做什麼、卡在哪 | [`ROADMAP.md`](ROADMAP.md) |
 

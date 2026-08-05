@@ -13,7 +13,7 @@ Rokid AI 導盲眼鏡系統 —— 統一的多模組 Android 專案。
 **完整技術文件見 [`DOCUMENTATION.md`](DOCUMENTATION.md)** —— 架構、功能、
 哪些功能跑在哪裡、系統流程圖、執行步驟、測試方法、完成度。
 
-分析報告見 [`../docs/`](../docs/README.md)。
+分析報告與各功能實作規劃見 [`../docs/`](../docs/README.md)。
 
 ---
 

@@ -31,6 +31,9 @@
 已完成：專案地基、播報仲裁、AI 助理中樞、Android 原生 STT/TTS、
 `glasses-camerax`、`ai-ocr`、`ai-face`、`glasses-sensors`。
 
+**每個功能的詳細實作規劃、流程圖與整合步驟見
+[`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md)。**
+
 ---
 
 ## 2. 三個卡住的項目
