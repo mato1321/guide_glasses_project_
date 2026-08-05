@@ -133,6 +133,10 @@ guide-glasses/
 │   │   └── src/main/kotlin/.../
 │   │       └── MlKitTextRecognizer.kt       ML Kit 中文（bundled，離線）
 │   │
+│   ├── ai-translate/                端側翻譯
+│   │   └── src/main/kotlin/.../
+│   │       └── MlKitTranslator.kt           ML Kit（語言包執行期下載）
+│   │
 │   └── ai-agent/                    LLM function calling
 │       └── src/
 │           ├── main/kotlin/.../
@@ -158,6 +162,7 @@ guide-glasses/
 | `glasses/glasses-sensors/` | IMU 動作感測 | 眼鏡沒有 GPS，IMU 是唯一能感知「使用者在做什麼」的東西 —— 相機省電、方位修正、步態導航都靠它 |
 | `ai/ai-face/` | 人臉偵測與特徵抽取 | 端側完成，影像與特徵都不離開裝置 |
 | `ai/ai-ocr/` | ML Kit 中文文字辨識 | 用 bundled 版而非 play-services 版 —— **Rokid Glasses 是否預裝 Google Play Services 無法確認**，bundled 把模型打包進 APK 就沒有這個不確定性 |
+| `ai/ai-translate/` | ML Kit 翻譯 | 翻譯**沒有** bundled 版，語言包一律執行期下載（每種約 30MB）。只下載使用者實際要的語言，不預抓十種塞滿 2GB RAM |
 | `ai/ai-agent/` | LLM 協定、HTTP、JSON 序列化 | 換 LLM 供應商（Claude / Gemini / GPT）不需改其他模組，也不需發新版 App |
 | `feature/feature-assistant/` | 助理中樞的 ViewModel 與狀態 | 功能可獨立開發、獨立編譯、獨立測試 |
 
@@ -246,21 +251,47 @@ guide-glasses/
 - 被打斷的可續播內容會排回佇列最前面
 - `speakingToken` 序號機制：已被打斷的 TTS 回呼遲到送達時，不會讓佇列跳號漏播
 
+#### 翻譯
+
+`ai-translate` / `MlKitTranslator` —— 端側 ML Kit Translation。
+
+**與 OCR 的關鍵差異：語言包必須在執行期下載。** OCR 的中文模型有 bundled 版可以
+打包進 APK，翻譯**沒有** —— ML Kit 一律執行期下載，每種語言約 30MB。因此：
+
+- 首次使用某語言需要網路，之後完全離線
+- 只下載使用者真正要的那種，不預抓十種塞滿 2GB RAM 的裝置
+- 下載期間**必須有語音提示**（「正在準備英文翻譯，第一次使用需要下載」），
+  否則看不見畫面的使用者以為系統當掉了
+- 刻意**不要求 Wi-Fi**。導盲使用者在外面通常只有行動網路，
+  要求 Wi-Fi 等於這個功能在戶外永遠無法第一次使用
+
+**目標語言在本地解析，所以翻譯不需要 BFF。** 這是它和導航的根本差別：
+目的地是開放集合（值域無限），目標語言是**封閉集合**（就那十種）。
+`TargetLanguage.fromSpoken` 取**最後出現**的語言 —— 中文語序把目標放在
+「翻成」之後，「把這句英文翻成日文」要的是日文。
+
+**TTS 會逐句切換語言**（`Announcement.languageTag`）。少了這一步，
+中文語音唸 "the pharmacy is on your left" 幾乎聽不出是英文，翻譯功能會變成半廢。
+眼鏡上沒有該語言的語音資料時退回中文發音並照樣唸出去 ——
+帶腔的英文仍有部分資訊量，完全沒聲音則等於故障。
+
+來源語言目前是啟發式（目標是中文→來源當英文，否則來源當中文），
+涵蓋最常見兩種情境，但「日文菜單翻成英文」會判錯。接語言偵測是待辦。
+
 ### 2.2 尚未實作（介面已定義）
 
 | 功能 | 介面 | 缺什麼 |
 |---|---|---|
-| 相機影像 | `FrameSource` / `CameraFrame` | CameraX 實作 |
-| 眼鏡連線 | `GlassesGateway` / `GlassesCapabilities` | CXR-L 實作（選用） |
-| 人臉辨識 | 無 | 整個 `ai-face` 模組 |
-| OCR | 無 | 整個 `ai-ocr` 模組 |
 | 障礙物辨識 | 無 | 整個 `ai-vision` 模組 + 訓練好的 `.tflite` |
-| 導航 | 無 | 整個 `feature-navigation` |
+| 導航 | 無 | 整個 `feature-navigation`（且**眼鏡無 GPS**，見 §9.6） |
 | 公車辨識 | 無 | TDX 整合 |
-| 翻譯 | 無 | ML Kit Translation |
+| 眼鏡連線 | `GlassesGateway` / `GlassesCapabilities` | CXR-L 實作（選用，非必要） |
+| 眼鏡 AI 實體鍵 | `onAssistantTriggered()` 已預留 | 按鍵事件接線 |
+| 喚醒詞 | 無 | 目前必須手動觸發才會聆聽 |
 | 雲端 AI | `LlmIntentGateway` + `RemoteLlmIntentGateway` | **BFF 後端本身不存在** |
 
-目前這些 intent 會播報「這個功能還在開發中」—— **刻意不靜默**。對看不見畫面的使用者，沒有聲音等於系統當掉。
+`DETECT_OBSTACLES` 與 `NAVIGATE` 這兩個 intent 會播報「這個功能還在開發中」——
+**刻意不靜默**。對看不見畫面的使用者，沒有聲音等於系統當掉。
 
 ---
 
@@ -296,7 +327,8 @@ Rokid Glasses 執行 YodaOS-Sprite（Android 12 / API 32），APK 可直接安�
 | **距離估計** | ✅ | 🟡 | — | — | ❌ 未實作 |
 | **OCR（第一層）** | ✅ ML Kit 離線 | 🟡 | — | — | ✅ 已實作 |
 | **OCR（fallback）** | — | — | — | ✅ Cloud Vision | ❌ 未實作 |
-| **翻譯** | ✅ ML Kit 離線 | 🟡 | — | 🟡 長句 | ❌ 未實作 |
+| **翻譯** | ✅ ML Kit | 🟡 | — | 🟡 長句 | ✅ **已實作** |
+| **翻譯語言包** | ✅ 執行期下載後離線 | 🟡 | — | ⚠️ 首次下載需網路 | ✅ 已實作 |
 | **GPS 定位** | ❌ **眼鏡沒有 GPS** | ✅ | — | — | ❌ 未實作，見 §9.6 |
 | **IMU 動作感測** | ✅ | 🟡 | — | — | ✅ 已實作（能力待實機確認） |
 | **路線規劃** | — | — | — | ✅ Google Directions | ❌ 未實作 |
@@ -924,14 +956,32 @@ adb logcat -s CameraXFrameSource:* TtsAnnouncer:*
 
 ### 6.9 語音辨識與翻譯
 
-STT 已實作（見 6.2）。翻譯未實作。
+STT 與翻譯都已實作。
 
 | 測試項 | 方法 | 預期結果 |
 |---|---|---|
 | 中文辨識 | 說一段中文 | 正確轉成文字 |
 | 離線辨識 | 開飛航模式後說話 | 仍能辨識（**視裝置是否有離線模型，待驗證**） |
 | 吵雜環境 | 在馬路邊測試 | 記錄辨識率下降程度 |
-| 翻譯 | 未實作 | — |
+
+**翻譯（已實作，可實測）**
+
+前置：首次使用某語言需要網路下載語言包（約 30MB）。不需要 BFF。
+
+1. 對一段中文（藥袋、菜單）說「唸給我聽」，聽到中文內容
+2. 接著說「**翻成英文**」
+3. 首次會先聽到「正在準備英文翻譯，第一次使用需要下載，請稍等」
+4. 下載完成後播報英文翻譯，**且應該用英文語音唸**
+
+| 現象 | 可能原因 | 處理 |
+|---|---|---|
+| 「沒有可以翻譯的內容」 | 還沒做過 OCR | 先說「唸給我聽」 |
+| 「目前沒有網路」 | 語言包尚未下載且無網路 | 連上網路後重試，之後永久離線 |
+| 英文聽起來像中文腔 | **眼鏡缺英文 TTS 語音資料** | 見 `docs/TASKS.md` A16 |
+| 「內容較長，只翻譯前面的部分」 | 原文超過 1000 字 | 預期行為 |
+| 翻譯結果語言不對 | 來源語言啟發式判錯（例如日文原文） | 已知限制，待接語言偵測 |
+
+也可以只說「翻譯」—— 不指定語言時預設英文。
 
 ---
 
@@ -1013,7 +1063,7 @@ DataSource（Local: Room/TFLite ／ Remote: HTTP ／ Glasses: CameraX/CXR-L）
 | 9 | **障礙物辨識** | **0%** | — | TFLite 整合、距離估計、方位判定、危險分級、相機模式管理 |
 | 10 | **導航** | **0%** | — | Directions、TDX、狀態機、Foreground Service、播報策略 |
 | 11 | **動作感測**<br/>IMU、步態、方位、相機模式 | **75%** | 能力探測、步態偵測與去抖動、相對方位追蹤、轉向指示、步數距離估計、相機模式自動切換、39 個測試 | 實機確認實際感測器、接上障礙物偵測、漂移校正 |
-| 12 | **翻譯** | **0%** | — | ML Kit Translation |
+| 12 | **翻譯** | **80%** | ML Kit Translation、目標語言本地解析（十種語言、取最後出現者）、語言包下載提示、OCR→翻譯串接、TTS 逐句切換語言、16 個測試 | 語言偵測取代來源啟發式、長文分段翻譯、實機確認外語 TTS |
 
 ### 8.3 是否已符合「完整導盲系統」？
 
@@ -1029,6 +1079,7 @@ DataSource（Local: Room/TFLite ／ Remote: HTTP ／ Glasses: CameraX/CXR-L）
 眼睛（相機）          ✅
 看字（OCR）           ✅
 認人（人臉）          ✅
+翻譯                 ✅
 ```
 
 ### 人臉辨識有兩條路，擇一即可
@@ -1075,7 +1126,7 @@ guideglasses.faceEndpoint=http://<你的後端IP>:8000/recognize
 | 4 | `ai/ai-vision` | 3–4 週 | **需 Obstacle_Recognition 提供 `.tflite`** | 價值最高但依賴外部產出。相機模式控制已就緒，可直接接上 |
 | 5 | `feature-navigation`（公車 MVP） | 2 週 | 需 TDX 金鑰 | 依賴 3 先驗證播報體驗 |
 | 6 | BFF 後端 | 1 週 | 需雲端帳號 | 可與上述並行 |
-| 7 | 翻譯 | 3 天 | 無 | 最簡單，隨時可插入 |
+| ~~7~~ | ~~`ai/ai-translate`~~ | — | — | ✅ **已完成** |
 
 ### 8.5 需要其他組員提供的東西
 

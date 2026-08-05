@@ -25,6 +25,14 @@ class ReadingSession(segments: List<String>) {
 
     val isFinished: Boolean get() = cursor >= total
 
+    /**
+     * 全部段落接回一整份文字。
+     *
+     * 給翻譯用 —— 使用者說「唸給我聽」之後再說「翻成英文」，要翻的是整張紙
+     * 而不是當前那一段。不影響 [cursor]，純讀取。
+     */
+    val fullText: String get() = segments.joinToString(separator = "")
+
     /** 已唸完的段數，用於「還剩幾段」的播報。 */
     val remaining: Int get() = (total - cursor).coerceAtLeast(0)
 

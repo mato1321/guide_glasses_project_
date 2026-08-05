@@ -29,6 +29,10 @@ import com.guideglasses.core.domain.face.OnDeviceFaceIdentification
 import com.guideglasses.core.domain.face.IdentifyPersonUseCase
 import com.guideglasses.core.domain.face.PersonRepository
 import com.guideglasses.core.domain.face.RegisterFaceUseCase
+import com.guideglasses.core.domain.translate.TargetLanguage
+import com.guideglasses.core.domain.translate.TranslateUseCase
+import com.guideglasses.core.domain.translate.Translator
+import com.guideglasses.ai.translate.MlKitTranslator
 import com.guideglasses.core.domain.glasses.FrameSource
 import com.guideglasses.core.domain.motion.MotionSensorGateway
 import com.guideglasses.core.domain.ocr.ReadTextUseCase
@@ -146,6 +150,29 @@ object AssistantModule {
         cloudRecognizer = null,
         segmenter = SpeechSegmenter(),
     )
+
+    // ===== 翻譯 =====
+
+    /**
+     * 端側翻譯。
+     *
+     * 和 OCR 不同，翻譯的語言包**沒有 bundled 版** —— ML Kit 一律在執行期
+     * 下載（每種語言約 30MB）。首次使用某語言需要網路，之後完全離線。
+     * 只下載使用者實際要的語言，不預先抓十種塞滿 2GB RAM 的裝置。
+     */
+    @Provides
+    @Singleton
+    fun provideTranslator(): Translator = MlKitTranslator()
+
+    @Provides
+    @Singleton
+    fun provideTranslateUseCase(translator: Translator): TranslateUseCase =
+        TranslateUseCase(
+            translator = translator,
+            // 沒有 BFF 時抽不出「翻成日文」的語言參數，但本地已能解析固定說法；
+            // 真的都解析不到才用英文 —— 語言包最小，且最可能是溝通對象的語言。
+            defaultTarget = TargetLanguage.DEFAULT,
+        )
 
     // ===== 人臉辨識 =====
 

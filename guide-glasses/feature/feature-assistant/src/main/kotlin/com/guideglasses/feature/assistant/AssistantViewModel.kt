@@ -9,6 +9,8 @@ import com.guideglasses.core.domain.announce.AnnouncementPriority
 import com.guideglasses.core.domain.assistant.AssistantIntent
 import com.guideglasses.core.domain.assistant.IntentRouter
 import com.guideglasses.core.domain.assistant.RoutedIntent
+import com.guideglasses.core.domain.translate.TargetLanguage
+import com.guideglasses.core.domain.translate.TranslateUseCase
 import com.guideglasses.core.domain.face.IdentifyPersonUseCase
 import com.guideglasses.core.domain.face.RegisterFaceUseCase
 import com.guideglasses.core.domain.glasses.CameraSelfTestUseCase
@@ -43,6 +45,7 @@ class AssistantViewModel @Inject constructor(
     private val identifyPerson: IdentifyPersonUseCase,
     private val registerFace: RegisterFaceUseCase,
     private val motionSensors: MotionSensorGateway,
+    private val translateText: TranslateUseCase,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(AssistantUiState())
@@ -55,6 +58,15 @@ class AssistantViewModel @Inject constructor(
 
     /** 目前進行中的朗讀。長文分段之後，使用者可以說「下一段」「上一段」。 */
     private var readingSession: ReadingSession? = null
+
+    /**
+     * 上一次 OCR 讀到的完整文字，供「翻成英文」使用。
+     *
+     * 這是 OCR 與翻譯的交叉整合點：使用者說「唸給我聽」聽到中文菜單，
+     * 接著說「翻成英文」就能把同一份內容翻譯出來，**不需要再拍一次**。
+     * 存整份而不是當前段落 —— 使用者要的是整張紙的翻譯。
+     */
+    private var lastReadText: String? = null
 
     /**
      * 使用者觸發助理（點畫面、或按下眼鏡的 AI 實體鍵）。
@@ -168,12 +180,16 @@ class AssistantViewModel @Inject constructor(
                     AnnouncementPriority.USER_RESPONSE,
                 )
 
+            AssistantIntent.TRANSLATE -> translate(
+                text = routed.arguments[IntentRouter.ARG_TEXT],
+                targetLanguage = routed.arguments[IntentRouter.ARG_TARGET_LANGUAGE],
+            )
+
             // 以下功能將在 Phase 3 起陸續實作。
             // 明確說「還在開發中」，而不是靜默無回應 ——
             // 對看不見畫面的使用者，沒有聲音等於系統當掉。
             AssistantIntent.DETECT_OBSTACLES,
             AssistantIntent.NAVIGATE,
-            AssistantIntent.TRANSLATE,
             -> announce(
                 "「${routed.intent.description}」這個功能還在開發中",
                 AnnouncementPriority.USER_RESPONSE,
@@ -200,11 +216,14 @@ class AssistantViewModel @Inject constructor(
     private fun startReading(mode: OcrMode) {
         announce(MESSAGE_READING_CAPTURING, AnnouncementPriority.USER_RESPONSE)
         readingSession = null
+        lastReadText = null
 
         viewModelScope.launch {
             when (val outcome = readText.execute(mode)) {
                 is ReadTextUseCase.Outcome.Success -> {
                     readingSession = outcome.session
+                    // 記下整份內容，讓接下來的「翻成英文」不必再拍一次。
+                    lastReadText = outcome.session.fullText
                     announceReadingStart(outcome.session)
                 }
 
@@ -270,6 +289,72 @@ class AssistantViewModel @Inject constructor(
         announcementManager.announce(
             Announcement(segment, AnnouncementPriority.AMBIENT, resumable = true),
         )
+    }
+
+    // ===== 翻譯 =====
+
+    /**
+     * 翻譯。
+     *
+     * 兩個來源，優先序刻意如此：
+     *
+     * 1. LLM 帶來的 `text` 參數（「把『謝謝』翻成日文」）
+     * 2. **上一次 OCR 讀到的內容** —— 這是不用 BFF 就能用的路徑，
+     *    也是最實用的組合：說「唸給我聽」聽菜單，再說「翻成英文」。
+     *
+     * @param targetLanguage 語言碼或中文名稱。null／無法解析時套用預設（英文）。
+     */
+    private fun translate(text: String?, targetLanguage: String?) {
+        val source = text?.takeIf { it.isNotBlank() } ?: lastReadText
+
+        if (source.isNullOrBlank()) {
+            announce(MESSAGE_NOTHING_TO_TRANSLATE, AnnouncementPriority.USER_RESPONSE)
+            return
+        }
+
+        val target = targetLanguage?.let { TargetLanguage.fromCodeOrName(it) }
+
+        viewModelScope.launch {
+            val outcome = translateText.execute(
+                text = source,
+                target = target,
+                // 語言包首次下載可能要幾十秒。不先講一句，使用者會以為當掉了。
+                onPreparing = { language ->
+                    announce(
+                        "正在準備${language.spokenName}翻譯，第一次使用需要下載，請稍等",
+                        AnnouncementPriority.USER_RESPONSE,
+                    )
+                },
+            )
+
+            when (outcome) {
+                is TranslateUseCase.Outcome.Translated -> {
+                    if (outcome.truncated) {
+                        announce(MESSAGE_TRANSLATE_TRUNCATED, AnnouncementPriority.USER_RESPONSE)
+                    }
+                    lastSpoken = outcome.spoken
+                    _state.update { it.copy(lastReply = outcome.spoken) }
+                    // languageTag 是關鍵 —— 沒有它，TTS 會用中文語音唸英文，
+                    // 結果幾乎聽不懂。
+                    announcementManager.announce(
+                        Announcement(
+                            text = outcome.spoken,
+                            priority = AnnouncementPriority.USER_RESPONSE,
+                            languageTag = outcome.target.code,
+                        ),
+                    )
+                }
+
+                TranslateUseCase.Outcome.NothingToTranslate ->
+                    announce(MESSAGE_NOTHING_TO_TRANSLATE, AnnouncementPriority.USER_RESPONSE)
+
+                TranslateUseCase.Outcome.Unavailable ->
+                    announce(MESSAGE_TRANSLATE_UNAVAILABLE, AnnouncementPriority.USER_RESPONSE)
+
+                is TranslateUseCase.Outcome.Failed ->
+                    announce(messageFor(outcome.error), AnnouncementPriority.USER_RESPONSE)
+            }
+        }
     }
 
     // ===== 人臉辨識 =====
@@ -382,5 +467,9 @@ class AssistantViewModel @Inject constructor(
         const val MESSAGE_NO_FACE = "前方沒有偵測到人"
         const val MESSAGE_REGISTER_NEED_NAME = "請告訴我要記成什麼名字"
         const val MESSAGE_REGISTER_CONSENT = "正在記住這個人的臉，請確認對方同意"
+        const val MESSAGE_NOTHING_TO_TRANSLATE =
+            "沒有可以翻譯的內容。你可以先說「唸給我聽」，再說「翻成英文」"
+        const val MESSAGE_TRANSLATE_UNAVAILABLE = "翻譯功能目前不可用"
+        const val MESSAGE_TRANSLATE_TRUNCATED = "內容較長，只翻譯前面的部分"
     }
 }

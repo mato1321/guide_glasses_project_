@@ -113,11 +113,42 @@ class LocalCommandMatcherTest {
     }
 
     @Test
-    fun `需要參數的指令不在本地處理而是交給 LLM`() {
-        // 從自由語句抽取目的地或人名，本地規則做不可靠。
+    fun `參數是開放集合的指令交給 LLM`() {
+        // 目的地與人名是開放集合 —— 值域無限，本地規則抽不可靠。
         assertThat(matcher.match("帶我去台北101")).isNull()
-        assertThat(matcher.match("把這句翻成英文")).isNull()
         assertThat(matcher.match("把他記起來，他叫小明")).isNull()
+    }
+
+    /**
+     * 翻譯是刻意的例外。
+     *
+     * 目標語言是**封閉集合**（就那十種語言，說法有限），本地解析可靠。
+     * 讓它留在本地的實質好處：翻譯是唯一不需要 BFF 就能完整運作的功能。
+     * 語言本身由 TargetLanguage.fromSpoken 解析，見 IntentRouter.localArguments。
+     */
+    @Test
+    fun `翻譯留在本地因為目標語言是封閉集合`() {
+        assertThat(matcher.match("把這句翻成英文")).isEqualTo(AssistantIntent.TRANSLATE)
+        assertThat(matcher.match("翻譯")).isEqualTo(AssistantIntent.TRANSLATE)
+    }
+
+    /**
+     * 「翻譯這上面寫什麼」同時含有「翻譯」與「上面寫什麼」。
+     * 比對順序即優先級，翻譯必須排在 OCR 之前，否則會變成重新拍一張。
+     */
+    @Test
+    fun `翻譯優先於 OCR 朗讀`() {
+        assertThat(matcher.match("翻譯這上面寫什麼")).isEqualTo(AssistantIntent.TRANSLATE)
+        assertThat(matcher.match("上面寫什麼")).isEqualTo(AssistantIntent.READ_TEXT)
+    }
+
+    /**
+     * 「怎麼說」這類太寬的說法刻意不收 —— 使用者問的可能是描述而不是翻譯。
+     * 寧可漏判落到 LLM，也不要誤觸發。
+     */
+    @Test
+    fun `太寬的說法不會誤判成翻譯`() {
+        assertThat(matcher.match("前面那個東西怎麼說")).isNotEqualTo(AssistantIntent.TRANSLATE)
     }
 
     @Test

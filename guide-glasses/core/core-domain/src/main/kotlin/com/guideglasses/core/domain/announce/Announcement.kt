@@ -56,6 +56,10 @@ enum class AnnouncementPriority {
  * @param dedupeWindowMillis 去抖動時間窗。
  * @param resumable 被打斷後是否應該續播。長篇 OCR 朗讀應為 true，
  *   過期的導航提示應為 false。
+ * @param languageTag 這則內容的語言（BCP-47，例如 `en`、`ja`）。null 代表
+ *   系統預設的中文。**翻譯結果一定要帶這個** —— 用中文語音唸英文句子
+ *   幾乎無法聽懂，翻譯功能會因此變成半廢。實作若不支援該語言應退回中文
+ *   而不是靜默失敗。
  */
 data class Announcement(
     val text: String,
@@ -63,6 +67,7 @@ data class Announcement(
     val dedupeKey: String? = null,
     val dedupeWindowMillis: Long = DEFAULT_DEDUPE_WINDOW_MILLIS,
     val resumable: Boolean = false,
+    val languageTag: String? = null,
 ) {
     init {
         require(text.isNotBlank()) { "播報內容不可為空" }

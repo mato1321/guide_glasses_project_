@@ -2,6 +2,7 @@ package com.guideglasses.core.domain.assistant
 
 import com.guideglasses.core.domain.AppError
 import com.guideglasses.core.domain.AppResult
+import com.guideglasses.core.domain.translate.TargetLanguage
 
 /**
  * LLM 意圖解析的抽象。
@@ -46,7 +47,11 @@ class IntentRouter(
 
         localMatcher.match(utterance)?.let { intent ->
             history.record(ConversationHistory.Turn(ConversationHistory.Turn.Role.USER, utterance))
-            return RoutedIntent(intent = intent, source = RoutedIntent.Source.LOCAL_FAST_PATH)
+            return RoutedIntent(
+                intent = intent,
+                arguments = localArguments(intent, utterance),
+                source = RoutedIntent.Source.LOCAL_FAST_PATH,
+            )
         }
 
         history.record(ConversationHistory.Turn(ConversationHistory.Turn.Role.USER, utterance))
@@ -74,6 +79,27 @@ class IntentRouter(
     }
 
     /**
+     * 本地路徑的參數抽取。
+     *
+     * 一般原則是「需要參數就交給 LLM」，翻譯是刻意的例外：目標語言的說法是
+     * 封閉集合，本地解析可靠，而且這讓翻譯**完全不依賴 BFF**。
+     *
+     * 解析不出語言時回傳空 map，由 UseCase 套用預設語言（英文），
+     * 而不是在這裡填死 —— 預設值屬於領域決策，不屬於路由。
+     */
+    private fun localArguments(
+        intent: AssistantIntent,
+        utterance: String,
+    ): Map<String, String> = when (intent) {
+        AssistantIntent.TRANSLATE ->
+            TargetLanguage.fromSpoken(utterance)
+                ?.let { mapOf(ARG_TARGET_LANGUAGE to it.code) }
+                ?: emptyMap()
+
+        else -> emptyMap()
+    }
+
+    /**
      * LLM 不可用時的降級。
      *
      * 關鍵在於**必須說人話**。舊專案在這裡會播報
@@ -93,7 +119,13 @@ class IntentRouter(
         )
     }
 
-    private companion object {
+    companion object {
+        /** 翻譯目標語言的參數名，與 [AssistantIntent.TRANSLATE] 的 parameters 一致。 */
+        const val ARG_TARGET_LANGUAGE = "target_language"
+
+        /** 要翻譯的文字。LLM 路徑會帶，本地路徑不會（改用上一次 OCR 的內容）。 */
+        const val ARG_TEXT = "text"
+
         const val MESSAGE_NOT_HEARD = "抱歉，我沒有聽清楚，可以再說一次嗎"
         const val MESSAGE_NO_NETWORK =
             "目前沒有網路，無法理解這句話。你仍然可以說「前面有什麼」、「這是誰」或「唸給我聽」"

@@ -65,16 +65,22 @@ app/                          組裝層：Application、MainActivity、Hilt Modu
 core/
   core-domain/                【純 Kotlin】Entity、播報仲裁、意圖路由
   core-common/                Dispatcher、共用工具
+  core-database/              Room + Keystore 加密（人臉特徵）
+glasses/
+  glasses-camerax/            CameraX 影像來源
+  glasses-sensors/            IMU 感測與相機模式切換
 ai/
   ai-speech/                  Android SpeechRecognizer / TextToSpeech
   ai-agent/                   BFF function calling 協定與 HTTP 閘道
+  ai-ocr/                     ML Kit 中文 OCR（bundled，離線）
+  ai-face/                    ML Kit 偵測 + TFLite 端側 / 遠端辨識
+  ai-translate/               ML Kit 翻譯（語言包執行期下載）
 feature/
   feature-assistant/          助理中樞 ViewModel
 ```
 
-後續 Phase 會加入：`glasses-cxr` / `glasses-fallback` / `ai-vision` /
-`ai-face` / `ai-ocr` / `feature-obstacle` / `feature-face` /
-`feature-navigation` / `feature-ocr`。
+尚未建立：`ai-vision`（障礙物，等模型交付）、`feature-navigation`（等 GPS 架構決策）。
+`glasses-cxr` 目前判定為非必要 —— 眼鏡就是 Android 裝置，標準 API 全部可用。
 
 ### `core-domain` 刻意不是 Android 模組
 
@@ -85,28 +91,21 @@ feature/
 
 ---
 
-## 目前狀態（Phase 2 完成）
+## 目前狀態
 
-已完成：
+**完整現況見 [`../docs/STATUS.md`](../docs/STATUS.md)** —— 這裡只列摘要。
 
-**Phase 1 地基**
-- 多模組骨架、version catalog、Hilt DI 接線
-- `AppResult` / `AppError` —— 型別化的錯誤
-- `AnnouncementQueue` / `AnnouncementManager` —— 播報優先級仲裁
-- `GlassesGateway` / `FrameSource` / `Announcer` —— 眼鏡能力的抽象介面
+已完成：地基（多模組 / Hilt / version catalog）、播報優先級仲裁、
+AI 助理中樞（雙層意圖路由）、STT / TTS、相機（CameraX）、
+OCR 朗讀（含分段控制）、人臉辨識（端側或遠端擇一）、IMU 動作感測、**翻譯**。
 
-**Phase 2 助理中樞**
-- `LocalCommandMatcher` —— 本地快捷指令，<100ms、離線可用
-- `IntentRouter` —— 雙層路由（本地優先，未命中才呼叫 LLM）
-- `ConversationHistory` —— 有界、可注入，取代全域無上限的對話記憶
-- `AndroidSpeechRecognitionGateway` —— 串流式 ASR，離線優先
-- `AndroidTtsAnnouncer` —— 本機 TTS，走無障礙音訊通道
-- `RemoteLlmIntentGateway` —— BFF function calling
-- `AssistantViewModel` + 無障礙主畫面
-
-尚未實作：障礙物、人臉、導航、OCR、翻譯。這些 intent 目前會播報
+尚未實作：**障礙物偵測**（等 `Obstacle_Recognition` 交付 `.tflite`）、
+**導航**（眼鏡無 GPS，需先做架構決策）。這兩個 intent 目前會播報
 「這個功能還在開發中」—— 刻意不靜默，因為對看不見畫面的使用者，
 沒有聲音等於系統當掉。
+
+> ⚠️ 這個 App **從未在任何實體裝置上執行過**。驗證只有建置成功、
+> 228 個單元測試通過、lint 無錯誤。
 
 ### 設定 LLM 後端（選用）
 
@@ -125,12 +124,17 @@ App 端刻意不直接呼叫 LLM 供應商 —— 內嵌金鑰必然會被反編
 | 說法 | 動作 |
 |---|---|
 | 停 / 安靜 / 別說了 | 立刻停止播報 |
-| 前面有什麼 / 可以走嗎 / 有障礙物嗎 | 障礙物偵測 |
-| 這是誰 / 這個人是誰 / 誰在我前面 | 人臉辨識 |
-| 唸給我聽 / 上面寫什麼 | OCR 朗讀 |
+| 測試相機 / 測試感測器 | 自我檢測（實機驗證用，用聽的就知道通不通） |
+| 前面有什麼 / 可以走嗎 / 有障礙物嗎 | 障礙物偵測（尚未實作，回「開發中」） |
+| 這是誰 / 這個人是誰 / 誰在我前面 | 人臉辨識（含方位與距離） |
+| 唸給我聽 / 上面寫什麼 | OCR 文件朗讀 |
+| 這是哪裡 / 招牌寫什麼 | OCR 招牌模式（只唸最大的字） |
+| 下一段 / 上一段 / 繼續唸 | 朗讀控制 |
+| **翻成英文 / 翻譯** | 翻譯上一次 OCR 的內容 |
 | 再說一次 / 剛剛說什麼 | 重複上一則 |
 
-需要參數的指令（「帶我去台北101」「翻成英文」）走 LLM。
+參數是**開放集合**的指令（「帶我去台北101」的目的地、「他叫小明」的人名）走 LLM。
+翻譯是刻意的例外 —— 目標語言是封閉集合，本地就能解析，所以**翻譯不需要 BFF**。
 
 ### 播報優先級
 

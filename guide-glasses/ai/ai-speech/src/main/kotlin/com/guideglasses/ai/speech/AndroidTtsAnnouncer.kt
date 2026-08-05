@@ -39,6 +39,14 @@ class AndroidTtsAnnouncer(
 
     private var tts: TextToSpeech? = null
 
+    /**
+     * 目前引擎設定的語言，null 代表中文（預設）。
+     *
+     * 記著它是為了避免每則播報都呼叫一次 `setLanguage` —— 絕大多數播報
+     * 都是中文，重複設定沒有意義。
+     */
+    private var currentLanguageTag: String? = null
+
     init {
         tts = TextToSpeech(appContext) { status ->
             val ok = status == TextToSpeech.SUCCESS && configureLanguage()
@@ -64,6 +72,8 @@ class AndroidTtsAnnouncer(
         val utteranceId = "gg-${utteranceSeq.incrementAndGet()}"
         pendingCallbacks[utteranceId] = onDone
         speaking.set(true)
+
+        applyVoiceLanguage(engine, announcement.languageTag)
 
         val params = Bundle().apply {
             putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f)
@@ -101,6 +111,42 @@ class AndroidTtsAnnouncer(
         tts = null
     }
 
+    /**
+     * 依這一則的語言切換發音。
+     *
+     * 翻譯功能非這一步不可 —— 用中文語音唸 "the pharmacy is on your left"
+     * 出來的東西幾乎聽不出是英文。TextToSpeech 支援逐句切換語言，
+     * 代價是要在每次 speak 前設定。
+     *
+     * 找不到該語言的語音資料時**退回中文並照樣唸出去**，而不是靜默放棄：
+     * 帶著中文腔的英文仍然有部分資訊量，完全沒有聲音則等於功能故障。
+     */
+    private fun applyVoiceLanguage(engine: TextToSpeech, languageTag: String?) {
+        val target = languageTag
+            ?.takeIf { it.isNotBlank() }
+            ?.let { Locale.forLanguageTag(it) }
+
+        if (target == null) {
+            // 已經是中文就不用重設 —— setLanguage 每次呼叫都有成本。
+            if (currentLanguageTag != null) {
+                selectChineseVoice(engine)
+                currentLanguageTag = null
+            }
+            return
+        }
+
+        if (target.toLanguageTag() == currentLanguageTag) return
+
+        val result = engine.setLanguage(target)
+        if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+            Log.w(TAG, "沒有 $languageTag 的語音資料，退回中文發音")
+            selectChineseVoice(engine)
+            currentLanguageTag = null
+        } else {
+            currentLanguageTag = target.toLanguageTag()
+        }
+    }
+
     /** 依優先級調整語速。危險警示講快一點，長文朗讀慢一點比較好聽懂。 */
     fun applyRateFor(priority: AnnouncementPriority) {
         val rate = when (priority) {
@@ -112,9 +158,13 @@ class AndroidTtsAnnouncer(
         tts?.setSpeechRate(rate)
     }
 
-    private fun configureLanguage(): Boolean {
-        val engine = tts ?: return false
-
+    /**
+     * 挑一個可用的中文語音。
+     *
+     * 獨立成一個函式是為了讓 [applyVoiceLanguage] 在外語語音不存在時
+     * 能單純退回中文，而不必連帶重設語速、音訊屬性與回呼監聽器。
+     */
+    private fun selectChineseVoice(engine: TextToSpeech): Boolean {
         val locales = listOf(Locale.TAIWAN, Locale.TRADITIONAL_CHINESE, Locale.SIMPLIFIED_CHINESE)
         val supported = locales.firstOrNull { locale ->
             val result = engine.setLanguage(locale)
@@ -125,6 +175,13 @@ class AndroidTtsAnnouncer(
             Log.e(TAG, "找不到可用的中文語音資料")
             return false
         }
+        return true
+    }
+
+    private fun configureLanguage(): Boolean {
+        val engine = tts ?: return false
+
+        if (!selectChineseVoice(engine)) return false
 
         engine.setSpeechRate(1.0f)
         engine.setPitch(1.0f)

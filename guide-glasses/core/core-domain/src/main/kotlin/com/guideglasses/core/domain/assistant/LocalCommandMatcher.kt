@@ -1,5 +1,7 @@
 package com.guideglasses.core.domain.assistant
 
+import com.guideglasses.core.domain.text.SpokenText
+
 /**
  * 本地快捷指令比對。
  *
@@ -35,20 +37,11 @@ class LocalCommandMatcher {
      * 正規化：去掉標點與空白、全形轉半形、英文轉小寫。
      *
      * ASR 產生的文字標點很不穩定（同一句話可能是「停」「停。」「停，」），
-     * 不正規化就會漏判。
+     * 不正規化就會漏判。實作抽到 [SpokenText] 共用，因為翻譯的語言解析
+     * 需要完全一致的正規化 —— 兩份實作若不同步會出現「同一句話在這裡有效、
+     * 在那裡無效」這種很難查的問題。
      */
-    private fun normalise(raw: String): String = buildString(raw.length) {
-        for (ch in raw) {
-            val c = when (ch) {
-                // 全形英數轉半形
-                in 'Ａ'..'Ｚ', in 'ａ'..'ｚ', in '０'..'９' ->
-                    (ch.code - 0xFEE0).toChar()
-
-                else -> ch
-            }
-            if (c.isLetterOrDigit()) append(c.lowercaseChar())
-        }
-    }
+    private fun normalise(raw: String): String = SpokenText.normalise(raw)
 
     private companion object {
 
@@ -100,6 +93,23 @@ class LocalCommandMatcher {
             AssistantIntent.READING_PREVIOUS to listOf(
                 "上一段", "前一段", "回上一段", "退回去",
                 "previous", "back",
+            ),
+
+            /**
+             * 翻譯是唯一「需要參數但仍放在本地」的例外。
+             *
+             * 目標語言的說法是封閉集合（「翻成英文」「翻譯成日文」），本地解析
+             * 很可靠 —— 見 [com.guideglasses.core.domain.translate.TargetLanguage.fromSpoken]。
+             * 因此翻譯**不需要 BFF 就能完整運作**，這是刻意的設計。
+             *
+             * 必須排在 READ_SIGN / READ_TEXT 之前：「翻譯這上面寫什麼」同時含有
+             * 「翻譯」與「上面寫什麼」，使用者要的是翻譯而不是重新 OCR。
+             *
+             * 刻意不收「怎麼說」「怎麼講」這種太寬的說法 —— 「前面那個東西怎麼說」
+             * 想問的是描述而不是翻譯，寧可漏判讓它落到 LLM，也不要誤觸發。
+             */
+            AssistantIntent.TRANSLATE to listOf(
+                "翻譯", "翻成", "翻作", "translate",
             ),
 
             AssistantIntent.READ_SIGN to listOf(
