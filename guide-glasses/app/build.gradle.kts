@@ -1,9 +1,49 @@
+import java.io.StringReader
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
 }
+
+/**
+ * `local.properties` 的內容。
+ *
+ * Gradle **不會**把 local.properties 載入成 Gradle property —— 它只被 AGP
+ * 拿去讀 `sdk.dir`。但這個檔案已被 .gitignore 排除，是放機器本地設定
+ * （後端位址）最自然的地方，文件也一直是這樣寫的，所以這裡明確支援它。
+ *
+ * 用 `providers.fileContents` 而不是 `File(...).readText()`，這樣檔案會被
+ * 登記成建置輸入，configuration cache 才會在內容變更時正確失效。
+ */
+val localProperties: Map<String, String> = providers
+    .fileContents(rootProject.layout.projectDirectory.file("local.properties"))
+    .asText
+    .map { text ->
+        Properties()
+            .apply { load(StringReader(text)) }
+            .entries
+            .associate { it.key.toString() to it.value.toString() }
+    }
+    .getOrElse(emptyMap())
+
+/**
+ * 讀取設定值：優先 Gradle property（`-P` 或 gradle.properties），
+ * 找不到才退回 local.properties。兩處都沒有時回傳空字串。
+ *
+ * 之所以要同時支援兩者：設定寫錯地方時**不會有任何錯誤訊息**，
+ * BuildConfig 只會拿到空字串，App 執行時播報「人臉辨識不可用」，
+ * 而使用者完全無從得知是設定沒被讀到。
+ */
+fun configValue(name: String): String =
+    providers.gradleProperty(name).orNull?.takeIf { it.isNotBlank() }
+        ?: localProperties[name]?.trim().orEmpty()
+
+/** 包成 Java 字串常值。跳脫反斜線與雙引號，避免值裡有特殊字元時產生壞掉的原始碼。 */
+fun stringLiteral(value: String): String =
+    "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
 
 android {
     namespace = "com.guideglasses"
@@ -22,7 +62,7 @@ android {
         buildConfigField(
             "String",
             "LLM_ENDPOINT",
-            "\"${providers.gradleProperty("guideglasses.llmEndpoint").getOrElse("")}\"",
+            stringLiteral(configValue("guideglasses.llmEndpoint")),
         )
 
         // 人臉辨識後端（選用）。留空時只走端側，需要 .tflite 模型檔。
@@ -30,7 +70,7 @@ android {
         buildConfigField(
             "String",
             "FACE_ENDPOINT",
-            "\"${providers.gradleProperty("guideglasses.faceEndpoint").getOrElse("")}\"",
+            stringLiteral(configValue("guideglasses.faceEndpoint")),
         )
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

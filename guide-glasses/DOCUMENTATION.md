@@ -570,6 +570,19 @@ App 端**不放任何 API 金鑰** —— 金鑰只在 BFF 後端。App 只需�
 guideglasses.llmEndpoint=https://your-bff.run.app/route
 ```
 
+三個來源都可以，優先序由高到低：
+
+| 來源 | 用途 |
+|---|---|
+| `-Pguideglasses.llmEndpoint=...` | 單次建置臨時覆寫（CI 常用） |
+| `~/.gradle/gradle.properties` 或 `guide-glasses/gradle.properties` | 跨專案／進版控的預設值 |
+| `guide-glasses/local.properties` | 機器本地設定（不進版控，最常用） |
+
+> Gradle 原生**不會**把 `local.properties` 當成 Gradle property —— 那個檔案
+> 只被 AGP 拿去讀 `sdk.dir`。`app/build.gradle.kts` 明確解析了它，這一段才成立。
+> 設定寫錯地方時不會有任何錯誤訊息，`BuildConfig` 只會拿到空字串，
+> 執行時播報「人臉辨識不可用」而查不出原因 —— 所以三個來源都支援。
+
 BFF 需實作的協定見 `ai/ai-agent/src/main/kotlin/com/guideglasses/ai/agent/AgentProtocol.kt`：
 
 - 請求：`POST` JSON `{"utterance": "...", "history": [...], "tools": [...], "locale": "zh-TW"}`
