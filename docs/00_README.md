@@ -13,15 +13,22 @@
 | [03_FEATURE_ANALYSIS.md](03_FEATURE_ANALYSIS.md) | 六大功能逐項分析：現況、模型選型、Edge/Cloud 判定、風險 |
 | [04_ARCHITECTURE.md](04_ARCHITECTURE.md) | Edge/Cloud 配置、雲端供應商比較、Clean Architecture 模組設計、7 張系統流程圖 |
 | [05_ROADMAP_AND_FEASIBILITY.md](05_ROADMAP_AND_FEASIBILITY.md) | Phase 0–6 Roadmap、誠實的可行性分析、待確認事項 |
+| [06_SECURITY_RUNBOOK.md](06_SECURITY_RUNBOOK.md) | 金鑰外洩處理程序與執行結果 |
+| [07_HANDOVER.md](07_HANDOVER.md) | **專案交接文件** — 完整工作紀錄、檔案異動清單、執行方式、風險清單 |
 
 ---
 
 ## 🔴 立即行動事項（在做任何其他事之前）
 
-1. **撤銷 OpenAI API Key** — `AI_Assistant/python/.env` 已提交進 git 且存在於歷史中
-2. **撤銷 GCP Service Account Key** — `Text_Recognition/text_recognize/python/blind-glasses-ocr-d82297cbca1a.json` 同上
+1. **撤銷 OpenAI API Key** — 原本在 `AI_Assistant/python/.env`
+2. **撤銷 GCP Service Account Key** — 原本在 `Text_Recognition/text_recognize/python/blind-glasses-ocr-d82297cbca1a.json`
 
-刪除檔案沒有用，金鑰仍在 git 歷史裡。必須到供應商後台撤銷並重新產生。
+git 歷史已於 2026-08-05 清除完成（一般 `git clone` 已取不到），
+**但實測確認 GitHub API 仍可依 SHA 取回舊 blob**。
+因此撤銷金鑰不是選項，而是唯一有效的止血手段。詳見 [06_SECURITY_RUNBOOK.md](06_SECURITY_RUNBOOK.md)。
+
+> ⚠️ **歷史已重寫。所有既有的本機 clone 必須刪除後重新 clone**，
+> 否則 `git pull` 會把含金鑰的舊歷史推回去。
 
 ---
 
