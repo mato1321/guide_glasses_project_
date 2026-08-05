@@ -40,7 +40,9 @@
 - [ ] B5 Obstacle_Recognition：後處理規格（輸出張量、NMS 是否內建）
 - [ ] B6 Obstacle_Recognition：驗證集 mAP
 - [ ] B7 端側人臉模型 `.tflite`（🟡 有遠端替代，非阻塞）
-- [ ] B8 導航架構決策（A / B / C 案）
+- [x] ~~B8 導航架構決策（A / B / C 案）~~ → **已決策**：A 案（手機 companion
+      只當 GPS 感測器 + 網路閘道，播報仲裁留在眼鏡）。定位來源抽象成
+      `LocationProvider`，A10 的實測結果只決定挑哪個實作。見 `ARCHITECTURE.md` §5
 - [ ] B9 TDX 金鑰（公車功能用）
 - [ ] B10 Google Maps API 金鑰（導航用）
 - [ ] B11 雲端帳號（BFF 用）
@@ -193,16 +195,25 @@
 - [ ] ViewModel 分派（`DETECT_OBSTACLES` 已有 intent）
 - [ ] 實機測試：偵測率、誤報率、端到端延遲
 
-### D3. 導航（等 B8 決策）
+### D3. 導航（架構已定，可開工）
 
-**不等決策也能做的：**
+**不需 GPS 就能做的：**
 
-- [ ] 6a：純 IMU 的「跟著走」（維持方向 + 計步，不需 GPS）
-- [ ] 6a：`FollowHeadingUseCase` + 測試
+- [ ] 純 IMU 的「跟著走」（維持方向 + 計步）
+- [ ] `FollowHeadingUseCase` + 測試
 
-**決策之後：**
+**定位來源抽象（先做這個，A10 只影響挑哪個實作）：**
 
-- [ ] 依 A/B/C 案建立定位來源抽象
+- [ ] domain：`LocationProvider` 介面（`isAvailable` / `accuracyMeters` / `locations()`）
+- [ ] domain：導航狀態機 + 測試（不知道座標從哪來）
+- [ ] `GlassesGpsLocationProvider` —— 若 A10 發現眼鏡有 GPS，**手機層就不需要了**
+- [ ] `PhoneCompanionLocationProvider` —— 眼鏡確認無 GPS 時才做
+
+**手機 companion（只在確認無 GPS 後才做，範圍嚴格限制）：**
+
+- [ ] 連線層（WLAN socket 或 BLE GATT）
+- [ ] 只傳座標，**不負責任何播報**（避免跨裝置蓋台）
+- [ ] 斷線時眼鏡明確播報「手機連線中斷，導航暫停」
 - [ ] `feature-navigation` 模組
 - [ ] Google Directions API 整合
 - [ ] 導航狀態機

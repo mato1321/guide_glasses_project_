@@ -1,6 +1,6 @@
 # Rokid AI 導盲眼鏡 — 文件導覽
 
-最後更新：2026-08-05
+最後更新：2026-08-06
 
 ---
 
@@ -10,6 +10,7 @@
 |---|---|
 | **知道做到哪裡了 / 交接給新對話** | [`STATUS.md`](STATUS.md) ← 現況快照，隨時更新 |
 | **知道還有什麼沒做 / 勾待辦** | [`TASKS.md`](TASKS.md) ← 可勾選的清單 |
+| **哪個功能放眼鏡／手機／雲端、為什麼** | [`ARCHITECTURE.md`](ARCHITECTURE.md) ← 分層決策，含 7 張 Mermaid 圖 |
 | **執行 / 測試 App** | [`../guide-glasses/DOCUMENTATION.md`](../guide-glasses/DOCUMENTATION.md) |
 | **實作某個功能 / 了解它怎麼運作** | [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) ← 含 Mermaid 圖與整合步驟 |
 | 了解技術選型與硬體限制 | [`TECHNICAL_NOTES.md`](TECHNICAL_NOTES.md) |
@@ -54,9 +55,11 @@ App 跑在眼鏡上，標準 Android API 就夠了。詳見
 2GB RAM、210mAh（約 4 小時）、12MP 相機、**沒有 GPS**、有 IMU。
 端側模型總量要控制在 400MB 內，相機建議 2–5fps 而非 30fps。
 
-**4. 沒有 GPS 擋住導航。**
-IMU 可以做「跟著走」，做不到「知道在哪」。需要架構決策，見
-[`ROADMAP.md`](ROADMAP.md) §3。
+**4. 沒有 GPS 曾擋住導航，架構已於 2026-08-06 決策。**
+IMU 可以做「跟著走」，做不到「知道在哪」。決定走**手機 companion 只當
+GPS 感測器 + 網路閘道**，播報仲裁一律留在眼鏡。定位來源已抽象化，
+所以「眼鏡到底有沒有 GPS」降級成一個 DI 綁定。見
+[`ARCHITECTURE.md`](ARCHITECTURE.md) §5。
 
 **5. 很多「規格」還沒實測。**
 IMU 軸數、Play Services 有無、相機視角、`SpeechRecognizer` 可用性都是未知。
@@ -68,7 +71,7 @@ App 內建「測試相機」「測試感測器」兩個語音自我檢測指令�
 
 > 完整快照見 [`STATUS.md`](STATUS.md)，待辦清單見 [`TASKS.md`](TASKS.md)。
 
-**完成度約 55%，196 個純 JVM 單元測試全過。**
+**完成度約 60%，228 個純 JVM 單元測試全過。**
 
 | 功能 | 狀態 |
 |---|---|
@@ -79,9 +82,11 @@ App 內建「測試相機」「測試感測器」兩個語音自我檢測指令�
 | OCR 朗讀（ML Kit 中文離線 + 分段 + 控制） | ✅ |
 | **人臉辨識** | ✅ **端側或遠端擇一，兩條都可用** |
 | IMU 動作感測 + 相機模式自動切換 | ✅ |
+| **翻譯**（ML Kit + OCR 串接 + TTS 切換語言） | ✅ |
 | 障礙物偵測 | ⏸ 等 Obstacle_Recognition 的 `.tflite` |
-| 導航 | 🔴 等架構決策（無 GPS） |
-| 翻譯 | ❌ 未開始，無阻塞 |
+| 導航 | 🟡 架構已定，可開工 |
+
+> ⚠️ 以上全部**只有建置與單元測試驗證，從未在實體裝置上執行過**。
 
 ---
 
