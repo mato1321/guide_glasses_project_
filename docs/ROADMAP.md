@@ -34,6 +34,8 @@
 **每個功能的詳細實作規劃、流程圖與整合步驟見
 [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md)。**
 
+**逐項可勾選的待辦見 [`TASKS.md`](TASKS.md)，目前進度見 [`STATUS.md`](STATUS.md)。**
+
 ---
 
 ## 2. 三個卡住的項目

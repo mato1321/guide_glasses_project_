@@ -7,7 +7,7 @@
 | 撰寫日期 | 2026-08-05 |
 | 目前整體完成度 | **約 55%**（詳見 §8） |
 
-> 相關文件：[文件導覽](../docs/README.md)｜[各功能實作規劃](../docs/IMPLEMENTATION_PLAN.md)｜[技術筆記](../docs/TECHNICAL_NOTES.md)｜[路線圖](../docs/ROADMAP.md)
+> 相關文件：[現況快照](../docs/STATUS.md)｜[待辦清單](../docs/TASKS.md)｜[實作規劃](../docs/IMPLEMENTATION_PLAN.md)｜[技術筆記](../docs/TECHNICAL_NOTES.md)｜[路線圖](../docs/ROADMAP.md)
 
 ---
 

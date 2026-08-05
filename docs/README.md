@@ -8,7 +8,9 @@
 
 | 你要做什麼 | 看這份 |
 |---|---|
-| **執行 / 測試 App** | [`../guide-glasses/DOCUMENTATION.md`](../guide-glasses/DOCUMENTATION.md) ← 主文件 |
+| **知道做到哪裡了 / 交接給新對話** | [`STATUS.md`](STATUS.md) ← 現況快照，隨時更新 |
+| **知道還有什麼沒做 / 勾待辦** | [`TASKS.md`](TASKS.md) ← 可勾選的清單 |
+| **執行 / 測試 App** | [`../guide-glasses/DOCUMENTATION.md`](../guide-glasses/DOCUMENTATION.md) |
 | **實作某個功能 / 了解它怎麼運作** | [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) ← 含 Mermaid 圖與整合步驟 |
 | 了解技術選型與硬體限制 | [`TECHNICAL_NOTES.md`](TECHNICAL_NOTES.md) |
 | 知道接下來要做什麼、卡在哪 | [`ROADMAP.md`](ROADMAP.md) |
@@ -63,6 +65,8 @@ App 內建「測試相機」「測試感測器」兩個語音自我檢測指令�
 ---
 
 ## guide-glasses 目前狀態
+
+> 完整快照見 [`STATUS.md`](STATUS.md)，待辦清單見 [`TASKS.md`](TASKS.md)。
 
 **完成度約 55%，196 個純 JVM 單元測試全過。**
 
