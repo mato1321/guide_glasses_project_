@@ -6,13 +6,13 @@
 | | |
 |---|---|
 | 最後更新 | 2026-08-06 |
-| `main` HEAD | `4f241ba` |
-| 整體完成度 | **約 60%** |
-| 單元測試 | **228 個，全過**（24 個測試類，純 JVM） |
+| `main` HEAD | `c9edd48` |
+| 整體完成度 | **約 65%** |
+| 單元測試 | **238 個，全過**（25 個測試類，純 JVM） |
 | 模組數 | 12 |
-| Kotlin 行數 | 6,182（主程式）+ 2,761（測試） |
+| Kotlin 行數 | 6,846（主程式）+ 3,007（測試） |
 | 建置狀態 | ✅ `./gradlew build` 通過，lint 無錯誤 |
-| APK | debug 約 65 MB |
+| APK | debug 約 95 MB（含 ONNX Runtime 18 MB ＋ 人臉模型 13 MB） |
 | 實機驗證 | ❌ **從未在任何實體裝置上執行過** |
 
 ---
@@ -21,7 +21,7 @@
 
 ```
 guide-glasses/
-├── app/                        組裝層  411 行
+├── app/                        組裝層  447 行
 │   ├── MainActivity.kt             單一 Activity，整片畫面是按鈕
 │   ├── GuideGlassesApplication.kt  @HiltAndroidApp
 │   └── di/
@@ -29,13 +29,13 @@ guide-glasses/
 │       └── AssistantModule.kt      全部功能的接線
 │
 ├── core/
-│   ├── core-domain/            2,935 行 + 2,579 行測試  ★ 純 Kotlin
+│   ├── core-domain/            3,189 行 + 2,825 行測試  ★ 純 Kotlin
 │   │   ├── AppResult.kt            型別化的結果與錯誤
 │   │   ├── announce/               播報優先級仲裁
 │   │   ├── assistant/              意圖路由、對話歷史
 │   │   ├── glasses/                影像來源、幀率節流、相機自我檢測
 │   │   ├── ocr/                    辨識介面、斷句、朗讀進度
-│   │   ├── face/                   比對、方位、距離、辨識策略
+│   │   ├── face/                   比對、方位、距離、辨識策略、照片同步
 │   │   ├── motion/                 步態、轉向指示、相機模式
 │   │   ├── speech/                 ASR 介面
 │   │   ├── translate/              目標語言解析、翻譯 UseCase
@@ -52,17 +52,19 @@ guide-glasses/
 │   ├── ai-speech/                385 行   SpeechRecognizer / TextToSpeech
 │   ├── ai-agent/                 243 行 + 182 行測試   LLM BFF 協定
 │   ├── ai-ocr/                   124 行   ML Kit 中文（bundled）
-│   ├── ai-face/                  523 行   ML Kit + TFLite + 遠端
+│   ├── ai-face/                  860 行   ML Kit + ONNX/TFLite + 遠端 + 同步
 │   └── ai-translate/             166 行   ML Kit 翻譯（語言包執行期下載）
 │
+└── tools/                      face_enroll_server.py（瀏覽器註冊，零依賴）
+│
 └── feature/
-    └── feature-assistant/        475 行   AssistantViewModel
+    └── feature-assistant/        512 行   AssistantViewModel
 ```
 
 **依賴方向**：`app` → `feature` → `core-domain` ← `glasses/* + ai/* + core-database`
 
 `core-domain` 只套用 `kotlin.jvm`，任何 `android.*` 的 import 都會編譯失敗 ——
-這是建置層面強制的架構約束，也是為什麼 2,579 行測試可以純 JVM 秒級跑完。
+這是建置層面強制的架構約束，也是為什麼 2,825 行測試可以純 JVM 秒級跑完。
 
 **部署形態**：單一 APK，直接裝在 Rokid Glasses 上執行。手機目前**不在必要路徑上**。
 完整的分層決策與未來的手機 companion 設計見
@@ -80,7 +82,7 @@ guide-glasses/
 | 語音辨識 / 合成 | 90% | ✅ 待實機驗證 |
 | 相機（CameraX） | 80% | ✅ 待實機驗證 |
 | OCR 朗讀 | 75% | ✅ 缺雲端 fallback |
-| 人臉辨識 | 90% | ✅ 端側或遠端擇一 |
+| 人臉辨識 | 95% | ✅ 端側可用，瀏覽器註冊＋語音同步 |
 | IMU 動作感測 | 75% | ✅ 待實機確認感測器 |
 | 翻譯 | 80% | ✅ 語言包首次需網路下載 |
 | 障礙物偵測 | 0% | ⏸ 等模型交付 |
@@ -100,6 +102,7 @@ guide-glasses/
 | 這是哪裡 / 招牌寫什麼 | OCR 招牌模式（只唸最大的字） | 相機權限 |
 | 下一段 / 上一段 / 繼續唸 | 朗讀控制 | 進行中的朗讀 |
 | 這是誰 | 人臉辨識，含方位與距離 | 模型檔**或**遠端後端 |
+| **同步人臉** | 從註冊工具抓照片、重算特徵 | `photoEndpoint` ＋ 模型檔 |
 | 翻成英文 / 翻譯 | 翻譯上一次 OCR 的內容 | 首次該語言需網路下載語言包 |
 | 前面有什麼 | 障礙物偵測 | ⏸ 回「開發中」 |
 | 帶我去⋯ | 導航 | ⏸ 回「開發中」，且需 BFF |
@@ -117,7 +120,7 @@ guide-glasses/
 | # | 卡在什麼 | 誰能解 | 影響 |
 |---|---|---|---|
 | 1 | 障礙物模型未交付 | Obstacle_Recognition 負責人 | 🔴 `ai-vision` 無法開工 |
-| 2 | 端側人臉模型檔 | 需外部取得 | 🟡 **有遠端替代路徑，非阻塞** |
+| 2 | ~~端側人臉模型檔~~ | ✅ **已解決** | 用 InsightFace 的 `w600k_mbf.onnx`，直接執行不需轉檔 |
 
 ~~導航架構未定~~ → **已於 2026-08-06 決策**：手機 companion 只當
 「GPS 感測器 + 網路閘道」，播報仲裁一律留在眼鏡上。理由與被否決的方案見
@@ -140,7 +143,7 @@ guide-glasses/
 完整清單見 [`TASKS.md`](TASKS.md) §A 與 [`TECHNICAL_NOTES.md`](TECHNICAL_NOTES.md) §7。
 
 > ⚠️ **這個 App 從未在任何實體裝置上執行過。** 驗證只有建置成功、
-> 228 個單元測試通過、lint 無錯誤。請把第一次上機當成探勘而不是驗收。
+> 238 個單元測試通過、lint 無錯誤。請把第一次上機當成探勘而不是驗收。
 
 ---
 
@@ -190,6 +193,7 @@ guide-glasses/
 
 | 日期 | 進度 | 內容 |
 |---|---:|---|
+| 2026-08-06 | 65% | 端側人臉打通：ONNX Runtime、瀏覽器註冊工具、語音「同步人臉」 |
 | 2026-08-06 | 60% | 三層架構決策（`ARCHITECTURE.md`）：導航走手機 companion A 案，導航解除阻塞 |
 | 2026-08-05 | 60% | `ai-translate`：ML Kit 離線翻譯、OCR→翻譯串接、TTS 逐句切換語言 |
 | 2026-08-05 | 55% | 修正 `local.properties` 設定靜默失效（`providers.gradleProperty` 不讀該檔） |

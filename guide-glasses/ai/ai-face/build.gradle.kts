@@ -41,6 +41,9 @@ dependencies {
 
     implementation(libs.tensorflow.lite)
 
+    // 直接讀 InsightFace 的 .onnx，省掉轉檔。見 OnnxFaceEmbedder 的類別註解。
+    implementation(libs.onnxruntime.android)
+
     // 遠端辨識沿用團隊既有的 InsightFace 後端
     implementation(libs.okhttp)
     implementation(libs.kotlinx.serialization.json)

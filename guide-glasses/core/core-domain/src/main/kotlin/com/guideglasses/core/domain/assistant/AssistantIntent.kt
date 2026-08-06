@@ -70,6 +70,17 @@ enum class AssistantIntent(
         parameters = listOf("name"),
     ),
 
+    /**
+     * 從註冊工具同步人臉。
+     *
+     * 不需要參數，所以放本地 —— 而且它常常在剛加完人、還沒設定好網路時被叫，
+     * 這時能立刻回一句「找不到註冊工具」比靜默有用得多。
+     */
+    SYNC_PEOPLE(
+        toolName = "sync_people",
+        description = "從註冊工具重新同步已登記的人臉",
+    ),
+
     REPEAT_LAST(
         toolName = "repeat_last",
         description = "重複剛才播報的內容",

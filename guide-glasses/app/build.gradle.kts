@@ -65,12 +65,21 @@ android {
             stringLiteral(configValue("guideglasses.llmEndpoint")),
         )
 
-        // 人臉辨識後端（選用）。留空時只走端側，需要 .tflite 模型檔。
+        // 人臉辨識後端（選用）。留空時只走端側，需要模型檔。
         //   guideglasses.faceEndpoint=http://192.168.1.100:8000/recognize
         buildConfigField(
             "String",
             "FACE_ENDPOINT",
             stringLiteral(configValue("guideglasses.faceEndpoint")),
+        )
+
+        // 人臉註冊工具的位址（選用）。說「同步人臉」時從這裡抓照片。
+        // 啟動 tools/face_enroll_server.py 時它會把這一行印出來。
+        //   guideglasses.photoEndpoint=http://192.168.1.100:8100
+        buildConfigField(
+            "String",
+            "PHOTO_ENDPOINT",
+            stringLiteral(configValue("guideglasses.photoEndpoint")),
         )
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

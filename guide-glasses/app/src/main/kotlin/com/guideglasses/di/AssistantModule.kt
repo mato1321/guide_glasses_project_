@@ -29,6 +29,10 @@ import com.guideglasses.core.domain.face.OnDeviceFaceIdentification
 import com.guideglasses.core.domain.face.IdentifyPersonUseCase
 import com.guideglasses.core.domain.face.PersonRepository
 import com.guideglasses.core.domain.face.RegisterFaceUseCase
+import com.guideglasses.core.domain.face.PhotoSource
+import com.guideglasses.core.domain.face.SyncPeopleUseCase
+import com.guideglasses.ai.face.HttpPhotoSource
+import com.guideglasses.ai.face.OnnxFaceEmbedder
 import com.guideglasses.core.domain.translate.TargetLanguage
 import com.guideglasses.core.domain.translate.TranslateUseCase
 import com.guideglasses.core.domain.translate.Translator
@@ -184,13 +188,45 @@ object AssistantModule {
      * 人臉特徵抽取。
      *
      * **需要模型檔才能運作** —— 見 `ai/ai-face/src/main/assets/README.md`。
-     * 沒有模型時 isAvailable 為 false，助理會播報「人臉特徵模型不可用」，
+     * 沒有模型時兩者的 isAvailable 都是 false，辨識自動退回遠端後端，
      * 其他功能不受影響。
+     *
+     * ONNX 優先：InsightFace 匯出的 `.onnx` 可以**直接執行不需轉檔**。
+     * 轉成 tflite 要做 NCHW→NHWC 重排，弄錯不會報錯只會安靜地認不出人 ——
+     * 少一次轉換就少一個出錯的機會。
      */
     @Provides
     @Singleton
-    fun provideFaceEmbedder(@ApplicationContext context: Context): FaceEmbedder =
-        TfLiteFaceEmbedder(context)
+    fun provideFaceEmbedder(@ApplicationContext context: Context): FaceEmbedder {
+        val onnx = OnnxFaceEmbedder(context)
+        return if (onnx.isAvailable) onnx else TfLiteFaceEmbedder(context)
+    }
+
+    // ===== 人臉同步 =====
+
+    /**
+     * 註冊工具的照片來源。
+     *
+     * 眼鏡無法自行註冊（語音抽人名需要 BFF），所以人是在瀏覽器上建檔的。
+     * 位址設定方式：啟動 `tools/face_enroll_server.py`，它會印出要貼哪一行。
+     */
+    @Provides
+    @Singleton
+    fun providePhotoSource(): PhotoSource = HttpPhotoSource(BuildConfig.PHOTO_ENDPOINT)
+
+    @Provides
+    @Singleton
+    fun provideSyncPeopleUseCase(
+        photoSource: PhotoSource,
+        detector: FaceDetector,
+        embedder: FaceEmbedder,
+        repository: PersonRepository,
+    ): SyncPeopleUseCase = SyncPeopleUseCase(
+        photoSource = photoSource,
+        detector = detector,
+        embedder = embedder,
+        repository = repository,
+    )
 
     /** 人臉資料只存在裝置上，且特徵向量以 Keystore 金鑰加密。 */
     @Provides

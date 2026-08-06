@@ -77,6 +77,13 @@ class LocalCommandMatcher {
                 "repeat", "again",
             ),
 
+            // 必須排在 IDENTIFY_PERSON 之前：「同步人臉」含有「人臉」，
+            // 而辨識的片語裡沒有「同步」，順序反了會被誤判成問「這是誰」。
+            AssistantIntent.SYNC_PEOPLE to listOf(
+                "同步人臉", "同步照片", "更新人臉", "重新同步", "同步名單",
+                "syncfaces", "syncpeople",
+            ),
+
             AssistantIntent.IDENTIFY_PERSON to listOf(
                 "這是誰", "這個人是誰", "那是誰", "前面是誰", "前方是誰",
                 "誰在前面", "誰在我前面", "他是誰", "她是誰", "認得他嗎", "認識他嗎",

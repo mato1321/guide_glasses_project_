@@ -29,6 +29,10 @@ mlkitFaceDetection = "16.1.7"
 # 這個 artifact 是 standalone ML Kit，不依賴 Google Play Services。
 mlkitTranslate = "17.0.3"
 tensorflowLite = "2.17.0"
+# ONNX Runtime：直接讀 InsightFace 匯出的 .onnx，不需要轉檔。
+# 轉成 tflite 要處理 NCHW→NHWC，錯了不會報錯只會安靜地認不出人 ——
+# 不轉檔就沒有這個風險。代價是 APK 多約 15MB。
+onnxRuntime = "1.20.0"
 room = "2.7.2"
 coroutines = "1.10.2"
 
@@ -58,6 +62,7 @@ androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycl
 mlkit-face-detection = { group = "com.google.mlkit", name = "face-detection", version.ref = "mlkitFaceDetection" }
 tensorflow-lite = { group = "org.tensorflow", name = "tensorflow-lite", version.ref = "tensorflowLite" }
 tensorflow-lite-gpu = { group = "org.tensorflow", name = "tensorflow-lite-gpu", version.ref = "tensorflowLite" }
+onnxruntime-android = { group = "com.microsoft.onnxruntime", name = "onnxruntime-android", version.ref = "onnxRuntime" }
 
 androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
 androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }

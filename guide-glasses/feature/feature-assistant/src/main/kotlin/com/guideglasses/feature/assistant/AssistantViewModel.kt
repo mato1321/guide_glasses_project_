@@ -13,6 +13,7 @@ import com.guideglasses.core.domain.translate.TargetLanguage
 import com.guideglasses.core.domain.translate.TranslateUseCase
 import com.guideglasses.core.domain.face.IdentifyPersonUseCase
 import com.guideglasses.core.domain.face.RegisterFaceUseCase
+import com.guideglasses.core.domain.face.SyncPeopleUseCase
 import com.guideglasses.core.domain.glasses.CameraSelfTestUseCase
 import com.guideglasses.core.domain.motion.MotionSensorGateway
 import com.guideglasses.core.domain.ocr.OcrMode
@@ -46,6 +47,7 @@ class AssistantViewModel @Inject constructor(
     private val registerFace: RegisterFaceUseCase,
     private val motionSensors: MotionSensorGateway,
     private val translateText: TranslateUseCase,
+    private val syncPeople: SyncPeopleUseCase,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(AssistantUiState())
@@ -168,6 +170,8 @@ class AssistantViewModel @Inject constructor(
             AssistantIntent.READING_PREVIOUS -> readPreviousSegment()
 
             AssistantIntent.IDENTIFY_PERSON -> identifyPersonAhead()
+
+            AssistantIntent.SYNC_PEOPLE -> syncPeople()
 
             AssistantIntent.REGISTER_FACE -> registerPerson(
                 name = routed.arguments["name"].orEmpty(),
@@ -385,6 +389,35 @@ class AssistantViewModel @Inject constructor(
     }
 
     /**
+     * 從註冊工具同步人臉。
+     *
+     * 同步幾十張照片可能要十幾秒，中間完全沒有聲音會讓看不見畫面的使用者
+     * 以為系統當掉，所以先講一句再開始。
+     */
+    private fun syncPeople() {
+        announce(MESSAGE_SYNC_STARTED, AnnouncementPriority.USER_RESPONSE)
+
+        viewModelScope.launch {
+            when (val outcome = syncPeople.execute()) {
+                is SyncPeopleUseCase.Outcome.Completed ->
+                    announce(outcome.spoken, AnnouncementPriority.USER_RESPONSE)
+
+                SyncPeopleUseCase.Outcome.SourceUnavailable ->
+                    announce(MESSAGE_SYNC_NO_SOURCE, AnnouncementPriority.USER_RESPONSE)
+
+                SyncPeopleUseCase.Outcome.ModelUnavailable ->
+                    announce(MESSAGE_SYNC_NO_MODEL, AnnouncementPriority.USER_RESPONSE)
+
+                SyncPeopleUseCase.Outcome.NothingToSync ->
+                    announce(MESSAGE_SYNC_EMPTY, AnnouncementPriority.USER_RESPONSE)
+
+                is SyncPeopleUseCase.Outcome.Failed ->
+                    announce(messageFor(outcome.error), AnnouncementPriority.USER_RESPONSE)
+            }
+        }
+    }
+
+    /**
      * 把眼前的人記起來。
      *
      * **人臉是生物特徵，未經同意建檔在臺灣涉及個資法。** 因此註冊前一定
@@ -471,5 +504,9 @@ class AssistantViewModel @Inject constructor(
             "沒有可以翻譯的內容。你可以先說「唸給我聽」，再說「翻成英文」"
         const val MESSAGE_TRANSLATE_UNAVAILABLE = "翻譯功能目前不可用"
         const val MESSAGE_TRANSLATE_TRUNCATED = "內容較長，只翻譯前面的部分"
+        const val MESSAGE_SYNC_STARTED = "正在同步人臉，請稍等"
+        const val MESSAGE_SYNC_NO_SOURCE = "還沒設定註冊工具的位址"
+        const val MESSAGE_SYNC_NO_MODEL = "缺少人臉模型檔，無法同步"
+        const val MESSAGE_SYNC_EMPTY = "註冊工具上還沒有任何人"
     }
 }

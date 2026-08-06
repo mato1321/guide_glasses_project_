@@ -3,7 +3,7 @@
 > **完成一項就把 `[ ]` 改成 `[x]`。** 順手更新 [`STATUS.md`](STATUS.md) 的完成度。
 > 怎麼做見 [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md)。
 
-最後更新：2026-08-05 ｜ 已完成 **68 / 177**
+最後更新：2026-08-06 ｜ 已完成 **75 / 179**
 
 ---
 
@@ -28,6 +28,8 @@
 - [ ] A15 說「唸給我聽」再說「翻成英文」→ 記錄語言包下載耗時
 - [ ] A16 **確認眼鏡有沒有英文 TTS 語音資料** —— 沒有的話翻譯結果會用中文腔唸出來
 - [ ] A17 記錄翻譯本身的延遲（語言包就緒後）
+- [ ] A18 上傳幾個人的照片後說「同步人臉」→ **記下播報的相似度百分比**
+      （低於 35% 代表模型或前處理不對，這是唯一能發現該問題的方式）
 
 ---
 
@@ -39,7 +41,8 @@
 - [ ] B4 Obstacle_Recognition：前處理規格（正規化方式、RGB/BGR）
 - [ ] B5 Obstacle_Recognition：後處理規格（輸出張量、NMS 是否內建）
 - [ ] B6 Obstacle_Recognition：驗證集 mAP
-- [ ] B7 端側人臉模型 `.tflite`（🟡 有遠端替代，非阻塞）
+- [x] ~~B7 端側人臉模型~~ → **已解決**：用 InsightFace 自動下載的
+      `buffalo_sc/w600k_mbf.onnx`，改走 ONNX Runtime 直接執行，不需轉檔
 - [x] ~~B8 導航架構決策（A / B / C 案）~~ → **已決策**：A 案（手機 companion
       只當 GPS 感測器 + 網路閘道，播報仲裁留在眼鏡）。定位來源抽象成
       `LocationProvider`，A10 的實測結果只決定挑哪個實作。見 `ARCHITECTURE.md` §5
@@ -129,9 +132,13 @@
 - [x] Room + Keystore AES/GCM 加密儲存
 - [x] 註冊流程與同意提示
 - [x] 33 個單元測試
-- [ ] 多張照片註冊（提升穩定度）
+- [x] 多張照片註冊（同步時自動取平均）
+- [x] `OnnxFaceEmbedder` —— 直接跑 InsightFace 的 .onnx，免轉檔
+- [x] `tools/face_enroll_server.py` —— 瀏覽器上傳照片＋標人名（零依賴）
+- [x] `SyncPeopleUseCase` ＋ 語音「同步人臉」（10 個測試）
+- [x] 同步時偵測模型是否正確（同一人照片相似度過低就警告）
 - [ ] 相機視角校正（A14）
-- [ ] 端側模型檔（B7）
+- [ ] 實機驗證同步流程（A18）
 
 ### C8. IMU 動作感測
 
@@ -264,10 +271,11 @@
 - [ ] F1 CI（GitHub Actions）
 - [ ] F2 instrumented test（目前只有純 JVM 測試）
 - [ ] F3 `Turbine` 已宣告但未使用
-- [ ] F4 APK 51MB —— 若確認有 Play Services 可改 unbundled 版瘦身
+- [ ] F4 APK 95MB —— 若確認有 Play Services 可改 unbundled ML Kit 瘦身；
+      ONNX Runtime 18MB 與人臉模型 13MB 是端側辨識的固定成本
 - [ ] F5 `AndroidTtsAnnouncer.applyRateFor()` 已實作但未呼叫
 - [ ] F6 多消費者共用同一條相機串流
-- [ ] F7 人臉多張照片註冊
+- [x] ~~F7 人臉多張照片註冊~~（同步時自動取平均）
 - [ ] F8 `core-ui` 共用無障礙元件模組
 - [ ] F9 `core-network` 共用 HTTP 設定
 
@@ -293,13 +301,13 @@
 
 | 分類 | 已完成 | 總數 |
 |---|---:|---:|
-| A. 實機驗證 | 0 | 17 |
+| A. 實機驗證 | 0 | 18 |
 | B. 外部交付 | 0 | 11 |
-| C. 已完成的功能 | 55 | 72 |
+| C. 已完成的功能 | 60 | 74 |
 | D. 待實作 | 11 | 54 |
 | E. 交叉整合 | 2 | 6 |
-| F. 技術債 | 0 | 9 |
+| F. 技術債 | 1 | 9 |
 | G. 給組員的建議 | 0 | 8 |
-| **合計** | **68** | **177** |
+| **合計** | **75** | **179** |
 
 > 更新這份文件時，順手改一下這個表與檔頭的數字。
