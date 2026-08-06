@@ -34,6 +34,8 @@ import com.guideglasses.core.domain.face.SyncPeopleUseCase
 import com.guideglasses.ai.face.HttpPhotoSource
 import com.guideglasses.ai.face.OnnxFaceEmbedder
 import com.guideglasses.core.domain.translate.TargetLanguage
+import com.guideglasses.core.domain.readiness.ReadinessCheckUseCase
+import com.guideglasses.core.domain.translate.PrepareLanguagesUseCase
 import com.guideglasses.core.domain.translate.TranslateUseCase
 import com.guideglasses.core.domain.translate.Translator
 import com.guideglasses.ai.translate.MlKitTranslator
@@ -177,6 +179,38 @@ object AssistantModule {
             // 真的都解析不到才用英文 —— 語言包最小，且最可能是溝通對象的語言。
             defaultTarget = TargetLanguage.DEFAULT,
         )
+
+    /**
+     * 預先下載語言包。
+     *
+     * 眼鏡沒有 SIM，出門就沒網路。翻譯的語言包必須事前抓好，
+     * 否則到了戶外會發現翻譯不能用。
+     */
+    @Provides
+    @Singleton
+    fun providePrepareLanguagesUseCase(translator: Translator): PrepareLanguagesUseCase =
+        PrepareLanguagesUseCase(translator)
+
+    // ===== 出門前檢查 =====
+
+    /**
+     * 回答「現在拔掉網路，還有哪些功能能用」。
+     *
+     * 實測最常見的失敗不是程式壞掉，而是忘記同步人臉或下載語言包就出門。
+     */
+    @Provides
+    @Singleton
+    fun provideReadinessCheckUseCase(
+        embedder: FaceEmbedder,
+        people: PersonRepository,
+        translator: Translator,
+        photoSource: PhotoSource,
+    ): ReadinessCheckUseCase = ReadinessCheckUseCase(
+        embedder = embedder,
+        people = people,
+        translator = translator,
+        photoSource = photoSource,
+    )
 
     // ===== 人臉辨識 =====
 

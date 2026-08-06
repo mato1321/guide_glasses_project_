@@ -77,6 +77,20 @@ class LocalCommandMatcher {
                 "repeat", "again",
             ),
 
+            // 出門前檢查。排在其他功能之前，因為「檢查」「準備」這類詞
+            // 不會出現在別的片語裡，不會互相吃掉。
+            AssistantIntent.READINESS_CHECK to listOf(
+                "出門前檢查", "可以出門了嗎", "準備好了嗎", "系統檢查", "狀態檢查",
+                "readycheck", "readiness",
+            ),
+
+            // 必須排在 TRANSLATE 之前：「準備翻譯」含有「翻譯」，
+            // 順序反了會被判成要翻譯上一次 OCR 的內容。
+            AssistantIntent.PREPARE_TRANSLATION to listOf(
+                "準備翻譯", "下載語言包", "下載翻譯", "預先下載",
+                "preparetranslation",
+            ),
+
             // 必須排在 IDENTIFY_PERSON 之前：「同步人臉」含有「人臉」，
             // 而辨識的片語裡沒有「同步」，順序反了會被誤判成問「這是誰」。
             AssistantIntent.SYNC_PEOPLE to listOf(

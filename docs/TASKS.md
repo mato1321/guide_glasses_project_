@@ -3,7 +3,7 @@
 > **完成一項就把 `[ ]` 改成 `[x]`。** 順手更新 [`STATUS.md`](STATUS.md) 的完成度。
 > 怎麼做見 [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md)。
 
-最後更新：2026-08-06 ｜ 已完成 **75 / 179**
+最後更新：2026-08-06 ｜ 已完成 **92 / 199**
 
 ---
 
@@ -29,6 +29,9 @@
 - [ ] A16 **確認眼鏡有沒有英文 TTS 語音資料** —— 沒有的話翻譯結果會用中文腔唸出來
 - [ ] A17 記錄翻譯本身的延遲（語言包就緒後）
 - [ ] A18 上傳幾個人的照片後說「同步人臉」→ **記下播報的相似度百分比**
+- [ ] A19 出門前說「出門前檢查」→ 確認回報內容正確
+- [ ] A20 說「準備翻譯」→ 記下語言包下載耗時
+- [ ] A21 **拔掉網路後**完整測一輪四個功能（這才是實測的重點）
       （低於 35% 代表模型或前處理不對，這是唯一能發現該問題的方式）
 
 ---
@@ -180,16 +183,19 @@
 
 ### D2. 障礙物偵測（等 B1–B6）
 
-**不等模型也能先做的（純 domain）：**
+**✅ 純 domain 部分已完成（2026-08-06，不需模型）：**
 
-- [ ] domain：`ObstacleClass` 八類 enum（含 spoken 與 isHazard）
-- [ ] domain：`Detection` 資料模型（相對座標）
-- [ ] domain：`ObstacleDetector` 介面
-- [ ] domain：`ObstacleDistanceEstimator`（已知寬度反推）
-- [ ] domain：`DangerClassifier`（類別 × 距離 → 優先級）
-- [ ] domain：`ObstacleAnnouncementComposer`（組播報字串）
-- [ ] domain：播報去抖動策略（避免疲勞轟炸）
-- [ ] domain：單元測試
+- [x] domain：`ObstacleClass` 八類 enum（含 spoken、realWidthMeters、Kind）
+- [x] domain：`Detection` 資料模型（相對座標）
+- [x] domain：`ObstacleDetector` 介面
+- [x] domain：`ObstacleDistanceEstimator`（已知寬度反推）
+- [x] domain：`DangerClassifier`（類別 × 距離 → 優先級）
+- [x] domain：`ObstacleAnnouncementComposer`（組播報字串、最多唸三個）
+- [x] domain：`ObstacleDebouncer`（同一物體 5 秒內只播一次）
+- [x] domain：單元測試（22 個）
+
+> ⚠️ 八類的**順序與名稱必須與模型交付時的類別索引校對**（B2）。
+> 索引對錯不會報錯，只會把車唸成盲磚。
 
 **需要模型之後：**
 
@@ -209,9 +215,12 @@
 - [ ] 純 IMU 的「跟著走」（維持方向 + 計步）
 - [ ] `FollowHeadingUseCase` + 測試
 
-**定位來源抽象（先做這個，A10 只影響挑哪個實作）：**
+**✅ 定位抽象與幾何已完成（2026-08-06）：**
 
-- [ ] domain：`LocationProvider` 介面（`isAvailable` / `accuracyMeters` / `locations()`）
+- [x] domain：`LocationProvider` 介面（`isAvailable` / `accuracyMeters` / `locations()`）
+- [x] domain：`Coordinate` 資料模型（含精度）
+- [x] domain：`Geo` 球面幾何 —— Haversine 距離、方位角、**跨零度最短轉向**、口語轉向
+- [x] domain：單元測試（19 個）
 - [ ] domain：導航狀態機 + 測試（不知道座標從哪來）
 - [ ] `GlassesGpsLocationProvider` —— 若 A10 發現眼鏡有 GPS，**手機層就不需要了**
 - [ ] `PhoneCompanionLocationProvider` —— 眼鏡確認無 GPS 時才做
@@ -301,13 +310,13 @@
 
 | 分類 | 已完成 | 總數 |
 |---|---:|---:|
-| A. 實機驗證 | 0 | 18 |
+| A. 實機驗證 | 0 | 21 |
 | B. 外部交付 | 0 | 11 |
 | C. 已完成的功能 | 60 | 74 |
-| D. 待實作 | 11 | 54 |
+| D. 待實作 | 28 | 71 |
 | E. 交叉整合 | 2 | 6 |
 | F. 技術債 | 1 | 9 |
 | G. 給組員的建議 | 0 | 8 |
-| **合計** | **75** | **179** |
+| **合計** | **92** | **199** |
 
 > 更新這份文件時，順手改一下這個表與檔頭的數字。

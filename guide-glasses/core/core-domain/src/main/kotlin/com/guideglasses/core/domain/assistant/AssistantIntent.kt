@@ -81,6 +81,23 @@ enum class AssistantIntent(
         description = "從註冊工具重新同步已登記的人臉",
     ),
 
+    /**
+     * 出門前檢查：現在斷網還有哪些功能能用。
+     *
+     * 眼鏡沒有 SIM，出門後就沒有網路。人臉同步與翻譯語言包**必須事前用網路
+     * 做完**，而實測最常見的失敗就是「到現場才發現忘記同步」。
+     */
+    READINESS_CHECK(
+        toolName = "readiness_check",
+        description = "檢查離線功能是否都準備好，可以出門實測了嗎",
+    ),
+
+    /** 預先下載翻譯語言包，讓翻譯在沒有網路的戶外也能用。 */
+    PREPARE_TRANSLATION(
+        toolName = "prepare_translation",
+        description = "預先下載翻譯語言包",
+    ),
+
     REPEAT_LAST(
         toolName = "repeat_last",
         description = "重複剛才播報的內容",

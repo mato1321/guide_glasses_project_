@@ -10,6 +10,8 @@ import com.guideglasses.core.domain.assistant.AssistantIntent
 import com.guideglasses.core.domain.assistant.IntentRouter
 import com.guideglasses.core.domain.assistant.RoutedIntent
 import com.guideglasses.core.domain.translate.TargetLanguage
+import com.guideglasses.core.domain.readiness.ReadinessCheckUseCase
+import com.guideglasses.core.domain.translate.PrepareLanguagesUseCase
 import com.guideglasses.core.domain.translate.TranslateUseCase
 import com.guideglasses.core.domain.face.IdentifyPersonUseCase
 import com.guideglasses.core.domain.face.RegisterFaceUseCase
@@ -48,6 +50,8 @@ class AssistantViewModel @Inject constructor(
     private val motionSensors: MotionSensorGateway,
     private val translateText: TranslateUseCase,
     private val syncPeople: SyncPeopleUseCase,
+    private val readinessCheck: ReadinessCheckUseCase,
+    private val prepareLanguages: PrepareLanguagesUseCase,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(AssistantUiState())
@@ -173,6 +177,10 @@ class AssistantViewModel @Inject constructor(
 
             AssistantIntent.SYNC_PEOPLE -> syncPeople()
 
+            AssistantIntent.READINESS_CHECK -> checkReadiness()
+
+            AssistantIntent.PREPARE_TRANSLATION -> prepareTranslation()
+
             AssistantIntent.REGISTER_FACE -> registerPerson(
                 name = routed.arguments["name"].orEmpty(),
                 relation = routed.arguments["relation"],
@@ -293,6 +301,40 @@ class AssistantViewModel @Inject constructor(
         announcementManager.announce(
             Announcement(segment, AnnouncementPriority.AMBIENT, resumable = true),
         )
+    }
+
+    // ===== 出門前準備 =====
+
+    /**
+     * 出門前檢查。
+     *
+     * 眼鏡沒有 SIM，出了 Wi-Fi 範圍就沒有網路。這個檢查回答一個問題：
+     * **現在拔掉網路，還有哪些功能能用？**
+     */
+    private fun checkReadiness() {
+        viewModelScope.launch {
+            val report = readinessCheck.execute()
+            announce(report.spoken, AnnouncementPriority.USER_RESPONSE)
+        }
+    }
+
+    /**
+     * 預先下載翻譯語言包。
+     *
+     * 每種語言約 30MB，下載可能要幾十秒，所以先講一句再開始。
+     */
+    private fun prepareTranslation() {
+        announce(MESSAGE_PREPARING_TRANSLATION, AnnouncementPriority.USER_RESPONSE)
+
+        viewModelScope.launch {
+            when (val outcome = prepareLanguages.execute()) {
+                is PrepareLanguagesUseCase.Outcome.Finished ->
+                    announce(outcome.spoken, AnnouncementPriority.USER_RESPONSE)
+
+                PrepareLanguagesUseCase.Outcome.Unavailable ->
+                    announce(MESSAGE_TRANSLATE_UNAVAILABLE, AnnouncementPriority.USER_RESPONSE)
+            }
+        }
     }
 
     // ===== 翻譯 =====
@@ -508,5 +550,6 @@ class AssistantViewModel @Inject constructor(
         const val MESSAGE_SYNC_NO_SOURCE = "還沒設定註冊工具的位址"
         const val MESSAGE_SYNC_NO_MODEL = "缺少人臉模型檔，無法同步"
         const val MESSAGE_SYNC_EMPTY = "註冊工具上還沒有任何人"
+        const val MESSAGE_PREPARING_TRANSLATION = "正在下載語言包，需要網路，請稍等"
     }
 }
