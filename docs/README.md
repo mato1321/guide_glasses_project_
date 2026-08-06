@@ -8,6 +8,7 @@
 
 | 你要做什麼 | 看這份 |
 |---|---|
+| **第一次接手這個專案** | [`DEVELOPER_GUIDE.md`](DEVELOPER_GUIDE.md) ← 從零建置到接手開發，新手看這份 |
 | **知道做到哪裡了 / 交接給新對話** | [`STATUS.md`](STATUS.md) ← 現況快照，隨時更新 |
 | **知道還有什麼沒做 / 勾待辦** | [`TASKS.md`](TASKS.md) ← 可勾選的清單 |
 | **哪個功能放眼鏡／手機／雲端、為什麼** | [`ARCHITECTURE.md`](ARCHITECTURE.md) ← 分層決策，含 7 張 Mermaid 圖 |

@@ -6,7 +6,7 @@
 | | |
 |---|---|
 | 最後更新 | 2026-08-06 |
-| `main` HEAD | `580e9ca` |
+| `main` HEAD | `3b5ce99` |
 | 整體完成度 | **約 70%** |
 | 單元測試 | **279 個，全過**（31 個測試類，純 JVM） |
 | 模組數 | 12 |
@@ -241,11 +241,11 @@ guideglasses.faceEndpoint=http://<你的IP>:8000/recognize   # 遠端人臉備�
 ```text
 接手 Rokid AI 導盲眼鏡專案，繼續開發 guide-glasses。
 
-先讀這五份：
-1. docs/STATUS.md               ← 現況快照，做到哪裡了
-2. docs/TASKS.md                ← 待辦清單，哪些勾了哪些沒
-3. docs/ARCHITECTURE.md         ← 三層分工決策（哪個功能放哪一層、為什麼）
-4. docs/IMPLEMENTATION_PLAN.md  ← 每個功能怎麼做、怎麼整合（含 Mermaid 圖）
+先讀這幾份：
+1. docs/DEVELOPER_GUIDE.md      ← 新手總覽：建置、架構、所有功能、Debug、FAQ
+2. docs/STATUS.md               ← 現況快照，做到哪裡了
+3. docs/TASKS.md                ← 待辦清單，哪些勾了哪些沒
+4. docs/ARCHITECTURE.md         ← 三層分工決策（哪個功能放哪一層、為什麼）
 5. guide-glasses/DOCUMENTATION.md ← 怎麼跑、怎麼測
 
 工作規則：
@@ -280,6 +280,7 @@ guideglasses.faceEndpoint=http://<你的IP>:8000/recognize   # 遠端人臉備�
 
 | 日期 | 進度 | 內容 |
 |---|---:|---|
+| 2026-08-06 | 70% | 新增 `DEVELOPER_GUIDE.md`：新手從零接手的完整文件（11 張 Mermaid） |
 | 2026-08-06 | 70% | 出門前檢查、語言包預下載；障礙物與導航的 domain 框架（不需模型即可測試） |
 | 2026-08-06 | 65% | 人臉模型改為隨 repo 附上，clone 完即可測試；`face_photos/` 加入忽略 |
 | 2026-08-06 | 65% | 端側人臉打通：ONNX Runtime、瀏覽器註冊工具、語音「同步人臉」 |
