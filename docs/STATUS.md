@@ -6,13 +6,14 @@
 | | |
 |---|---|
 | 最後更新 | 2026-08-06 |
-| `main` HEAD | `c9edd48` |
+| `main` HEAD | `d5a204e` |
 | 整體完成度 | **約 65%** |
 | 單元測試 | **238 個，全過**（25 個測試類，純 JVM） |
 | 模組數 | 12 |
 | Kotlin 行數 | 6,846（主程式）+ 3,007（測試） |
 | 建置狀態 | ✅ `./gradlew build` 通過，lint 無錯誤 |
 | APK | debug 約 95 MB（含 ONNX Runtime 18 MB ＋ 人臉模型 13 MB） |
+| clone 後可直接建置 | ✅ 模型已進版控，只需自補 `local.properties` |
 | 實機驗證 | ❌ **從未在任何實體裝置上執行過** |
 
 ---
@@ -55,10 +56,12 @@ guide-glasses/
 │   ├── ai-face/                  860 行   ML Kit + ONNX/TFLite + 遠端 + 同步
 │   └── ai-translate/             166 行   ML Kit 翻譯（語言包執行期下載）
 │
-└── tools/                      face_enroll_server.py（瀏覽器註冊，零依賴）
+├── feature/
+│   └── feature-assistant/        512 行   AssistantViewModel
 │
-└── feature/
-    └── feature-assistant/        512 行   AssistantViewModel
+└── tools/                      開發工具（不進 APK）
+    ├── face_enroll_server.py     瀏覽器上傳照片＋標人名，零依賴
+    └── README.md
 ```
 
 **依賴方向**：`app` → `feature` → `core-domain` ← `glasses/* + ai/* + core-database`
@@ -130,6 +133,50 @@ guide-glasses/
 
 ---
 
+## 4.5 clone 下來怎麼跑起來
+
+**模型與所有建置必需檔案都已進版控，clone 完只差一個 SDK 路徑。**
+
+```bash
+git clone https://github.com/mato1321/guide_glasses_project_.git
+```
+
+建立 `guide-glasses/local.properties`（這是**唯一**需要自己補的檔案，
+因為 SDK 路徑每台機器不同。反斜線與冒號都要跳脫）：
+
+```
+sdk.dir=C\:\\Users\\<你的帳號>\\AppData\\Local\\Android\\Sdk
+```
+
+> 或者設好 `ANDROID_HOME` 環境變數也可以，AGP 會自動找到。
+
+```bash
+export JAVA_HOME="/c/Program Files/Android/Android Studio/jbr"
+cd guide-glasses && ./gradlew build
+```
+
+需要 JDK 17+（JDK 11 不行）與 Android SDK Platform 36。
+
+**哪些功能 clone 完就能測**：
+
+| 功能 | 額外需要什麼 |
+|---|---|
+| 語音助理、STT / TTS、播報仲裁 | — |
+| 相機、感測器自我檢測 | — |
+| OCR 朗讀（文件／招牌） | — |
+| 人臉辨識（端側） | 先跑註冊工具建幾個人，見 [`tools/README.md`](../guide-glasses/tools/README.md) |
+| 翻譯 | 首次該語言需連網下載語言包 |
+| 障礙物、導航 | ⏸ 尚未實作，會播報「開發中」 |
+
+`local.properties` 可選的兩行（不設也能跑）：
+
+```
+guideglasses.photoEndpoint=http://<你的IP>:8100     # 人臉同步來源
+guideglasses.faceEndpoint=http://<你的IP>:8000/recognize   # 遠端人臉備援
+```
+
+---
+
 ## 5. 最重要的待辦：實機驗證
 
 **這五分鐘會消掉目前最多的未知數，而且只有你能做。**
@@ -193,6 +240,7 @@ guide-glasses/
 
 | 日期 | 進度 | 內容 |
 |---|---:|---|
+| 2026-08-06 | 65% | 人臉模型改為隨 repo 附上，clone 完即可測試；`face_photos/` 加入忽略 |
 | 2026-08-06 | 65% | 端側人臉打通：ONNX Runtime、瀏覽器註冊工具、語音「同步人臉」 |
 | 2026-08-06 | 60% | 三層架構決策（`ARCHITECTURE.md`）：導航走手機 companion A 案，導航解除阻塞 |
 | 2026-08-05 | 60% | `ai-translate`：ML Kit 離線翻譯、OCR→翻譯串接、TTS 逐句切換語言 |

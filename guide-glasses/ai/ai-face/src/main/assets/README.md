@@ -1,36 +1,37 @@
-# 人臉特徵模型放這裡
+# 人臉特徵模型
 
-本專案**不含模型權重**。`.onnx` 與 `.tflite` 都被 `.gitignore` 排除 ——
-各家模型有各自的授權條款，不適合直接進版控。
+**`w600k_mbf.onnx` 已隨 repo 附上（約 13MB），clone 下來就能直接測試。**
 
-支援兩種格式，**優先用 ONNX**（不需轉檔，出錯機會較少）。
+支援兩種格式，預設用 ONNX（不需轉檔，出錯機會較少）。
 
 ---
 
-## 方式一：ONNX（推薦）
+## 模型來源與授權
 
-檔名：
+| | |
+|---|---|
+| 來源 | [InsightFace](https://github.com/deepinsight/insightface) `buffalo_sc` 模型包 |
+| 架構 | MobileFaceNet（ArcFace 系列） |
+| 授權 | **僅限非商業研究用途** |
 
-```
-w600k_mbf.onnx
-```
+本專案為學術畢業專題，屬非商業用途。**若要商業化必須更換模型。**
 
-**如果你跑過 `Face_Recognition/Python` 的後端，這個檔案已經在你電腦裡了** ——
-`insightface` 套件會自動下載：
+同一個檔案也會被 `insightface` 套件自動下載到：
 
 ```
 Windows      C:\Users\<你的帳號>\.insightface\models\buffalo_sc\w600k_mbf.onnx
 macOS/Linux  ~/.insightface/models/buffalo_sc/w600k_mbf.onnx
 ```
 
-複製過來即可（約 13MB）：
+要換更準的版本可改用 `buffalo_l/w600k_r50.onnx`
+（準確度較高但有 166MB，對 2GB RAM 的眼鏡偏大）—— 換完記得重說一次
+「同步人臉」。
 
-```bash
-cp ~/.insightface/models/buffalo_sc/w600k_mbf.onnx guide-glasses/ai/ai-face/src/main/assets/
-```
+---
 
-沒有的話，跑一次 `insightface` 的辨識就會自動下載。也可以改用
-`buffalo_l/w600k_r50.onnx`（較準但有 166MB，對 2GB RAM 的眼鏡偏大）。
+## 方式一：ONNX（預設）
+
+檔名固定為 `w600k_mbf.onnx`。
 
 ### 規格
 

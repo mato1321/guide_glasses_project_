@@ -50,11 +50,14 @@ captures/
 Thumbs.db
 desktop.ini
 
-# ===== 模型權重（體積大，改用 Git LFS 或 release 附件）=====
+# ===== 模型權重 =====
+# 預設排除（體積大），但**人臉模型例外** —— 它只有 13MB，而且少了它
+# clone 下來的人就沒辦法測試端側人臉辨識。讓「clone 完就能跑」優先。
 *.onnx
 *.pt
 *.tflite
 *.task
+!guide-glasses/ai/ai-face/src/main/assets/*.onnx
 
 # ===== 執行期產物 =====
 *.log
@@ -65,6 +68,9 @@ temp_output_*.mp3
 recording_*.m4a
 
 # ===== 人臉資料（生物特徵，不得進版控）=====
+# 註冊工具上傳的照片。這是**真人的臉部照片**，屬個資法特種個資，
+# 絕不可進公開 repo。少了這行，第一次 git add 就會把它們掃進去。
+guide-glasses/tools/face_photos/
 # 測試用的 face_database 目前保留，正式環境請整個排除
 # face_database/
 
