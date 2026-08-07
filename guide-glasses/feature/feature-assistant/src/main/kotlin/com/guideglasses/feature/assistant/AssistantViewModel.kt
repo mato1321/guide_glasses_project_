@@ -1,5 +1,6 @@
 package com.guideglasses.feature.assistant
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.guideglasses.core.domain.AppError
@@ -18,9 +19,11 @@ import com.guideglasses.core.domain.face.RegisterFaceUseCase
 import com.guideglasses.core.domain.face.SyncPeopleUseCase
 import com.guideglasses.core.domain.glasses.CameraSelfTestUseCase
 import com.guideglasses.core.domain.motion.MotionSensorGateway
+import com.guideglasses.core.domain.obstacle.DetectObstaclesUseCase
 import com.guideglasses.core.domain.ocr.OcrMode
 import com.guideglasses.core.domain.ocr.ReadTextUseCase
 import com.guideglasses.core.domain.ocr.ReadingSession
+import com.guideglasses.core.domain.speech.SpeechCapability
 import com.guideglasses.core.domain.speech.SpeechEvent
 import com.guideglasses.core.domain.speech.SpeechRecognitionGateway
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -52,6 +55,7 @@ class AssistantViewModel @Inject constructor(
     private val syncPeople: SyncPeopleUseCase,
     private val readinessCheck: ReadinessCheckUseCase,
     private val prepareLanguages: PrepareLanguagesUseCase,
+    private val detectObstacles: DetectObstaclesUseCase,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(AssistantUiState())
@@ -197,12 +201,11 @@ class AssistantViewModel @Inject constructor(
                 targetLanguage = routed.arguments[IntentRouter.ARG_TARGET_LANGUAGE],
             )
 
-            // 以下功能將在 Phase 3 起陸續實作。
-            // 明確說「還在開發中」，而不是靜默無回應 ——
-            // 對看不見畫面的使用者，沒有聲音等於系統當掉。
-            AssistantIntent.DETECT_OBSTACLES,
-            AssistantIntent.NAVIGATE,
-            -> announce(
+            AssistantIntent.DETECT_OBSTACLES -> detectObstacles()
+
+            // 導航仍缺 BFF、定位與狀態機。明確說「還在開發中」，
+            // 而不是靜默無回應 —— 對看不見畫面的使用者，沒有聲音等於系統當掉。
+            AssistantIntent.NAVIGATE -> announce(
                 "「${routed.intent.description}」這個功能還在開發中",
                 AnnouncementPriority.USER_RESPONSE,
             )
@@ -256,7 +259,13 @@ class AssistantViewModel @Inject constructor(
      */
     private fun announceReadingStart(session: ReadingSession) {
         if (session.total > 1) {
-            announce("共 ${session.total} 段", AnnouncementPriority.USER_RESPONSE)
+            // 一定要講「說下一段繼續」。唸完第一段就安靜下來，而使用者不知道
+            // 有這個指令的話，他會以為 OCR 只讀到這麼多 —— 對看不見畫面的人，
+            // 沒有下一步的沉默和系統當掉沒有分別。
+            announce(
+                "共 ${session.total} 段，說下一段繼續",
+                AnnouncementPriority.USER_RESPONSE,
+            )
         }
         speakSegment(session.next())
     }
@@ -301,6 +310,42 @@ class AssistantViewModel @Inject constructor(
         announcementManager.announce(
             Announcement(segment, AnnouncementPriority.AMBIENT, resumable = true),
         )
+    }
+
+    // ===== 障礙物 =====
+
+    /**
+     * 回應「前面有什麼」。
+     *
+     * 先講一句再開始 —— 拍照加推論要一兩秒，中間完全沒有聲音會讓看不見畫面
+     * 的使用者以為系統當掉。與 OCR、人臉同步同一個處理方式。
+     */
+    private fun detectObstacles() {
+        announce(MESSAGE_SCANNING_AHEAD, AnnouncementPriority.USER_RESPONSE)
+
+        viewModelScope.launch {
+            when (val outcome = detectObstacles.execute()) {
+                is DetectObstaclesUseCase.Outcome.Detected -> {
+                    Log.i(
+                        TAG,
+                        "障礙物 ${outcome.detections.size} 個：" +
+                            outcome.detections.joinToString {
+                                "${it.type.name}@${"%.2f".format(it.confidence)}"
+                            },
+                    )
+                    announce(outcome.spoken, AnnouncementPriority.USER_RESPONSE)
+                }
+
+                DetectObstaclesUseCase.Outcome.NothingDetected ->
+                    announce(MESSAGE_NOTHING_AHEAD, AnnouncementPriority.USER_RESPONSE)
+
+                DetectObstaclesUseCase.Outcome.Unavailable ->
+                    announce(MESSAGE_OBSTACLE_UNAVAILABLE, AnnouncementPriority.USER_RESPONSE)
+
+                is DetectObstaclesUseCase.Outcome.Failed ->
+                    announce(messageFor(outcome.error), AnnouncementPriority.USER_RESPONSE)
+            }
+        }
     }
 
     // ===== 出門前準備 =====
@@ -398,7 +443,7 @@ class AssistantViewModel @Inject constructor(
                     announce(MESSAGE_TRANSLATE_UNAVAILABLE, AnnouncementPriority.USER_RESPONSE)
 
                 is TranslateUseCase.Outcome.Failed ->
-                    announce(messageFor(outcome.error), AnnouncementPriority.USER_RESPONSE)
+                    announce(translateFailureFor(outcome.error), AnnouncementPriority.USER_RESPONSE)
             }
         }
     }
@@ -409,6 +454,15 @@ class AssistantViewModel @Inject constructor(
         viewModelScope.launch {
             when (val outcome = identifyPerson.execute()) {
                 is IdentifyPersonUseCase.Outcome.Identified -> {
+                    // 相似度是校正閾值的唯一依據，但播報裡只有「是」「可能是」
+                    // 「不認識」三種說法 —— 不印出來就沒有人知道差多少，
+                    // 也就無從判斷閾值該不該調。眼鏡戴在頭上拿不到畫面，
+                    // 這個數字只能靠 logcat。
+                    Log.i(
+                        TAG,
+                        "辨識結果 similarity=${"%.3f".format(outcome.match.similarity)} " +
+                            "band=${outcome.match::class.simpleName} source=${outcome.source}",
+                    )
                     lastSpoken = outcome.spoken
                     _state.update { it.copy(lastReply = outcome.spoken) }
                     // 用 dedupeKey 讓同一個人連續被辨識到時不會一直重複播報。
@@ -441,8 +495,17 @@ class AssistantViewModel @Inject constructor(
 
         viewModelScope.launch {
             when (val outcome = syncPeople.execute()) {
-                is SyncPeopleUseCase.Outcome.Completed ->
+                is SyncPeopleUseCase.Outcome.Completed -> {
+                    // coherence 只在低於門檻時才會被播報出來，但它是校正辨識閾值的
+                    // 基準線 —— 同一個人不同照片能拿到多少分，決定了「認得出來」
+                    // 應該設在哪。正常時也要留下紀錄。
+                    Log.i(
+                        TAG,
+                        "同步完成 people=${outcome.people} photos=${outcome.photos} " +
+                            "skipped=${outcome.skippedPhotos} coherence=${outcome.coherence}",
+                    )
                     announce(outcome.spoken, AnnouncementPriority.USER_RESPONSE)
+                }
 
                 SyncPeopleUseCase.Outcome.SourceUnavailable ->
                     announce(MESSAGE_SYNC_NO_SOURCE, AnnouncementPriority.USER_RESPONSE)
@@ -503,12 +566,39 @@ class AssistantViewModel @Inject constructor(
         announcementManager.announce(Announcement(text, priority))
     }
 
-    /** 把領域錯誤翻成使用者聽得懂的話。絕不播報錯誤碼或例外訊息。 */
+    /**
+     * 翻譯失敗的說法。
+     *
+     * 不能沿用 [messageFor] —— 它把 [AppError.NoResult] 一律翻成
+     * 「我沒有聽到，請再說一次」，那是給語音辨識用的。翻譯引擎失敗時
+     * 播這句，使用者會以為是自己講得不夠大聲，然後一直重講一句
+     * 其實已經被正確聽到的話。
+     */
+    private fun translateFailureFor(error: AppError): String = when (error) {
+        is AppError.NoNetwork -> MESSAGE_TRANSLATE_NEEDS_NETWORK
+        is AppError.NoResult -> MESSAGE_TRANSLATE_NOT_PREPARED
+        is AppError.CapabilityUnavailable -> MESSAGE_TRANSLATE_UNAVAILABLE
+        else -> MESSAGE_TRANSLATE_NOT_PREPARED
+    }
+
+    /**
+     * 把領域錯誤翻成使用者聽得懂的話。絕不播報錯誤碼或例外訊息。
+     *
+     * [AppError.CapabilityUnavailable] 要再依 `capability` 分岔：
+     * 「沒有語音辨識服務」和「有服務但缺中文語音資料」對使用者是完全
+     * 不同的兩件事 —— 前者無解，後者去設定下載就好。全部收斂成同一句
+     * 等於沒有告訴他任何事。
+     */
     private fun messageFor(error: AppError): String = when (error) {
         is AppError.NoResult -> MESSAGE_NOT_HEARD
         is AppError.NoNetwork -> MESSAGE_NO_NETWORK
         is AppError.PermissionDenied -> MESSAGE_NO_MIC_PERMISSION
-        is AppError.CapabilityUnavailable -> MESSAGE_NO_ASR
+        is AppError.CapabilityUnavailable -> when (error.capability) {
+            SpeechCapability.LANGUAGE_PACK -> MESSAGE_NO_SPEECH_LANGUAGE
+            SpeechCapability.BUSY -> MESSAGE_RECOGNIZER_BUSY
+            SpeechCapability.MICROPHONE -> MESSAGE_MIC_BUSY
+            else -> MESSAGE_NO_ASR
+        }
         else -> MESSAGE_GENERIC_FAILURE
     }
 
@@ -528,10 +618,16 @@ class AssistantViewModel @Inject constructor(
     )
 
     private companion object {
+        const val TAG = "Assistant"
+
         const val MESSAGE_NOT_HEARD = "我沒有聽到，請再說一次"
         const val MESSAGE_NO_NETWORK = "目前沒有網路"
         const val MESSAGE_NO_MIC_PERMISSION = "需要麥克風權限才能聽你說話，請到設定中開啟"
         const val MESSAGE_NO_ASR = "這台裝置沒有可用的語音辨識服務"
+        const val MESSAGE_NO_SPEECH_LANGUAGE =
+            "這台裝置沒有中文語音辨識資料。請到系統設定的語音輸入中下載中文，再試一次"
+        const val MESSAGE_RECOGNIZER_BUSY = "我還在處理上一句，請稍等一下再說"
+        const val MESSAGE_MIC_BUSY = "麥克風好像正被其他程式使用中"
         const val MESSAGE_GENERIC_FAILURE = "我現在無法處理，請再試一次"
         const val MESSAGE_NOTHING_TO_REPEAT = "目前沒有可以重複的內容"
         const val MESSAGE_CAMERA_TESTING = "正在測試相機"
@@ -545,11 +641,18 @@ class AssistantViewModel @Inject constructor(
         const val MESSAGE_NOTHING_TO_TRANSLATE =
             "沒有可以翻譯的內容。你可以先說「唸給我聽」，再說「翻成英文」"
         const val MESSAGE_TRANSLATE_UNAVAILABLE = "翻譯功能目前不可用"
+        const val MESSAGE_TRANSLATE_NEEDS_NETWORK =
+            "翻譯的語言包還沒下載完成，需要網路。請連上網路後說「準備翻譯」"
+        const val MESSAGE_TRANSLATE_NOT_PREPARED =
+            "翻譯失敗，語言包可能不完整。請說「準備翻譯」重新下載後再試一次"
         const val MESSAGE_TRANSLATE_TRUNCATED = "內容較長，只翻譯前面的部分"
         const val MESSAGE_SYNC_STARTED = "正在同步人臉，請稍等"
         const val MESSAGE_SYNC_NO_SOURCE = "還沒設定註冊工具的位址"
         const val MESSAGE_SYNC_NO_MODEL = "缺少人臉模型檔，無法同步"
         const val MESSAGE_SYNC_EMPTY = "註冊工具上還沒有任何人"
         const val MESSAGE_PREPARING_TRANSLATION = "正在下載語言包，需要網路，請稍等"
+        const val MESSAGE_SCANNING_AHEAD = "正在看前面"
+        const val MESSAGE_NOTHING_AHEAD = "前面沒有偵測到障礙物"
+        const val MESSAGE_OBSTACLE_UNAVAILABLE = "障礙物偵測目前不可用，缺少模型檔"
     }
 }

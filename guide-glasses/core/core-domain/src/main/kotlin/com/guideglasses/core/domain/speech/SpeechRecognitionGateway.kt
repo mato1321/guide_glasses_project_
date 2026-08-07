@@ -31,6 +31,28 @@ interface SpeechRecognitionGateway {
     fun shutdown()
 }
 
+/**
+ * 語音相關的 [AppError.CapabilityUnavailable] 識別字。
+ *
+ * 實作端（`ai-speech`）與播報端（`feature-assistant`）都引用這裡。
+ * 兩邊各自寫字串常值的話，打錯不會編譯失敗，只會讓使用者聽到
+ * 一句沒有資訊量的「無法處理」—— 而那正是最難查的一種錯。
+ */
+object SpeechCapability {
+
+    /** 裝置上根本沒有語音辨識服務。 */
+    const val RECOGNITION = "speech-recognition"
+
+    /** 有辨識服務，但缺少該語言的語音資料。使用者需要去系統設定下載。 */
+    const val LANGUAGE_PACK = "speech-language-pack"
+
+    /** 辨識器忙碌，稍後重試即可。 */
+    const val BUSY = "speech-recognizer-busy"
+
+    /** 麥克風不可用，多半被其他 App 佔用。 */
+    const val MICROPHONE = "speech-microphone"
+}
+
 sealed interface SpeechEvent {
 
     /** 已就緒，可以開始說話了。UI 應在此時給出提示音。 */
