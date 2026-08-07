@@ -1,4 +1,112 @@
-# Rokid 眼鏡 Android 開發框架
+# Guide Glasses — Rokid AI 導盲眼鏡
+
+一套跑在 **Rokid Glasses** 上的智慧導盲系統。使用者用語音下指令，系統用語音回答。
+單一 Android APK，直接安裝在眼鏡上執行。
+
+| | |
+|---|---|
+| 最後更新 | 2026-08-08 |
+| 完成度 | 約 80% |
+| 單元測試 | 306 個，全過（純 JVM） |
+| 實機狀態 | 🟡 相機／OCR／障礙物／翻譯／感測器**已在眼鏡驗證**；🔴 **語音不可用** |
+
+---
+
+## 📖 先看哪一份文件
+
+| 你要做什麼 | 看這份 |
+|---|---|
+| **第一次接手** | [`docs/DEVELOPER_GUIDE.md`](docs/DEVELOPER_GUIDE.md) —— 從零建置到接手開發 |
+| **眼鏡上跑不起來 / 沒聲音** | [`docs/DEVICE_FINDINGS.md`](docs/DEVICE_FINDINGS.md) —— 實機診斷，全部指令可重跑 |
+| 現況與交接 | [`docs/STATUS.md`](docs/STATUS.md) |
+| 待辦清單 | [`docs/TASKS.md`](docs/TASKS.md) |
+| 分層架構決策 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
+| 文件總導覽 | [`docs/README.md`](docs/README.md) |
+
+---
+
+## 📁 專案結構
+
+```
+guide_glasses_project_/
+├── guide-glasses/          ★ 最終整合系統（只在這裡開發）
+├── docs/                   專案文件
+├── AI_Assistant/           組員工作區 —— 不可修改
+├── Face_Recognition/       組員工作區 —— 不可修改
+├── Obstacle_Recognition/   組員工作區 —— 不可修改
+├── Audio_Navigation/       組員工作區 —— 不可修改
+└── Text_Recognition/       組員工作區 —— 不可修改
+```
+
+**五個功能資料夾是五位組員各自的工作區，`guide-glasses` 不修改它們。**
+需要引用時複製過來重新整合。
+
+---
+
+## 🚀 快速開始
+
+```bash
+git clone https://github.com/mato1321/guide_glasses_project_.git
+```
+
+建立 `guide-glasses/local.properties`（**唯一**需要自己補的檔案，注意跳脫字元）：
+
+```
+sdk.dir=C\:\Users\<你的帳號>\AppData\Local\Android\Sdk
+```
+
+```bash
+export JAVA_HOME="/c/Program Files/Android/Android Studio/jbr"
+cd guide-glasses && ./gradlew build
+```
+
+需要 **JDK 17+**（JDK 11 不行）與 Android SDK Platform 36。
+完整步驟見 [`docs/DEVELOPER_GUIDE.md`](docs/DEVELOPER_GUIDE.md) §3。
+
+---
+
+## ⚠️ 三個必須知道的硬體事實
+
+全部由 adb 實測確認（見 [`DEVICE_FINDINGS.md`](docs/DEVICE_FINDINGS.md)）：
+
+| 事實 | 影響 |
+|---|---|
+| **沒有 Google Play Services** | STT 完全不可用；ML Kit 必須用 bundled / standalone 版 |
+| **沒有語音辨識服務、TTS 綁定失敗** | 🔴 **目前無法用語音操作**，需靠 debug 廣播觸發 |
+| **沒有 GPS、沒有電子羅盤** | 導航需手機提供座標，且**算不出朝向** |
+
+> 這台眼鏡有一個反覆出現的陷阱：**`pm list features` 宣告有，實際上沒有**。
+> GPS、前鏡頭、TTS 都中過。**任何硬體能力都要實測，不能看 API 宣告。**
+
+---
+
+## 📝 目前功能狀態
+
+| 功能 | 狀態 |
+|---|---|
+| AI 語音助理（雙層意圖路由） | ✅ 邏輯完成，但語音輸入不可用 |
+| OCR 朗讀（文件／招牌／分段） | ✅ 眼鏡實測通過 |
+| 翻譯（ML Kit + OCR 串接） | ✅ 眼鏡實測通過 |
+| 人臉辨識（ONNX 端側） | ✅ 已完成，待眼鏡實測 |
+| 障礙物偵測（YOLOv8 八類） | ✅ 眼鏡實測通過 |
+| 播報優先級仲裁 | ✅ |
+| 導航 | 🔴 難度上修（無 GPS 且無羅盤） |
+
+---
+
+---
+
+# 附錄：Rokid 眼鏡 Android 開發框架（通用教學）
+
+> 以下是專案初期寫的**通用 Android 開發參考**，與 `guide-glasses` 的實際
+> 架構無關。`guide-glasses` 用的是多模組 + Hilt + 純 Kotlin domain 層，
+> 詳見 [`docs/DEVELOPER_GUIDE.md`](docs/DEVELOPER_GUIDE.md) §5。
+>
+> ⚠️ 下方「語音識別 SDK」一節的 `com.rokid.speech:speech-sdk` 是**佔位範例，
+> 不是真實可用的 artifact**。眼鏡端語音的實際狀況見
+> [`DEVICE_FINDINGS.md`](docs/DEVICE_FINDINGS.md)。
+
+## Rokid 眼鏡 Android 開發框架
 
 ---
 

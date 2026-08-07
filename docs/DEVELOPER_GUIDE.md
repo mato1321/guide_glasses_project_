@@ -3,7 +3,11 @@
 > **這份文件寫給第一次接手本專案的工程師。** 假設你沒有 Android 開發經驗，
 > 也完全不了解這個專案。照著做就能建置、執行、理解架構、測試功能並接手開發。
 >
-> 內容全部依照 **2026-08-06 的實際程式碼**產生。文件與程式碼衝突時以程式碼為準。
+> 內容依照 **2026-08-08 的實際程式碼與實機測試**產生。文件與程式碼衝突時以程式碼為準。
+>
+> 🔴 **先讀這個**：眼鏡上**語音完全不可用**（TTS 綁不上、STT 不存在），
+> 所以無法用說話操作。目前靠 debug 廣播觸發（見 §13.5）。
+> 完整實機診斷見 [`DEVICE_FINDINGS.md`](DEVICE_FINDINGS.md)。
 
 ---
 
@@ -808,6 +812,7 @@ flowchart LR
 | **Class** | `AndroidSpeechRecognitionGateway` | `AndroidTtsAnnouncer` |
 | **完成度** | 🟢 90% | 🟢 90% |
 | **特性** | 串流、`EXTRA_PREFER_OFFLINE = true` | 約 50ms、無障礙音訊通道 |
+| **Rokid 眼鏡上** | 🔴 **不可用**（無 RecognitionService） | 🔴 **不可用**（綁不上引擎） |
 
 **TTS 的三個關鍵設計：**
 
@@ -1191,8 +1196,8 @@ flowchart TB
 | **相機模式控制** | 🟡 | ❌ | 70% | Controller 完成但未接線 |
 | **感測器自我檢測** | ✅ | ✅ | 100% | |
 | **出門前檢查** | ✅ | ✅ | 100% | |
-| **STT** | ✅ | — | 90% | 待實機驗證 |
-| **TTS** | ✅ | — | 90% | 待實機驗證 |
+| **STT** | ✅ | — | 90% | 🔴 **眼鏡上不可用**（無 RecognitionService） |
+| **TTS** | ✅ | — | 90% | 🔴 **眼鏡上不可用**（綁不上引擎） |
 | **播報仲裁** | ✅ | ✅ | 100% | 「停」指令 |
 | **重複上一則** | ✅ | ✅ | 100% | |
 | **雲端 AI（BFF）** | ❌ | ❌ | 0% | 客戶端協定完成，後端不存在 |
@@ -1439,6 +1444,40 @@ cd guide-glasses && ./gradlew test
 
 測試報告：`core/core-domain/build/reports/tests/test/index.html`
 
+### 🔴 Rokid Glasses 上沒有語音，要用 debug 廣播觸發
+
+眼鏡上 STT 不存在，**說話這條路完全走不通**。debug build 有一個廣播入口：
+
+```bash
+adb shell am set-inactive com.guideglasses false
+```
+
+```bash
+adb shell svc power stayon true
+```
+
+```bash
+adb shell am start -n com.guideglasses/.MainActivity
+```
+
+```bash
+adb shell am broadcast -a com.guideglasses.DEBUG --es cmd CAMERA_TEST
+```
+
+```bash
+adb logcat -d | grep TtsAnnouncer
+```
+
+> 💡 **TTS 失敗時會把「本來要唸的話」印進 log** —— 聽不到但看得到，
+> 這是目前唯一的驗證方式。
+
+⚠️ 前兩行不能省：眼鏡螢幕逾時只有 5 秒，App 一 idle，Android 就會擋掉相機
+（`Access Denial: can't use the camera from an idle UID`）。
+
+支援的 `cmd`：任何 `AssistantIntent` 名稱（`READ_TEXT`、`DETECT_OBSTACLES`、
+`SYNC_PEOPLE`、`READINESS_CHECK`、`PREPARE_TRANSLATION`、`CAMERA_TEST`⋯），
+可帶 `--es target_language ja`、`--es text 你好`、`--es name 小明`。
+
 ### 實機測試順序
 
 **先確認基礎再測功能**，否則出問題不知道是哪一層：
@@ -1446,7 +1485,7 @@ cd guide-glasses && ./gradlew test
 | # | 說 | 預期 | 失敗代表 |
 |---|---|---|---|
 | 1 | 「停」 | 安靜 | **沒聲音就先解這個**，後面全部沒意義 |
-| 2 | 「測試相機」 | 「相機正常。解析度⋯耗時 145 毫秒」 | 相機權限或 CameraX 問題 |
+| 2 | 「測試相機」 | 「相機正常。解析度 480 乘 640⋯**耗時 930 毫秒**」 | 相機權限或 idle UID |
 | 3 | 「測試感測器」 | 唸出可用的感測能力 | 記下整句，決定導航設計 |
 | 4 | 「出門前檢查」 | 回報離線可用狀態 | — |
 | 5 | 對藥袋說「唸給我聽」 | 唸出內容 | OCR 或解析度問題 |
@@ -1677,11 +1716,13 @@ App 直接跑在眼鏡上，不需要配對。Manifest 裡的藍牙權限是早�
 | AGP 9.3.1 可建置 | ✅ 實際 `./gradlew build` 通過 |
 | STT／OCR／翻譯可運作 | 🟡 **小米手機已驗證**，Rokid Glasses 未驗證 |
 | 端側人臉、障礙物可運作 | 🟡 建置與單元測試通過；障礙物前後處理已與 ultralytics 比對 |
-| 相機視角 66° | ⚠️ **預設估算值，官方未載明，待實機校正** |
-| 眼鏡沒有 GPS | ⚠️ **推定**，待 `TASKS.md` A10 實測 |
+| 相機視角 66° | ⚠️ **仍是估算值，尚未實機校正** |
+| 眼鏡沒有 GPS、沒有電子羅盤 | ✅ **實測確認** |
+| 眼鏡沒有 Play Services、無 STT、TTS 綁不上 | ✅ **實測確認** |
 | 開相機續航 <1.5 小時 | ⚠️ 估算，待 A12 實測 |
 | 2GB RAM 跑得動三個 ONNX 模型 | ⚠️ **未驗證**。人臉 13MB ＋ 障礙物 13MB ＋ ML Kit |
-| 各項延遲數字（100ms、50ms 等） | ⚠️ 依函式庫官方數據估算，**未在 Rokid Glasses 上量測** |
+| **相機擷取 930ms** | ✅ **實測**（原本估 145ms，慢 6 倍） |
+| 其餘延遲數字（推論、TTS 等） | ⚠️ 仍是估算 |
 
 > **任何要寫進論文或報告的效能數字，都必須先實測。**
 > 目前這份文件的**設計理由**站得住腳，但**數字**還沒有。

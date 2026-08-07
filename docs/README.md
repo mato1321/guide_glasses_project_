@@ -46,29 +46,31 @@ guide_glasses_project_/
 ## 五個必須知道的事實
 
 **1. Rokid Glasses 是 Android 12 裝置，但語音堆疊不完整。**
-執行 YodaOS-Sprite（API 32），APK 直接安裝執行 —— 這點已由本專案 2026-08-08
-親自實證。CameraX、SensorManager 可用，**但 `TextToSpeech` 綁定失敗、
-`SpeechRecognizer` 完全不存在**。詳見 [`DEVICE_FINDINGS.md`](DEVICE_FINDINGS.md)。
+執行 YodaOS-Sprite（API 32），APK 直接安裝執行。相機、感測器、OCR、翻譯、
+障礙物偵測**都已在眼鏡實測通過**，但 **`TextToSpeech` 綁定失敗、
+`SpeechRecognizer` 完全不存在** —— 目前無法用語音操作。
+詳見 [`DEVICE_FINDINGS.md`](DEVICE_FINDINGS.md)。
 
 **2. 幾乎用不到 CXR SDK。**
 App 跑在眼鏡上，標準 Android API 就夠了。詳見
 [`TECHNICAL_NOTES.md`](TECHNICAL_NOTES.md) §1。
 
-**3. 硬體是主要約束。**
-2GB RAM、210mAh（約 4 小時）、12MP 相機、**沒有 GPS**、有 IMU、
-**沒有 Google Play Services**（2026-08-08 實機確認）。
-端側模型總量要控制在 400MB 內，相機建議 2–5fps 而非 30fps。
+**3. 硬體是主要約束，而且比原本以為的更嚴格。**
+2GB RAM、210mAh（約 4 小時）、**沒有 GPS**、**沒有電子羅盤**、
+**沒有 Google Play Services**、**相機擷取要 930ms**（全部 2026-08-08 實測）。
 
-**4. 沒有 GPS 曾擋住導航，架構已於 2026-08-06 決策。**
-IMU 可以做「跟著走」，做不到「知道在哪」。決定走**手機 companion 只當
-GPS 感測器 + 網路閘道**，播報仲裁一律留在眼鏡。定位來源已抽象化，
-所以「眼鏡到底有沒有 GPS」降級成一個 DI 綁定。見
-[`ARCHITECTURE.md`](ARCHITECTURE.md) §5。
+> ⚠️ 這台眼鏡有個反覆出現的陷阱：**`pm list features` 宣告有，實際上沒有**。
+> GPS、前鏡頭、TTS 都中過。**任何硬體能力都要實測，不能看 API 宣告。**
 
-**5. 🔴 語音是目前的總阻塞。**
-眼鏡上沒有輸入也沒有輸出，所有需要「說話 → 聽回應」的驗證都做不了。
-IMU 軸數、相機視角仍未實測 —— 而且在語音修好之前也測不了，
-因為那兩個自我檢測本身就是語音指令。
+**4. 導航難度上修：無 GPS **且**無電子羅盤。**
+手機可以提供座標，但**朝向拿不到** —— 算不出「往左轉還是往右轉」。
+架構決策（手機 companion 只當定位來源，播報仲裁留在眼鏡）仍然成立，
+但導航本身比原先評估的難。見 [`ARCHITECTURE.md`](ARCHITECTURE.md) §5。
+
+**5. 🔴 語音是目前的總阻塞，但功能驗證已有替代路徑。**
+眼鏡上沒有語音輸入也沒有輸出。但 debug build 有廣播入口可以直接觸發任何功能，
+TTS 失敗時也會把「本來要唸的話」印進 log —— **聽不到但看得到**。
+五個核心功能已用這個方式在眼鏡上驗證通過。
 
 ---
 
@@ -81,7 +83,7 @@ IMU 軸數、相機視角仍未實測 —— 而且在語音修好之前也測�
 | 功能 | 狀態 |
 |---|---|
 | AI 語音助理（雙層意圖路由） | ✅ |
-| 語音辨識 / 合成 | 🔴 **手機可用，眼鏡上不可用** |
+| 語音辨識 / 合成 | 🔴 **眼鏡上不可用**（無 RecognitionService、TTS 綁不上） |
 | 播報優先級仲裁 | ✅ |
 | 相機（CameraX） | ✅ |
 | OCR 朗讀（ML Kit 中文離線 + 分段 + 控制） | ✅ |
@@ -91,9 +93,8 @@ IMU 軸數、相機視角仍未實測 —— 而且在語音修好之前也測�
 | **障礙物偵測**（YOLOv8 八類） | ✅ |
 | 導航 | 🟡 定位抽象 + 幾何完成 |
 
-> 🟡 小米手機已驗證（並因此修掉三個真實 bug）。
-> 🔴 **Rokid Glasses 已執行，但語音完全不可用** ——
-> 見 [`DEVICE_FINDINGS.md`](DEVICE_FINDINGS.md)。
+> 🟡 **Rokid Glasses 實測**：相機／OCR／障礙物／翻譯／感測器**全部通過**。
+> 🔴 語音（TTS + STT）不可用。見 [`DEVICE_FINDINGS.md`](DEVICE_FINDINGS.md)。
 
 ---
 
@@ -112,6 +113,7 @@ IMU 軸數、相機視角仍未實測 —— 而且在語音修好之前也測�
 | 「五個獨立專案是結構性問題，應合併」 | 那是刻意的團隊分工 |
 | 「眼鏡是標準 Android 裝置，原生 TTS/STT 都能用」 | **2026-08-08 實機推翻**：STT 不存在、TTS 綁定失敗 |
 | 「不能升到 AGP 9.x」 | 2026-08-07 用兩個相容開關解掉了 |
+| 「眼鏡有 GPS 硬體特徵就有 GPS」 | 宣告有、實際無 provider。前鏡頭、TTS 同樣 |
 
 前三者的共同成因是**從依賴宣告推測架構，而沒有先問**。
 第四項的成因不同 —— 那是**從「它是 Android 裝置」推論「標準 API 都可用」**，

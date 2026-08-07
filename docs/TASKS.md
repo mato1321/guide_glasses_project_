@@ -199,7 +199,7 @@
 - [x] **目標語言本地解析** —— `TargetLanguage.fromSpoken`，封閉集合所以不需 BFF
 - [x] ViewModel 分派 + DI 接線
 - [x] **TTS 逐句切換語言** —— `Announcement.languageTag`，否則中文語音唸英文聽不懂
-- [x] `./gradlew build` 通過，228 個測試全過
+- [x] `./gradlew build` 通過（當時 228 個測試，現為 306）
 
 剩下的（非阻塞）：
 

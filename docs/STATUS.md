@@ -262,29 +262,51 @@ guideglasses.faceEndpoint=http://<你的IP>:8000/recognize   # 遠端人臉備�
 > 需要開新對話時，把下面整段貼過去。
 
 ```text
-接手 Rokid AI 導盲眼鏡專案，繼續開發 guide-glasses。
+接手 Rokid AI 導盲眼鏡專案（guide-glasses）。
 
-先讀這幾份：
-1. docs/DEVELOPER_GUIDE.md      ← 新手總覽：建置、架構、所有功能、Debug、FAQ
-2. docs/STATUS.md               ← 現況快照，做到哪裡了
-3. docs/TASKS.md                ← 待辦清單，哪些勾了哪些沒
-4. docs/ARCHITECTURE.md         ← 三層分工決策（哪個功能放哪一層、為什麼）
-5. guide-glasses/DOCUMENTATION.md ← 怎麼跑、怎麼測
+## 先讀這五份
+1. docs/DEVICE_FINDINGS.md   ← 🔴 最重要：眼鏡實測發現，很多「規格」是假的
+2. docs/STATUS.md            ← 現況快照
+3. docs/TASKS.md             ← 待辦清單
+4. docs/DEVELOPER_GUIDE.md   ← 新手總覽：建置、架構、所有功能、Debug、FAQ
+5. docs/ARCHITECTURE.md      ← 分層決策
 
-工作規則：
+## 環境
+- 建置需要 JDK 17+（JDK 11 不行）。若 Android Studio 更新過導致
+  jbr 壞掉，改用 "Android Studio1/jbr"：
+    export JAVA_HOME="/c/Program Files/Android/Android Studio/jbr"
+    cd guide-glasses && ./gradlew build
+- AGP 已升到 9.3.1，靠 gradle.properties 的 android.builtInKotlin=false
+  與 android.newDsl=false 兩個相容開關，**不要拿掉那兩行**。
+- adb 在 PATH：
+  /c/Users/mato/AppData/Local/Microsoft/WinGet/Packages/Google.PlatformTools_*/platform-tools
+
+## 眼鏡上的硬事實（全部 adb 實測，別再假設）
+- ❌ 沒有 Google Play Services、沒有 Play Store
+- ❌ 沒有任何語音辨識服務 → STT 完全不可用
+- ❌ TTS 綁定失敗（唯一引擎是未設定的第三方 App）→ 聽不到任何播報
+- ❌ 沒有 GPS provider、沒有電子羅盤（磁力計）
+- ⚠️ 相機擷取 930ms（文件原本估 145ms）
+- ⚠️ 螢幕逾時 5 秒，App idle 時 Android 會擋掉相機
+- 🔴 反覆出現的陷阱：pm list features 宣告有，實際上沒有。
+  GPS、前鏡頭、TTS 都中過。**任何硬體能力都要實測，不能看 API 宣告。**
+
+## 眼鏡上怎麼測（沒有語音，只能這樣）
+  adb shell am set-inactive com.guideglasses false
+  adb shell svc power stayon true
+  adb shell am start -n com.guideglasses/.MainActivity
+  adb shell am broadcast -a com.guideglasses.DEBUG --es cmd CAMERA_TEST
+  adb logcat -d | grep TtsAnnouncer
+TTS 失敗時會把「本來要唸的話」印進 log —— 聽不到但看得到。
+cmd 可用任何 AssistantIntent 名稱，可帶 --es target_language / text / name。
+
+## 工作規則
 - 只在 guide-glasses/ 開發。AI_Assistant/、Face_Recognition/、
   Obstacle_Recognition/、Audio_Navigation/、Text_Recognition/ 是五位組員
   各自的工作區，不得修改。需要引用時複製過來重構。
 - Git 只保留 main，直接 git push origin HEAD:main，不開 PR。
 - 每完成一項就重新編譯、跑測試、更新 docs/STATUS.md 與 docs/TASKS.md。
 - 一律用繁體中文回覆。
-
-建置（JDK 11 不行，需要 17+）：
-  export JAVA_HOME="/c/Program Files/Android/Android Studio/jbr"
-  cd guide-glasses && ./gradlew build
-
-AGP 已升到 9.3.1，靠 gradle.properties 的 android.builtInKotlin=false
-與 android.newDsl=false 兩個相容開關，**不要拿掉那兩行**。
 
 接下來要做：<寫你要的>
 ```
@@ -293,10 +315,11 @@ AGP 已升到 9.3.1，靠 gradle.properties 的 android.builtInKotlin=false
 
 | 你的狀況 | 填什麼 |
 |---|---|
-| 跑過自我檢測了 | **把聽到的原話貼上去** —— 最有價值的輸入 |
-| 拿到 Rokid 眼鏡 | **把三個自我檢測聽到的原話貼上去** |
-| 都還沒有 | 「接上 CameraModeController」—— 走路才開相機，眼鏡續航很吃這個 |
-| 想推進導航 | 「實作 FollowHeadingUseCase」—— 純 IMU，不需 GPS |
+| **想讓眼鏡能用**（最高優先） | 「實作 Foreground Service，解決 idle UID 擋相機」 |
+| 想解決語音 | 「研究 com.rokid.os.sprite.tts.TTS_SERVICE 怎麼呼叫」 |
+| 想繼續做功能 | 「接上 CameraModeController」—— 走路才開相機，眼鏡續航很吃這個 |
+| 想驗證人臉 | 「跑註冊工具建幾個人，在眼鏡上測同步與辨識」 |
+| 想推進導航 | 「實作 FollowHeadingUseCase」—— 純 IMU，但注意沒有羅盤 |
 
 ---
 
