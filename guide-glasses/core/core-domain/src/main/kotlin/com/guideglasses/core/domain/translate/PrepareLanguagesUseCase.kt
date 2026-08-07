@@ -66,16 +66,16 @@ class PrepareLanguagesUseCase(
                     val ok = alreadyReady + downloaded
                     return when {
                         failed.isEmpty() && downloaded.isEmpty() ->
-                            "${ok.names()} 翻譯本來就準備好了"
+                            "${ok.names()}翻譯本來就準備好了"
 
                         failed.isEmpty() ->
-                            "${downloaded.names()} 語言包下載完成，現在離線也能翻譯"
+                            "${downloaded.names()}語言包下載完成，現在離線也能翻譯"
 
                         ok.isEmpty() ->
-                            "${failed.names()} 語言包下載失敗，請確認網路"
+                            "${failed.names()}語言包下載失敗，請確認網路"
 
                         else ->
-                            "${ok.names()} 已就緒，但 ${failed.names()} 下載失敗，請確認網路"
+                            "${ok.names()}已就緒，但${failed.names()}下載失敗，請確認網路"
                     }
                 }
 

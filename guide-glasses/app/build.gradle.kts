@@ -126,6 +126,10 @@ dependencies {
     implementation(project(":core:core-common"))
     implementation(project(":core:core-domain"))
     implementation(project(":glasses:glasses-camerax"))
+    // GuideGlassesApplication 需要直接用 CameraXConfig.Provider 修掉
+    // 眼鏡假宣告前鏡頭導致的 init 失敗。
+    implementation(libs.androidx.camera.core)
+    implementation(libs.androidx.camera.camera2)
     implementation(project(":glasses:glasses-sensors"))
     implementation(project(":ai:ai-speech"))
     implementation(project(":ai:ai-agent"))

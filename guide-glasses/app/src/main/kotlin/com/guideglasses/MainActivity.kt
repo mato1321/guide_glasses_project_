@@ -1,7 +1,13 @@
 package com.guideglasses
 
 import android.Manifest
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.util.Log
+import androidx.core.content.ContextCompat
 import android.os.Bundle
 import android.view.View
 import android.widget.Button
@@ -9,7 +15,6 @@ import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -34,6 +39,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvReply: TextView
     private lateinit var btnTalk: Button
     private lateinit var btnStop: Button
+
+    /** 開發用廣播接收器，只在 debug build 存在。 */
+    private var debugReceiver: BroadcastReceiver? = null
 
     /**
      * 麥克風與相機一起要。
@@ -69,6 +77,62 @@ class MainActivity : AppCompatActivity() {
         btnStop.setOnClickListener { viewModel.onStopRequested() }
 
         observeState()
+        registerDebugTrigger()
+    }
+
+    /**
+     * 開發用廣播入口。**只在 debug build 註冊。**
+     *
+     * Rokid Glasses 上沒有語音辨識服務，說話這條路完全走不通
+     * （`docs/DEVICE_FINDINGS.md` §3）。沒有這個入口，眼鏡上除了「看 log」
+     * 之外沒有任何辦法驗證功能是否正確。
+     *
+     * ```bash
+     * adb shell am broadcast -a com.guideglasses.DEBUG --es cmd READ_TEXT
+     * adb shell am broadcast -a com.guideglasses.DEBUG --es cmd TRANSLATE --es target_language ja
+     * ```
+     *
+     * ⚠️ **相機相關的指令要先讓 App 離開 idle**，否則 Android 會擋：
+     * `Access Denial: can't use the camera from an idle UID`
+     *
+     * ```bash
+     * adb shell am set-inactive com.guideglasses false
+     * adb shell svc power stayon true
+     * ```
+     */
+    private fun registerDebugTrigger() {
+        if (!BuildConfig.DEBUG) return
+
+        debugReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                when (val cmd = intent.getStringExtra("cmd").orEmpty()) {
+                    "" -> Log.w(DEBUG_TAG, "缺少 --es cmd")
+
+                    else -> {
+                        val args = buildMap {
+                            intent.getStringExtra("target_language")?.let { put("target_language", it) }
+                            intent.getStringExtra("text")?.let { put("text", it) }
+                            intent.getStringExtra("name")?.let { put("name", it) }
+                        }
+                        viewModel.debugDispatch(cmd, args)
+                    }
+                }
+            }
+        }
+
+        ContextCompat.registerReceiver(
+            this,
+            debugReceiver,
+            IntentFilter(DEBUG_ACTION),
+            ContextCompat.RECEIVER_EXPORTED,
+        )
+        Log.i(DEBUG_TAG, "已註冊。用法：adb shell am broadcast -a $DEBUG_ACTION --es cmd <INTENT名稱>")
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        debugReceiver?.let { runCatching { unregisterReceiver(it) } }
+        debugReceiver = null
     }
 
     private fun triggerAssistant() {
@@ -115,6 +179,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private companion object {
+        const val DEBUG_ACTION = "com.guideglasses.DEBUG"
+        const val DEBUG_TAG = "DebugTrigger"
+
         val REQUIRED_PERMISSIONS = listOf(
             Manifest.permission.RECORD_AUDIO,
             Manifest.permission.CAMERA,

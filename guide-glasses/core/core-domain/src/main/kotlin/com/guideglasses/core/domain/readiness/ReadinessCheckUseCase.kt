@@ -81,7 +81,7 @@ class ReadinessCheckUseCase(
             get() {
                 if (allReady) {
                     val languageNames = readyLanguages.joinToString("、") { it.spokenName }
-                    return "可以出門了。認得 $knownPeople 個人，$languageNames 翻譯已就緒"
+                    return "可以出門了。認得 $knownPeople 個人，${languageNames}翻譯已就緒"
                 }
 
                 val todo = buildList {
@@ -98,7 +98,7 @@ class ReadinessCheckUseCase(
                     }
                     if (missingLanguages.isNotEmpty()) {
                         val names = missingLanguages.joinToString("、") { it.spokenName }
-                        add("$names 語言包還沒下載，請先說準備翻譯")
+                        add("${names}語言包還沒下載，請先說準備翻譯")
                     }
                 }
 

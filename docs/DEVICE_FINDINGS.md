@@ -403,7 +403,199 @@ com.rokid.os.sprite.assistserver/com.rokid.os.sprite.tts.TtsService
 
 ---
 
-## 13. 重跑這些檢查
+## 13. ✅ Glass3 SDK 實測結論：確定不能用
+
+**不是推論，是實際跑過。** 加入依賴、寫探針、裝上眼鏡執行：
+
+```
+I GlassSdkProbe: 1. 目標套件 com.rokid.security.system.server 是否安裝：false
+I GlassSdkProbe: 2. bindSecurityService 已呼叫，等待回呼⋯
+I GlassSdkProbe: 3. 5 秒後 GlassSdk.isReady() = false
+W GlassSdkProbe: 3. ❌ 結論：這台消費版眼鏡無法使用 Glass3 SDK
+```
+
+`bindSecurityService()` **不會拋例外**，只是永遠不回呼 —— 這種靜默失敗
+如果沒有 5 秒後的 `isReady()` 檢查就看不出來。
+
+探針與 SDK 依賴測完已移除（不留無用的 350KB 依賴在 APK 裡）。
+要重跑就照 §10 的座標重新加回去。
+
+**結案：消費版眼鏡不要再考慮 Glass3 SDK。**
+
+---
+
+## 14. 🔴 相機：又一個「宣告有、實際沒有」
+
+### 症狀
+
+```
+W CameraValidator: Camera LENS_FACING_FRONT verification failed
+W CameraValidator: java.lang.IllegalArgumentException: No available camera can be found
+W CameraX: CameraIdListIncorrectException: Expected camera missing from device.
+```
+
+**CameraX 初始化整個失敗 → OCR、人臉、障礙物全都拿不到影像。**
+
+### 原因
+
+```bash
+adb shell dumpsys media.camera | grep -E "Number of camera|Facing"
+# Number of camera devices: 1
+#     Facing: Back
+
+adb shell pm list features | grep camera
+# feature:android.hardware.camera.front      ← 假的，實際沒有前鏡頭
+```
+
+CameraX 的 `CameraValidator` 照著特徵旗標去驗證前鏡頭，找不到就整個 init 失敗。
+
+### 解法（已修）
+
+`GuideGlassesApplication` 實作 `CameraXConfig.Provider`：
+
+```kotlin
+override fun getCameraXConfig(): CameraXConfig =
+    CameraXConfig.Builder.fromConfig(Camera2Config.defaultConfig())
+        .setAvailableCamerasLimiter(CameraSelector.DEFAULT_BACK_CAMERA)
+        .build()
+```
+
+修正後 `CameraValidator` 只驗證 `lensFacingInteger: 1`（後鏡頭），例外消失。
+
+---
+
+## 15. 🔴 相機還有第二關：idle UID 會被擋
+
+修好上面那個之後仍然拍不到，log 是：
+
+```
+E CameraService: Access Denial: can't use the camera from an idle UID pid=9094, uid=10087
+E Camera2CameraImpl: Error observed on open (or opening) camera device 0: ERROR_CAMERA_DISABLED
+```
+
+Android **禁止 idle 狀態的 App 使用相機**。而眼鏡的**螢幕逾時只有 5 秒**
+（`settings get system screen_off_timeout` → `5000`），App 很快就進入 idle。
+
+### 測試時的解法
+
+```bash
+adb shell am set-inactive com.guideglasses false
+adb shell svc power stayon true
+```
+
+### ⚠️ 這對產品是個真問題
+
+實際使用時，使用者戴著眼鏡、螢幕關閉、App 在背景 —— **相機會被系統擋掉**。
+障礙物偵測需要持續用相機，這條路目前走不通。
+
+可能的解法（未實作）：
+
+| 方案 | 說明 |
+|---|---|
+| **Foreground Service** | 標準做法。App 在前景服務中就不會 idle |
+| 加長螢幕逾時 | 治標，且耗電（眼鏡只有 210mAh） |
+| 電池最佳化白名單 | 已加（`dumpsys deviceidle whitelist +com.guideglasses`），但**不足以**解除 idle UID 的相機限制 |
+
+---
+
+## 16. ✅ 實測通過的功能（2026-08-08）
+
+用 debug 廣播入口逐一觸發（沒有 STT，只能這樣測）：
+
+```bash
+adb shell am set-inactive com.guideglasses false
+adb shell svc power stayon true
+adb shell am start -n com.guideglasses/.MainActivity
+adb shell am broadcast -a com.guideglasses.DEBUG --es cmd <INTENT名稱>
+adb logcat -d | grep TtsAnnouncer
+```
+
+> TTS 失敗時會把「本來要唸的話」印進 log，所以**聽不到但看得到**。
+
+| 指令 | 結果 | 判定 |
+|---|---|---|
+| `READINESS_CHECK` | 「還沒完全準備好。人臉資料庫是空的⋯目前離線可用的有：OCR 朗讀、翻譯」 | ✅ 正確 |
+| `PREPARE_TRANSLATION` | **「英文語言包下載完成，現在離線也能翻譯」** | ✅ **成功** |
+| `SENSOR_TEST` | 「動作感測正常。可以偵測走路。可以追蹤轉向。**沒有電子羅盤**。」 | ✅ 見 §17 |
+| `CAMERA_TEST` | **「相機正常。解析度 480 乘 640，影像 22 KB，耗時 930 毫秒」** | ✅ 見 §18 |
+| `READ_TEXT` | 「沒有看到文字，請調整角度或靠近一點」 | ✅ 管線完整（鏡頭前無字） |
+| `DETECT_OBSTACLES` | 「前面沒有偵測到障礙物」 | ✅ **YOLO ONNX 有載入並推論**（不可用會回不同訊息） |
+
+### 🎉 兩個重要的正面結果
+
+1. **ML Kit 翻譯在沒有 Play Services 的眼鏡上可以下載語言包並運作。**
+   當初選 standalone 而非 play-services 版是對的。
+
+2. **YOLOv8 ONNX 在 2GB RAM 的眼鏡上載入並推論成功，沒有 OOM。**
+
+---
+
+## 17. A3 解答：沒有電子羅盤
+
+```
+動作感測正常。可以偵測走路。可以追蹤轉向。沒有電子羅盤。
+```
+
+| 感測能力 | 有無 |
+|---|---|
+| 偵測走路（加速度計） | ✅ |
+| 追蹤**相對**轉向（陀螺儀） | ✅ |
+| **絕對方位（磁力計／電子羅盤）** | ❌ **沒有** |
+
+### 對導航的影響
+
+沒有絕對方位 → **不知道使用者面向哪個方位**。
+即使手機提供了 GPS 座標，也算不出「往左轉還是往右轉」——
+`Geo.relativeTurn()` 需要 `headingDegrees`，而那個值拿不到。
+
+可能的替代：
+- 由**移動軌跡**推算朝向（需要持續移動，靜止時無效）
+- 手機的羅盤（但手機在口袋裡，朝向與頭部不同）
+- 陀螺儀積分（會漂移，需要定期校正）
+
+**這比「沒有 GPS」更難繞過。** 導航的難度顯著高於原本評估。
+
+---
+
+## 18. A4 解答：相機延遲 930 毫秒
+
+```
+相機正常。解析度 480 乘 640，影像 22 KB，耗時 930 毫秒
+```
+
+| 項目 | 文件原本估計 | **實機實測** |
+|---|---|---|
+| 擷取 + 轉檔耗時 | ~145 ms | **930 ms** |
+| 解析度 | 640 / 1280（依功能） | **480 × 640** |
+
+**慢了約 6 倍。** 這是所有視覺功能的延遲基線，影響很大：
+
+- 障礙物偵測的延遲預算是 **<300ms**（1.4 m/s 下 = 42cm）
+  → **光是擷取就已經超支 3 倍**，還沒算推論
+- 2fps 連續偵測 = 每 500ms 一張，而單張擷取要 930ms → **做不到 2fps**
+
+> ⚠️ `ARCHITECTURE.md` 裡所有基於「擷取約 100ms」的延遲推算都要重算。
+> 需要進一步量測：是 CameraX 初始化慢（首次），還是每次都這麼慢？
+
+---
+
+## 19. Debug 廣播入口
+
+因為眼鏡上沒有 STT，**說話這條路完全走不通**，加了一個 debug-only 的廣播入口
+（`MainActivity.registerDebugTrigger()`，`BuildConfig.DEBUG` 才註冊）：
+
+```bash
+adb shell am broadcast -a com.guideglasses.DEBUG --es cmd READ_TEXT
+adb shell am broadcast -a com.guideglasses.DEBUG --es cmd TRANSLATE --es target_language ja
+```
+
+支援全部 `AssistantIntent`，可帶 `target_language` / `text` / `name` 參數。
+
+**沒有這個入口，眼鏡上除了看 log 之外沒有任何辦法驗證功能。**
+
+---
+
+## 20. 重跑這些檢查
 
 全部指令彙整，任何人都可以重跑：
 

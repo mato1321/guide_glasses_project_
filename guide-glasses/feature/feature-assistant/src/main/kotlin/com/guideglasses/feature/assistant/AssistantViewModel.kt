@@ -125,6 +125,31 @@ class AssistantViewModel @Inject constructor(
         }
     }
 
+    /**
+     * 開發用：不經語音直接分派一個 intent。
+     *
+     * **存在的理由：Rokid Glasses 上沒有任何語音辨識服務**
+     * （見 `docs/DEVICE_FINDINGS.md` §3），所以無法用說話觸發任何功能。
+     * 少了這個入口，OCR／人臉／翻譯／障礙物的邏輯在眼鏡上完全無法驗證。
+     *
+     * 只由 debug build 的廣播接收器呼叫，release 不會有任何呼叫端。
+     *
+     * ```bash
+     * adb shell am broadcast -a com.guideglasses.DEBUG --es cmd READ_TEXT
+     * adb shell am broadcast -a com.guideglasses.DEBUG --es cmd TRANSLATE --es target_language ja
+     * ```
+     */
+    fun debugDispatch(intentName: String, arguments: Map<String, String> = emptyMap()) {
+        val intent = AssistantIntent.entries
+            .firstOrNull { it.name.equals(intentName, ignoreCase = true) }
+        if (intent == null) {
+            android.util.Log.w("AssistantVM", "debugDispatch: 找不到 intent「$intentName」")
+            return
+        }
+        android.util.Log.i("AssistantVM", "debugDispatch → $intent args=$arguments")
+        dispatch(RoutedIntent(intent, arguments, RoutedIntent.Source.LOCAL_FAST_PATH))
+    }
+
     fun onStopRequested() {
         cancelListening()
         announcementManager.stopAll()

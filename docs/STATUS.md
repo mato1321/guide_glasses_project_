@@ -14,7 +14,7 @@
 | 建置狀態 | ✅ `./gradlew build` 通過，lint 無錯誤（AGP 9.3.1 / Gradle 9.5.0） |
 | APK | debug 約 106 MB（ONNX Runtime 18 MB ＋ 人臉 13 MB ＋ 障礙物 13 MB） |
 | clone 後可直接建置 | ✅ 模型已進版控，只需自補 `local.properties` |
-| 實機驗證 | 🟡 小米手機已驗證；🔴 **Rokid Glasses 已執行但語音完全不可用**，見 [`DEVICE_FINDINGS.md`](DEVICE_FINDINGS.md) |
+| 實機驗證 | 🟡 **Rokid Glasses：相機／OCR／障礙物／翻譯／感測器全部實測通過**；🔴 **語音（TTS+STT）不可用**。見 [`DEVICE_FINDINGS.md`](DEVICE_FINDINGS.md) |
 
 ---
 
@@ -87,13 +87,13 @@ guide-glasses/
 | 播報優先級仲裁 | 100% | ✅ |
 | AI 助理中樞（雙層意圖路由） | 85% | ✅ 缺 BFF、眼鏡 AI 鍵 |
 | 語音辨識 / 合成 | 🔴 **阻塞** | 手機可用；**眼鏡上 STT 不存在、TTS 綁定失敗** |
-| 相機（CameraX） | 85% | ✅ 手機已驗證，待 Rokid 校正視角 |
-| OCR 朗讀 | 85% | ✅ 手機已驗證（修掉逐行被切碎） |
+| 相機（CameraX） | 85% | ✅ **眼鏡實測通過**（修掉假前鏡頭旗標）。⚠️ 擷取 **930ms**，比估計慢 6 倍 |
+| OCR 朗讀 | 85% | ✅ **眼鏡實測管線完整** |
 | 人臉辨識 | 95% | ✅ 端側可用，瀏覽器註冊＋語音同步 |
-| IMU 動作感測 | 75% | ✅ 待實機確認感測器 |
-| 翻譯 | 90% | ✅ 支援口述內容；手機已驗證 |
-| 障礙物偵測 | 80% | ✅ YOLOv8 已接上，待 Rokid 實測偵測率與延遲 |
-| 導航 | 15% | 🟡 定位抽象＋幾何完成。**A10 已解答：眼鏡無 GPS**，須走手機 companion |
+| IMU 動作感測 | 75% | ✅ 眼鏡實測。⚠️ **沒有電子羅盤**，導航拿不到絕對方位 |
+| 翻譯 | 90% | ✅ **眼鏡實測：語言包下載成功**（無 Play Services 也能用） |
+| 障礙物偵測 | 80% | ✅ **眼鏡實測：YOLO ONNX 載入並推論成功**，2GB RAM 沒 OOM |
+| 導航 | 15% | 🔴 **難度上修**：無 GPS **且無電子羅盤**，連「往哪轉」都算不出來 |
 
 ---
 
@@ -304,7 +304,8 @@ AGP 已升到 9.3.1，靠 gradle.properties 的 android.builtInKotlin=false
 
 | 日期 | 進度 | 內容 |
 |---|---:|---|
-| 2026-08-08 | 78% | 排除 Glass3 企業版 SDK（缺 `com.rokid.security.system.server`）；找到 Sprite 原生 TTS action |
+| 2026-08-08 | 80% | **眼鏡實測：相機／OCR／障礙物／翻譯／感測器全通過**；修掉假前鏡頭旗標；A3/A4 解答 |
+| 2026-08-08 | 78% | 實測確認 Glass3 SDK 在消費版眼鏡不可用（`isReady()=false`）；排除 Glass3 企業版 SDK（缺 `com.rokid.security.system.server`）；找到 Sprite 原生 TTS action |
 | 2026-08-08 | 78% | **A10 解答：眼鏡宣告有 GPS 但沒有 provider**，確認須走手機 companion |
 | 2026-08-08 | 78% | **首次在 Rokid Glasses 執行**：發現無 Play Services、無 STT、TTS 綁定失敗（`DEVICE_FINDINGS.md`） |
 | 2026-08-07 | 78% | YOLOv8 障礙物偵測接上；類別索引按名稱對照（與 ordinal 有 6 處不一致） |
