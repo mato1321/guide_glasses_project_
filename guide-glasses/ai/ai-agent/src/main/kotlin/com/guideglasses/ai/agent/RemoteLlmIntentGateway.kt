@@ -138,9 +138,13 @@ class RemoteLlmIntentGateway(
 /**
  * 尚未設定 BFF 位址時使用。
  *
- * 一律回報無網路，讓 [com.guideglasses.core.domain.assistant.IntentRouter]
- * 走降級路徑。這樣即使後端還沒建好，App 也是可用的 ——
- * 本地快捷指令（停 / 前面有什麼 / 這是誰 / 唸給我聽）全部照常運作。
+ * 讓 [com.guideglasses.core.domain.assistant.IntentRouter] 走降級路徑。
+ * 這樣即使後端還沒建好，App 也是可用的 —— 本地快捷指令
+ * （停 / 這是誰 / 唸給我聽 / 翻成英文）全部照常運作。
+ *
+ * 回報的是「能力不存在」而**不是**「沒有網路」。這兩者以前被混為一談，
+ * 結果使用者在 Wi-Fi 連線良好的情況下聽到「目前沒有網路」，
+ * 完全無從得知真正的原因是這個 build 沒有設定 `llmEndpoint`。
  */
 class OfflineLlmIntentGateway : LlmIntentGateway {
 
@@ -148,6 +152,10 @@ class OfflineLlmIntentGateway : LlmIntentGateway {
         utterance: String,
         history: List<ConversationHistory.Turn>,
         tools: List<AssistantIntent>,
-    ): AppResult<RoutedIntent> =
-        AppResult.Failure(AppError.NoNetwork("尚未設定 LLM 後端位址"))
+    ): AppResult<RoutedIntent> = AppResult.Failure(
+        AppError.CapabilityUnavailable(
+            LlmIntentGateway.CAPABILITY_LLM_BACKEND,
+            "尚未設定 LLM 後端位址（guideglasses.llmEndpoint）",
+        ),
+    )
 }

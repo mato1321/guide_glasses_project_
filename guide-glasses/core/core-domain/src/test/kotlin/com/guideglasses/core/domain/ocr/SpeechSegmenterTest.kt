@@ -70,7 +70,49 @@ class SpeechSegmenterTest {
     fun `CRLF 與 CR 都能正確處理`() {
         val result = segmenter.segment("第一段內容。\r\n第二段內容。\r第三段內容。")
 
-        assertThat(result).hasSize(3)
+        // 換行字元本身不可以殘留下來被 TTS 唸出怪聲。
+        result.forEach { segment ->
+            assertThat(segment).doesNotContain("\r")
+            assertThat(segment).doesNotContain("\n")
+        }
+        val joined = result.joinToString("")
+        assertThat(joined).contains("第一段內容")
+        assertThat(joined).contains("第二段內容")
+        assertThat(joined).contains("第三段內容")
+    }
+
+    @Test
+    fun `CRLF 空行仍然是段落分隔`() {
+        val result = segmenter.segment("第一段內容。\r\n\r\n第二段內容。")
+
+        assertThat(result).hasSize(2)
+    }
+
+    /**
+     * ML Kit 的 `Text.getText()` 是**逐行**用 `\n` 串起來的。
+     * 曾經把單一 `\n` 當段落分隔，導致實機上每一行都自成一段。
+     */
+    @Test
+    fun `單純換行不會讓每一行各自成段`() {
+        val mlKitStyle = "台北市立聯合醫院\n姓名：王小明\n藥品名稱：普拿疼\n每次一顆。"
+
+        val result = segmenter.segment(mlKitStyle)
+
+        assertThat(result).hasSize(1)
+    }
+
+    /**
+     * 同一個 bug 的另一半：每一行都短又不以句號結尾，於是每一行都被冠上
+     * 「標題，」。使用者聽到的是「標題，標題，標題，…」。
+     */
+    @Test
+    fun `逐行的 OCR 結果不會每一行都被標成標題`() {
+        val mlKitStyle = "姓名：王小明\n藥品：普拿疼\n劑量：500mg\n頻率：每日三次"
+
+        val result = segmenter.segment(mlKitStyle)
+
+        val headingCount = result.count { it.contains("標題，") }
+        assertThat(headingCount).isAtMost(1)
     }
 
     @Test

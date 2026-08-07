@@ -5,6 +5,7 @@ import com.guideglasses.core.domain.AppError
 import com.guideglasses.core.domain.AppResult
 import com.guideglasses.core.domain.assistant.AssistantIntent
 import com.guideglasses.core.domain.assistant.ConversationHistory
+import com.guideglasses.core.domain.assistant.LlmIntentGateway
 import com.guideglasses.core.domain.assistant.RoutedIntent
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
@@ -170,13 +171,23 @@ class RemoteLlmIntentGatewayTest {
         assertThat(navigate.description).isNotEmpty()
     }
 
+    /**
+     * 刻意**不是** [AppError.NoNetwork]。
+     *
+     * 「沒設定後端」和「有設定但連不上」對使用者是不同的兩件事：前者無論
+     * 怎麼換網路都不會好。回報成無網路會讓他在 Wi-Fi 正常時聽到
+     * 「目前沒有網路」，然後去查一個不存在的問題。
+     */
     @Test
-    fun `未設定後端時一律回報無網路讓上層降級`() = runTest {
+    fun `未設定後端時回報能力不存在而不是無網路`() = runTest {
         val offline = OfflineLlmIntentGateway()
 
         val result = offline.route("任何話", emptyList(), AssistantIntent.callableTools)
 
         assertThat(result).isInstanceOf(AppResult.Failure::class.java)
-        assertThat((result as AppResult.Failure).error).isInstanceOf(AppError.NoNetwork::class.java)
+        val error = (result as AppResult.Failure).error
+        assertThat(error).isInstanceOf(AppError.CapabilityUnavailable::class.java)
+        assertThat((error as AppError.CapabilityUnavailable).capability)
+            .isEqualTo(LlmIntentGateway.CAPABILITY_LLM_BACKEND)
     }
 }

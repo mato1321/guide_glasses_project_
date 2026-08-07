@@ -15,6 +15,18 @@ package com.guideglasses.core.domain.ocr
  * 移植時修正了原版的一個問題：**單一句子超過 80 字時，原版會整句塞進一塊**
  * （因為只在「加入前」檢查長度）。這裡改成超長句子會再依逗號切開，
  * 真的沒有逗號才硬切。
+ *
+ * ## 換行 vs 段落
+ *
+ * ML Kit 回傳的文字是**逐行**用 `\n` 串起來的，不是逐段。把單一 `\n`
+ * 當成段落分隔會有兩個災難性後果，兩者都在實機上出現過：
+ *
+ *  1. 每一行都自成一段 —— 一張藥袋被切成二十幾段，使用者要說二十幾次
+ *     「下一段」才聽得完
+ *  2. 每一行都短、又不以句號結尾 —— 於是**每一行都被冠上「標題，」**
+ *
+ * 因此段落分隔定義為**空行**（[PARAGRAPH_BREAK]），段落內部的換行併成空白，
+ * 讓斷句邏輯能跨行把句子組回來。
  */
 class SpeechSegmenter(
     private val maxSegmentLength: Int = DEFAULT_MAX_SEGMENT_LENGTH,
@@ -36,7 +48,9 @@ class SpeechSegmenter(
 
         return normalised
             .split(PARAGRAPH_BREAK)
-            .map { it.trim() }
+            // 段落**內部**剩下的換行只是折行，不是新段落 —— 併成空白，
+            // 讓後面的斷句邏輯能跨行把句子組回來。見類別註解。
+            .map { it.replace('\n', ' ').replace(HORIZONTAL_WHITESPACE, " ").trim() }
             .filter { it.isNotEmpty() }
             .flatMap { segmentParagraph(it) }
     }
@@ -157,7 +171,16 @@ class SpeechSegmenter(
         const val DEFAULT_HEADING_LENGTH_THRESHOLD = 20
 
         private val HORIZONTAL_WHITESPACE = Regex("[ \t　]+")
-        private val PARAGRAPH_BREAK = Regex("\n+")
+
+        /**
+         * 段落分隔＝**空行**，不是單純的換行。
+         *
+         * 這個區別是實機測出來的。ML Kit 的 `Text.getText()` 用 `\n` 分隔
+         * 每一「行」，不是每一「段」。原本寫成 `\n+`，等於把 OCR 的每一行
+         * 都當成獨立段落 —— 一張藥袋於是被切成二十幾段，而且因為每行都短、
+         * 又不以句號結尾，**每一行都被冠上「標題，」**。
+         */
+        private val PARAGRAPH_BREAK = Regex("\\n\\s*\\n")
 
         /** 這些標點後面補空白，讓 TTS 有停頓。 */
         private val PAUSE_MARKS = charArrayOf('。', '，', '！', '？', '：', '；')

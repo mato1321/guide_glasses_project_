@@ -96,6 +96,42 @@ class IntentRouterTest {
     }
 
     @Test
+    fun `尚未設定BFF時不可以謊稱是網路問題`() = runTest {
+        val gateway = FakeLlmGateway(
+            AppResult.Failure(
+                AppError.CapabilityUnavailable(
+                    LlmIntentGateway.CAPABILITY_LLM_BACKEND,
+                    "尚未設定 LLM 後端位址",
+                ),
+            ),
+        )
+
+        val result = router(gateway).route("今天天氣如何")
+
+        assertThat(result.source).isEqualTo(RoutedIntent.Source.FALLBACK)
+        assertThat(result.intent).isEqualTo(AssistantIntent.CHAT)
+        // 手機連著 Wi-Fi 卻被告知「沒有網路」，使用者只會去查一個不存在的問題。
+        assertThat(result.spokenReply).doesNotContain("沒有網路")
+        // 仍然必須告訴他現在能做什麼。
+        assertThat(result.spokenReply).contains("這是誰")
+    }
+
+    @Test
+    fun `真的沒有網路與尚未設定BFF給不同的說法`() = runTest {
+        val noNetwork = router(FakeLlmGateway(AppResult.Failure(AppError.NoNetwork())))
+            .route("隨便問一句")
+        val notConfigured = router(
+            FakeLlmGateway(
+                AppResult.Failure(
+                    AppError.CapabilityUnavailable(LlmIntentGateway.CAPABILITY_LLM_BACKEND),
+                ),
+            ),
+        ).route("隨便問一句")
+
+        assertThat(noNetwork.spokenReply).isNotEqualTo(notConfigured.spokenReply)
+    }
+
+    @Test
     fun `沒有網路時本地指令仍然可用`() = runTest {
         val gateway = FakeLlmGateway(AppResult.Failure(AppError.NoNetwork()))
         val subject = router(gateway)
