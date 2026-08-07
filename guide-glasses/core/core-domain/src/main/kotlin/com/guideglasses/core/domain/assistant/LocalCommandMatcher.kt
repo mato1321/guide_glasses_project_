@@ -1,6 +1,7 @@
 package com.guideglasses.core.domain.assistant
 
 import com.guideglasses.core.domain.text.SpokenText
+import com.guideglasses.core.domain.translate.SpokenTranslation
 
 /**
  * 本地快捷指令比對。
@@ -28,7 +29,20 @@ class LocalCommandMatcher {
         // 依序比對，順序即優先級：STOP 必須最先，否則
         // 「停，前面有什麼」會被誤判成障礙物查詢而繼續播報。
         for ((intent, phrases) in ORDERED_RULES) {
-            if (phrases.any { normalised.contains(it) }) return intent
+            if (phrases.any { normalised.contains(it) }) {
+                // 「⋯⋯翻成英文」形式時，觸發詞前面那段是使用者**口述要翻譯的
+                // 內容**，不是指令。內容裡完全可能出現「繼續」「重複」「拍一張」
+                // 這種字（「你先繼續走翻成英文」），不能讓它們搶走翻譯。
+                //
+                // STOP 例外 —— 安全相關的指令在任何情況下都不讓路。
+                if (intent != AssistantIntent.STOP &&
+                    intent != AssistantIntent.TRANSLATE &&
+                    SpokenTranslation.endsWithRequest(utterance)
+                ) {
+                    return AssistantIntent.TRANSLATE
+                }
+                return intent
+            }
         }
         return null
     }

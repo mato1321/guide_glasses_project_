@@ -55,9 +55,22 @@ class MlKitTranslator(
 
     override val isAvailable: Boolean = true
 
+    /**
+     * 來源與目標的模型**都**要下載好才算就緒。
+     *
+     * 原本只檢查目標語言，而 ML Kit 以英文為樞紐、英文模型永遠回報「已下載」。
+     * 於是「中文翻英文」會被誤判成就緒，[TranslateUseCase] 因此跳過下載，
+     * 接著 `translate()` 直接拋
+     * `Translation model files not found` —— 真正缺的是**中文**模型。
+     *
+     * 實機上這條路徑 100% 失敗，而且錯誤訊息完全指不到原因。
+     */
     override suspend fun isReady(target: TargetLanguage): Boolean = withContext(ioDispatcher) {
-        val model = target.toRemoteModel() ?: return@withContext false
-        awaitTask { modelManager.isModelDownloaded(model) } ?: false
+        val tags = listOf(target.code, target.sourceLanguageTag()).distinct()
+        val models = tags.mapNotNull { remoteModelFor(it) }
+        if (models.size != tags.size) return@withContext false
+
+        models.all { model -> awaitTask { modelManager.isModelDownloaded(model) } == true }
     }
 
     /**
@@ -122,8 +135,8 @@ class MlKitTranslator(
     private fun TargetLanguage.sourceLanguageTag(): String =
         if (this == TargetLanguage.CHINESE) TargetLanguage.ENGLISH.code else TargetLanguage.CHINESE.code
 
-    private fun TargetLanguage.toRemoteModel(): TranslateRemoteModel? =
-        TranslateLanguage.fromLanguageTag(code)
+    private fun remoteModelFor(languageTag: String): TranslateRemoteModel? =
+        TranslateLanguage.fromLanguageTag(languageTag)
             ?.let { TranslateRemoteModel.Builder(it).build() }
 
     /** 成功回傳結果，失敗回傳 null。 */
