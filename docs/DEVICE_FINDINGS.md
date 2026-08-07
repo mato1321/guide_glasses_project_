@@ -4,6 +4,8 @@
 >
 > 這份文件記錄的是**用 adb 實際查出來的事實**，不是規格書、不是推論。
 > 每一項都附上取得方式，任何人都可以重跑驗證。
+>
+> 最後更新：2026-08-08（新增 §9 GPS、§10 Glass3 SDK、§11 Sprite TTS）
 
 ---
 
@@ -187,9 +189,9 @@ com.rokid.sysconfig
 com.qti.pasrservice                  Qualcomm PASR
 ```
 
-`com.rokid.os.sprite.assistserver` 與 `com.qti.pasrservice` 值得進一步研究 ——
-它們可能是 YodaOS 自己的語音堆疊，但**都沒有透過標準 Android API 對外提供服務**
-（查不到 `RecognitionService` 或 `TTS_SERVICE` 宣告）。
+`com.rokid.os.sprite.assistserver` 是 YodaOS 自己的語音堆疊。它**沒有**宣告
+標準的 `android.intent.action.TTS_SERVICE`（所以 Android 的 `TextToSpeech`
+看不到它），但**有自己的 action** —— 詳見 §11。
 
 ---
 
@@ -210,19 +212,47 @@ com.qti.pasrservice                  Qualcomm PASR
 
 ## 8. 待決策：語音要怎麼辦
 
-| 方案 | 延遲 | 離線 | 工作量 | 風險 |
+| 方案 | 延遲 | 離線 | 工作量 | 現況 |
 |---|---|---|---|---|
-| **A. 設定好 `tts_server_android`** | 看設定來源 | 看設定 | **0** | 只解決 TTS，STT 仍無解 |
-| **B. Sideload 離線 TTS 引擎 APK** | ~50ms | ✅ | 小 | 要找不依賴 Play Services 的；且 STT 仍無解 |
-| **C. 伺服器 STT/TTS**（沿用組員做法） | 2–3 秒 | ❌ | 中 | 需 OpenAI 金鑰；**違反「斷網不能等於失明」原則** |
-| **D. 改用非語音輸入** | — | ✅ | 中 | 眼鏡實體鍵觸發固定功能，放棄自由語句 |
-| **E. 研究 Rokid 自家語音堆疊** | ? | ? | ? | `assistserver` / `pasrservice` 未知，可能需要 Rokid 文件 |
+| ~~A. 設定 `tts_server_android`~~ | — | — | — | 🔴 **已排除**，見下方查核 |
+| **B. Sideload 離線 TTS 引擎 APK** | ~50ms | ✅ | 小 | 🟢 可行。裝好之後「本地TTS」就有東西可選。**但 STT 仍無解** |
+| **C. 伺服器 STT/TTS**（沿用組員做法） | 2–3 秒 | ❌ | 中 | 🟡 能動。需 OpenAI 金鑰；**違反「斷網不能等於失明」** |
+| **D. 改用非語音輸入** | — | ✅ | 中 | 🟡 眼鏡實體鍵觸發固定功能，放棄自由語句 |
+| ~~E. Glass3 企業版 SDK~~ | — | — | — | 🔴 **已排除**，見 §10 |
+| **F. YodaOS Sprite 原生服務** | ? | ? | ? | 🟢 **最有希望但需要介面文件**，見 §11 |
+
+### 🔴 方案 A 已排除（2026-08-08 用 uiautomator 逐頁查核）
+
+用 `adb shell uiautomator dump` 一路點進去看，三個地方**全部是空的**：
+
+| 位置 | 狀態 |
+|---|---|
+| 系統TTS → 配置清單 | 空 |
+| 系統TTS → ⋮ → 插件管理 | 空 |
+| 新增配置 → 添加本地TTS → TTS引擎下拉選單 | **空**（沒有其他引擎可包裝） |
+
+App 自己的日誌（`日誌` 分頁）從**安裝當天**就寫著：
+
+```
+2026-07-03 17:49:50  E  无可用的TTS配置，请检查是否启用。
+```
+
+「本地TTS」的作用是**包裝系統上其他的 TTS 引擎**，而這台唯一的引擎就是它自己
+→ 清單必然為空。「外掛程式TTS」需要先匯入外掛，插件管理也是空的。
+
+**這不是設定漏了，是這台裝置上這個 App 沒有任何可用的語音來源。**
 
 ### 建議順序
 
-1. **先在眼鏡上手動開啟 `tts_server_android` 確認它缺什麼設定**（零成本）
-2. **問組員 `com.example.gps` 的結果** —— 順便問他們的 App 在眼鏡上語音怎麼處理的
-3. TTS 通了之後再處理 STT。**STT 是比較難的那一半**，因為系統上真的什麼都沒有
+1. **向 Rokid 索取 Sprite 語音服務的介面文件**（方案 F）—— 這是唯一能同時解決
+   TTS 與 STT、且維持離線的路
+2. 同時**試 sideload 離線 TTS 引擎**（方案 B）—— 至少讓「能出聲」先成立，
+   可以開始驗證 OCR／人臉／障礙物
+3. STT 短期只能走 C 或 D
+
+> ⚠️ 在語音問題解決之前，**眼鏡上無法做任何端到端測試** ——
+> 沒有輸入也沒有輸出。OCR、人臉、翻譯、障礙物的程式碼可能都是對的，
+> 但目前無法在眼鏡上驗證。可以先用 `adb logcat` 觀察邏輯是否正確。
 
 > ⚠️ 在語音問題解決之前，**眼鏡上無法做任何端到端測試** ——
 > 沒有輸入也沒有輸出。OCR、人臉、翻譯、障礙物的程式碼可能都是對的，
@@ -230,7 +260,150 @@ com.qti.pasrservice                  Qualcomm PASR
 
 ---
 
-## 9. 重跑這些檢查
+## 9. 🔴 GPS：宣告有，實際沒有（TASKS A10 已解答）
+
+**和 TTS 完全相同的陷阱：API 說有，實作不存在。**
+
+```bash
+adb shell pm list features | grep location
+# feature:android.hardware.location.gps      ← 宣告有 GPS
+
+adb shell dumpsys location
+# Location Providers:
+#     passive provider:
+#     fused provider:                        ← 只有這兩個，沒有 gps provider
+```
+
+| 查核項 | 結果 |
+|---|---|
+| `pm list features` 宣告 `location.gps` | ✅ 有 |
+| 實際註冊的 provider | ❌ **只有 `passive` 與 `fused`** |
+| `dumpsys location` 的 GNSS 段落 | ❌ 完全不存在 |
+| `/vendor/lib64/hw/` 的 GNSS HAL | ❌ 不存在 |
+
+`fused` provider 是聚合 `gps` + `network` 的，兩個來源都沒有 → **拿不到座標**。
+
+**結論：眼鏡沒有可用的 GPS。** `ARCHITECTURE.md` §5.3 決定的
+「手機 companion 提供定位」是對的，現在有實據。
+`LocationProvider` 應綁 `PhoneCompanionLocationProvider`。
+
+---
+
+## 10. Rokid Glass3 SDK：存在但這台裝置用不了
+
+官方文件（企業版）：
+<https://x-docs.rokid.com/docs/terminal-sdk/api-reference/>
+
+SDK 是**公開可下載**的：
+
+```
+https://maven.rokid.com/repository/maven-public/com/rokid/security/glass3.open.sdk/
+最新 release: 2.5.1-P    最新版: 2.6.3-P-SNAPSHOT
+```
+
+`build.gradle`：
+
+```groovy
+implementation('com.rokid.security:glass3.open.sdk:2.5.1-P') { exclude group: "org.slf4j" }
+```
+
+### 它提供的服務（`GlassSdk` 的公開方法）
+
+```
+getGlassTtsService()               ITtsService          線上 TTS
+getGlassOfflineTtsService()        IOfflineTtsService   ★ 離線 TTS
+getGlassAsrService()               IAsrService          ★ ASR
+getGlassTranslateService()         ITranslateService    翻譯
+getGlassAiChatService()            IAiChatService       AI 對話
+getGlassOfflineRecService()        IOfflineRecServer    離線辨識
+getGlassOfflineFeatureRecService() 離線特徵辨識（可能是人臉）
+getGlassMediaService() / DeviceService / NotificationService / FileSystemService ⋯
+```
+
+**這幾乎涵蓋本專案從零實作的全部功能。**
+
+### 🔴 但它綁不到
+
+AAR 的 `AndroidManifest.xml`：
+
+```xml
+<queries>
+    <package android:name="com.rokid.security.system.server" />
+</queries>
+```
+
+```bash
+adb shell pm list packages | grep com.rokid.security
+# （無輸出）
+```
+
+**這台眼鏡上沒有 `com.rokid.security.system.server`。**
+那是**企業版佈建**才會預裝的後端服務。SDK 能下載、能編譯，但
+`GlassSdk.bindSecurityService()` 會連不上。
+
+眼鏡上實際有的 Rokid 套件只有：
+
+```
+com.rokid.cxrservice          com.rokid.os.sprite.assistserver
+com.rokid.facerecognition     com.rokid.os.sprite.launcher
+com.rokid.glass.ota           com.rokid.os.sprite.live
+com.rokid.sysconfig           com.rokid.os.sprite.snapflow
+com.rokid.os.master.screenstream
+```
+
+> 💡 **值得問 Rokid**：消費版眼鏡有沒有對應的 SDK 或佈建方式。
+> 如果能取得，專案可以大幅簡化。
+
+---
+
+## 11. 🟢 還有一條路：YodaOS Sprite 的原生 TTS
+
+眼鏡上**確實有** Rokid 自己的 TTS 服務，只是不是企業版那套：
+
+```bash
+adb shell dumpsys package com.rokid.os.sprite.assistserver | grep -A3 TTS_SERVICE
+```
+
+```
+com.rokid.os.sprite.assistserver/com.rokid.os.sprite.tts.TtsService
+  Action: "com.rokid.os.sprite.tts.TTS_SERVICE"
+```
+
+`assistserver` 對外宣告的 action 一覽：
+
+| Action | 可能用途 |
+|---|---|
+| `com.rokid.os.sprite.tts.TTS_SERVICE` | ★ **語音合成** |
+| `com.rokid.os.sprite.assist.MasterAssistService` | 助理主服務 |
+| `com.rokid.os.sprite.assist.instruct.InstructService` | 指令（可能是 ASR 入口） |
+| `com.rokid.os.sprite.assist.system.SystemFuncService` | 系統功能 |
+| `com.rokid.os.sprite.assist.media.SpriteMediaService` | 媒體 |
+| `com.rokid.os.sprite.assist.wifi.SpriteWifiService` | Wi-Fi 控制 |
+| `com.rokid.os.sprite.js.ai.JsaiService` | JS AI |
+
+**它有自己的 action，代表可以被 bind。** 但公開 SDK 裡**沒有它的 AIDL
+介面定義**，所以目前不知道方法簽章。
+
+三個取得方式：
+
+1. **向 Rokid 索取 Sprite 的介面文件**（最正規）
+2. 反編譯 `assistserver` 抽出 AIDL（技術可行，法律灰色）
+3. 試著用簡單 `Intent` + extra 送文字（成本最低，先試這個）
+
+---
+
+## 12. 組員沒人用過眼鏡端 SDK
+
+| 專案 | Rokid 依賴 |
+|---|---|
+| `AI_Assistant` | `com.rokid.cxr:client-m:1.0.1-20250812.080117-2` ← **手機端** CXR-M |
+| Face / Obstacle / Audio / Text | 僅套件命名用 `com.rokid.*`，**無任何 SDK** |
+
+兩個專案的 `settings.gradle.kts` 都已設好 Rokid maven repo，可直接取用。
+
+---
+
+## 13. 重跑這些檢查
 
 全部指令彙整，任何人都可以重跑：
 
@@ -241,7 +414,24 @@ adb shell settings get secure voice_recognition_service
 adb shell settings get secure tts_default_synth
 adb shell "cmd package query-services --brief -a android.speech.RecognitionService"
 adb shell pm list packages -3
+adb shell pm list packages | grep com.rokid
 ```
+
+GPS：
+
+```bash
+adb shell pm list features | grep location
+adb shell dumpsys location | head -20
+```
+
+Rokid Sprite 的服務：
+
+```bash
+adb shell dumpsys package com.rokid.os.sprite.assistserver | grep -E "^\s+Action:"
+```
+
+> ⚠️ 眼鏡螢幕逾時只有 **5 秒**，用 uiautomator 看畫面前要先
+> `adb shell svc power stayon true`，看完記得設回 `false`。
 
 觸發 TTS 並看錯誤：
 

@@ -93,7 +93,7 @@ guide-glasses/
 | IMU 動作感測 | 75% | ✅ 待實機確認感測器 |
 | 翻譯 | 90% | ✅ 支援口述內容；手機已驗證 |
 | 障礙物偵測 | 80% | ✅ YOLOv8 已接上，待 Rokid 實測偵測率與延遲 |
-| 導航 | 15% | 🟡 **定位抽象＋球面幾何已完成**，等 A10 決定實作 |
+| 導航 | 15% | 🟡 定位抽象＋幾何完成。**A10 已解答：眼鏡無 GPS**，須走手機 companion |
 
 ---
 
@@ -129,7 +129,7 @@ guide-glasses/
 
 | # | 卡在什麼 | 誰能解 | 影響 |
 |---|---|---|---|
-| 1 | 🔴 **眼鏡上沒有可用的語音堆疊** | 需決策（見 `DEVICE_FINDINGS.md` §8） | **眼鏡上無法做任何端到端測試** —— 沒有輸入也沒有輸出 |
+| 1 | 🔴 **眼鏡上沒有可用的語音堆疊** | 需 Rokid 提供 Sprite 介面文件，或 sideload 離線 TTS（`DEVICE_FINDINGS.md` §8） | **眼鏡上無法做任何端到端測試** |
 | 2 | ~~障礙物模型未交付~~ | ✅ **已解決** | YOLOv8n-seg 八類已接上並進版控 |
 | 3 | ~~端側人臉模型檔~~ | ✅ **已解決** | 用 InsightFace 的 `w600k_mbf.onnx`，直接執行不需轉檔 |
 
@@ -304,6 +304,8 @@ AGP 已升到 9.3.1，靠 gradle.properties 的 android.builtInKotlin=false
 
 | 日期 | 進度 | 內容 |
 |---|---:|---|
+| 2026-08-08 | 78% | 排除 Glass3 企業版 SDK（缺 `com.rokid.security.system.server`）；找到 Sprite 原生 TTS action |
+| 2026-08-08 | 78% | **A10 解答：眼鏡宣告有 GPS 但沒有 provider**，確認須走手機 companion |
 | 2026-08-08 | 78% | **首次在 Rokid Glasses 執行**：發現無 Play Services、無 STT、TTS 綁定失敗（`DEVICE_FINDINGS.md`） |
 | 2026-08-07 | 78% | YOLOv8 障礙物偵測接上；類別索引按名稱對照（與 ordinal 有 6 處不一致） |
 | 2026-08-07 | 75% | 口述內容直接翻譯；修正 ML Kit `isReady()` 漏檢來源語言（實機 100% 失敗） |

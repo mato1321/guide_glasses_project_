@@ -3,7 +3,7 @@
 > **完成一項就把 `[ ]` 改成 `[x]`。** 順手更新 [`STATUS.md`](STATUS.md) 的完成度。
 > 怎麼做見 [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md)。
 
-最後更新：2026-08-08 ｜ 已完成 **113 / 207**
+最後更新：2026-08-08 ｜ 已完成 **117 / 209**
 
 ---
 
@@ -24,7 +24,8 @@
 - [ ] A7 對門牌說「這是哪裡」→ 確認只唸最大的字
 - [ ] A8 設定 `faceEndpoint` 後說「這是誰」→ 記錄延遲
 - [x] ~~A9 確認眼鏡有無 Google Play Services~~ → 🔴 **沒有**（連 Play Store 都沒有）
-- [ ] A10 列出 `LocationManager` 的 provider（決定導航架構）
+- [x] ~~A10 列出 `LocationManager` 的 provider~~ → 🔴 **只有 passive/fused，沒有 gps**。
+      宣告有 `location.gps` 特徵但無 provider、無 GNSS HAL → **確定走手機 companion**
 - [ ] A11 測試邊充邊用是否可行
 - [ ] A12 連續 2fps 偵測下的實際續航
 - [ ] A13 測試能否設 Device Owner
@@ -43,11 +44,13 @@
 
 ## 🔴 A0. 語音阻塞（最優先，擋住所有其他驗證）
 
-- [ ] A0-1 在眼鏡上開啟 `tts_server_android`，確認它缺什麼設定（零成本，先做這個）
+- [x] ~~A0-1 確認 `tts_server_android` 缺什麼設定~~ → 🔴 **三處全空，無解**（`DEVICE_FINDINGS.md` §8）
 - [ ] A0-2 問組員：他們的 App 在眼鏡上語音怎麼處理的
-- [ ] A0-3 問組員 `com.example.gps` 的結果 → 可能直接回答 A10
+- [x] ~~A0-3 問組員 `com.example.gps`~~ → 組員說沒試過；**我直接用 adb 查出答案**（見 A10）
 - [ ] A0-4 決定語音方案（`DEVICE_FINDINGS.md` §8 的 A–E）
-- [ ] A0-5 研究 `com.rokid.os.sprite.assistserver` / `com.qti.pasrservice` 是否可用
+- [x] ~~A0-5 研究 Glass3 SDK~~ → 🔴 **企業版，缺 `com.rokid.security.system.server`**
+- [ ] A0-6 **向 Rokid 索取 Sprite 語音服務介面文件**（`com.rokid.os.sprite.tts.TTS_SERVICE`）⭐ 最有希望
+- [ ] A0-7 試 sideload 一個不依賴 Play Services 的離線 TTS 引擎 APK
 
 ---
 
@@ -330,13 +333,13 @@
 
 | 分類 | 已完成 | 總數 |
 |---|---:|---:|
-| A. 實機驗證 | 3 | 27 |
+| A. 實機驗證 | 7 | 29 |
 | B. 外部交付 | 7 | 11 |
 | C. 已完成的功能 | 62 | 76 |
 | D. 待實作 | 37 | 71 |
 | E. 交叉整合 | 2 | 6 |
 | F. 技術債 | 1 | 9 |
 | G. 給組員的建議 | 0 | 8 |
-| **合計** | **113** | **207** |
+| **合計** | **117** | **209** |
 
 > 更新這份文件時，順手改一下這個表與檔頭的數字。
