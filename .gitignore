@@ -17,6 +17,9 @@ signing.properties
 # ===== Python =====
 venv/
 .venv/
+# 轉換 YOLO 模型用的臨時環境（ultralytics + torch，約 1.3GB）。
+# `.venv/` 比對不到這個名字，少了這行 git add 會把它整個掃進去。
+.venv-export/
 __pycache__/
 *.pyc
 *.pyo
@@ -58,6 +61,9 @@ desktop.ini
 *.tflite
 *.task
 !guide-glasses/ai/ai-face/src/main/assets/*.onnx
+# 障礙物模型同理 —— 12.7MB，少了它 clone 下來的人說「前面有什麼」
+# 只會聽到「障礙物偵測目前不可用，缺少模型檔」。
+!guide-glasses/ai/ai-vision/src/main/assets/*.onnx
 
 # ===== 執行期產物 =====
 *.log

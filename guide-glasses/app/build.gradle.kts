@@ -97,9 +97,12 @@ android {
     buildTypes {
         debug {
             isMinifyEnabled = false
+            // 開發工具跑在區網 HTTP 上，見 AndroidManifest。
+            manifestPlaceholders["cleartextTraffic"] = true
         }
         release {
             isMinifyEnabled = true
+            manifestPlaceholders["cleartextTraffic"] = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -129,6 +132,7 @@ dependencies {
     implementation(project(":ai:ai-ocr"))
     implementation(project(":ai:ai-face"))
     implementation(project(":ai:ai-translate"))
+    implementation(project(":ai:ai-vision"))
     implementation(project(":core:core-database"))
     implementation(project(":feature:feature-assistant"))
 

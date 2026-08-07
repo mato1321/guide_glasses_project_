@@ -105,25 +105,38 @@ app  →  feature  →  core-domain  ←  glasses/* + ai/* + core-database
 
 | 元件 | 版本 |
 |---|---|
-| Gradle | **8.13** |
-| Android Gradle Plugin | **8.13.2** ← 不要升到 9.x |
+| Gradle | **9.5.0** |
+| Android Gradle Plugin | **9.3.1** |
 | Kotlin | 2.2.10 |
-| KSP | 2.2.10-2.0.2 |
+| KSP | 2.3.6 |
 | Hilt | 2.57.1 |
 | compileSdk / targetSdk | 36 |
 | **minSdk** | **28**（Android 9） |
 | jvmTarget | 17 |
 
-### ⚠️ 為什麼不能升到 AGP 9.x
+### 關於 AGP 9.x（本節已於 2026-08-07 更新）
 
-實測過 AGP 9.1.0，兩個阻斷問題：
+**先前的結論是「不能升到 9.x」，現在已經升上去而且可以建置。**
+
+當初實測 AGP 9.1.0 有兩個阻斷問題：
 
 1. AGP 9 內建 Kotlin 支援，與 `org.jetbrains.kotlin.android` 衝突
    （`Cannot add extension with name 'kotlin'`）
 2. AGP 9 移除了 `BaseExtension`，Hilt Gradle plugin（至 2.57.1）無法套用
    （`Android BaseExtension not found`）
 
-等 Hilt 正式支援 AGP 9 再評估。
+AGP 9.3.1 靠 `gradle.properties` 的相容性開關解掉了這兩點：
+
+```properties
+android.builtInKotlin=false   # 讓出 kotlin extension 給 kotlin.android plugin
+android.newDsl=false          # 保留舊 DSL，Hilt plugin 才找得到
+```
+
+該檔案裡其他 `android.*` 旗標是 Android Studio 升級助手一併加入的，
+用途是把新預設值鎖回舊行為，避免升級同時改變建置語意。
+
+> ⚠️ **這些開關是過渡措施。** 它們終究會被移除，屆時必須等 Hilt 正式支援
+> AGP 9 的新 DSL。升級 AGP 之前先確認 Hilt 的相容性，不要只看能不能 sync。
 
 ## 關於 Rokid SDK
 
@@ -320,8 +333,8 @@ flowchart TD
 | `Invalid file path` | `sdk.dir` 的反斜線沒跳脫 | 寫成 `C\:\\Users\\...` |
 | `Unsupported class file major version` | JDK 版本太舊 | 設定 `JAVA_HOME` 指向 JDK 17+ |
 | `Could not resolve com.microsoft.onnxruntime...` | 沒有網路或防火牆擋住 | 確認能連 Maven Central |
-| `Cannot add extension with name 'kotlin'` | 有人把 AGP 升到 9.x | 改回 8.13.2 |
-| `Android BaseExtension not found` | 同上 | 同上 |
+| `Cannot add extension with name 'kotlin'` | `android.builtInKotlin` 沒設成 false | 見 §2 的 AGP 9.x 說明 |
+| `Android BaseExtension not found` | `android.newDsl` 沒設成 false | 同上 |
 | KSP 找不到剛新增的 class | 增量編譯快取過期 | `./gradlew :feature:feature-assistant:clean` 後重建 |
 
 ### 安裝階段
@@ -1413,7 +1426,9 @@ JDK 版本太舊。**JDK 11 無法建置**，需要 17+。設定 `JAVA_HOME`。
 
 ### Q: 我把 AGP 升級了，現在建置失敗
 
-改回 `agp = "8.13.2"`。AGP 9.x 與 Kotlin plugin 及 Hilt 衝突，見 [§2](#-為什麼不能升到-agp-9x)。
+專案已在 AGP 9.3.1 / Gradle 9.5.0。若出現 kotlin extension 或 Hilt `BaseExtension`
+的錯誤，是 `guide-glasses/gradle.properties` 的 `android.builtInKotlin=false`
+與 `android.newDsl=false` 被移除了。見 [§2](#關於-agp-9x本節已於-2026-08-07-更新)。
 
 ### Q: 我改了 `local.properties` 的 `faceEndpoint`，但沒有生效
 

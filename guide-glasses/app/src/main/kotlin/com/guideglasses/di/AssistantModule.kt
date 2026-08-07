@@ -41,6 +41,9 @@ import com.guideglasses.core.domain.translate.Translator
 import com.guideglasses.ai.translate.MlKitTranslator
 import com.guideglasses.core.domain.glasses.FrameSource
 import com.guideglasses.core.domain.motion.MotionSensorGateway
+import com.guideglasses.core.domain.obstacle.DetectObstaclesUseCase
+import com.guideglasses.core.domain.obstacle.ObstacleDetector
+import com.guideglasses.ai.vision.YoloObstacleDetector
 import com.guideglasses.core.domain.ocr.ReadTextUseCase
 import com.guideglasses.core.domain.ocr.SpeechSegmenter
 import com.guideglasses.core.domain.ocr.TextRecognizer
@@ -316,6 +319,30 @@ object AssistantModule {
         detector = detector,
         embedder = embedder,
         repository = repository,
+    )
+
+    // ===== 障礙物偵測 =====
+
+    /**
+     * 端側障礙物偵測。
+     *
+     * 模型是團隊自己訓練的 YOLOv8n-seg（8 類，`data.yaml`），隨 APK 附上於
+     * `ai/ai-vision/src/main/assets/obstacle_yolov8.onnx`。沒有模型檔時
+     * `isAvailable` 為 false，UseCase 會播報「功能不可用」而不是靜默失敗。
+     */
+    @Provides
+    @Singleton
+    fun provideObstacleDetector(@ApplicationContext context: Context): ObstacleDetector =
+        YoloObstacleDetector(context)
+
+    @Provides
+    @Singleton
+    fun provideDetectObstaclesUseCase(
+        frameSource: FrameSource,
+        detector: ObstacleDetector,
+    ): DetectObstaclesUseCase = DetectObstaclesUseCase(
+        frameSource = frameSource,
+        detector = detector,
     )
 
     /**

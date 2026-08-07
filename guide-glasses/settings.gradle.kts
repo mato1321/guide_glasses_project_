@@ -36,6 +36,7 @@ include(":ai:ai-agent")
 include(":ai:ai-ocr")
 include(":ai:ai-face")
 include(":ai:ai-translate")
+include(":ai:ai-vision")
 
 // ===== 功能模組 =====
 include(":feature:feature-assistant")

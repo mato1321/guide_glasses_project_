@@ -22,8 +22,17 @@
         android:name="android.hardware.camera"
         android:required="false" />
 
+    <!--
+        開發工具（人臉註冊伺服器、InsightFace 後端）都是區網上的 HTTP 服務，
+        而 targetSdk 28 以上預設封鎖明文流量 —— 不開這個，「同步人臉」會直接
+        連不出去，而且錯誤看起來像是位址設錯。
+
+        只在 debug build 開放（見 app/build.gradle.kts 的 manifestPlaceholders），
+        release 維持禁止，正式流量一律走 HTTPS。
+    -->
     <application
         android:name=".GuideGlassesApplication"
+        android:usesCleartextTraffic="${cleartextTraffic}"
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"

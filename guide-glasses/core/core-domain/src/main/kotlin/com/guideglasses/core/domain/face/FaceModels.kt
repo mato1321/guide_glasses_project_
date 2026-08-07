@@ -70,8 +70,17 @@ data class KnownPerson(
 /** 辨識結果。 */
 sealed interface FaceMatch {
 
+    /**
+     * 最佳候選的餘弦相似度。
+     *
+     * 三種結果都帶著它，這樣呼叫端不必先 `when` 才拿得到數字。
+     * 播報只有「是」「可能是」「不認識」三檔，**校正閾值時唯一有意義的
+     * 依據就是這個數字** —— 拿不到它就只能盲調。
+     */
+    val similarity: Float
+
     /** 高信心，直接說出是誰。 */
-    data class Confident(val person: KnownPerson, val similarity: Float) : FaceMatch
+    data class Confident(val person: KnownPerson, override val similarity: Float) : FaceMatch
 
     /**
      * 中等信心 —— 播報時要帶不確定性。
@@ -79,8 +88,10 @@ sealed interface FaceMatch {
      * 「可能是王老師」比「是王老師」誠實。認錯人對使用者是很尷尬的事，
      * 系統寧可表達不確定，也不要讓他喊錯名字。
      */
-    data class Tentative(val person: KnownPerson, val similarity: Float) : FaceMatch
+    data class Tentative(val person: KnownPerson, override val similarity: Float) : FaceMatch
 
     /** 資料庫裡沒有這個人。 */
-    data class Unknown(val bestSimilarity: Float) : FaceMatch
+    data class Unknown(val bestSimilarity: Float) : FaceMatch {
+        override val similarity: Float get() = bestSimilarity
+    }
 }
