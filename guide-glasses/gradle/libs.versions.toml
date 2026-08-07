@@ -1,9 +1,20 @@
 [versions]
 # --- 建置工具 ---
-# 注意：不要升到 AGP 9.x。AGP 9 移除了 BaseExtension，Hilt Gradle plugin
-# （至 2.57.1）套用時會失敗（"Android BaseExtension not found"）；
-# AGP 9 亦內建 Kotlin 支援，與 org.jetbrains.kotlin.android 衝突。
-# 待 Hilt 正式支援 AGP 9 後再評估升級。
+# AGP 9 需要 gradle.properties 裡兩個相容性開關才能建置，**不要拿掉**：
+#
+#   android.builtInKotlin=false
+#       AGP 9 內建 Kotlin 支援，會與 org.jetbrains.kotlin.android 搶
+#       kotlin extension（Cannot add extension with name 'kotlin'）。
+#       設 false 讓出 extension 給 Kotlin plugin。
+#
+#   android.newDsl=false
+#       AGP 9 的新 DSL 移除了 BaseExtension，Hilt Gradle plugin（至 2.57.1）
+#       套用時會失敗（Android BaseExtension not found）。設 false 保留舊 DSL。
+#
+# 這兩個開關是**過渡措施**，Google 終究會移除它們。
+# 移除條件：Hilt 正式支援 AGP 9 的新 DSL 之後（追蹤 Hilt release note），
+# 屆時先拿掉 android.newDsl，確認 Hilt 仍能套用，再拿掉 android.builtInKotlin
+# 並把 kotlin.android plugin 從各模組移除。
 agp = "9.3.1"
 kotlin = "2.2.10"
 ksp = "2.3.6"

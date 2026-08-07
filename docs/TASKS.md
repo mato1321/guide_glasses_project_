@@ -3,13 +3,16 @@
 > **完成一項就把 `[ ]` 改成 `[x]`。** 順手更新 [`STATUS.md`](STATUS.md) 的完成度。
 > 怎麼做見 [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md)。
 
-最後更新：2026-08-06 ｜ 已完成 **92 / 199**
+最後更新：2026-08-07 ｜ 已完成 **110 / 202**
 
 ---
 
 ## 🔴 A. 只有你能做（實機驗證）
 
 **優先做這一組。** 這些答案會決定後面很多設計。
+
+> 🟡 已在**小米 Android 手機**上跑過，找出三個真實 bug。
+> 以下全部指的是 **Rokid Glasses**，手機通過不代表眼鏡會通過。
 
 - [ ] A1 把 debug APK 裝到 Rokid Glasses
 - [ ] A2 說「停」→ **確認有沒有聲音**（沒聲音先解這個）
@@ -29,21 +32,23 @@
 - [ ] A16 **確認眼鏡有沒有英文 TTS 語音資料** —— 沒有的話翻譯結果會用中文腔唸出來
 - [ ] A17 記錄翻譯本身的延遲（語言包就緒後）
 - [ ] A18 上傳幾個人的照片後說「同步人臉」→ **記下播報的相似度百分比**
+      （低於 35% 代表模型或前處理不對，這是唯一能發現該問題的方式）
 - [ ] A19 出門前說「出門前檢查」→ 確認回報內容正確
 - [ ] A20 說「準備翻譯」→ 記下語言包下載耗時
 - [ ] A21 **拔掉網路後**完整測一輪四個功能（這才是實測的重點）
-      （低於 35% 代表模型或前處理不對，這是唯一能發現該問題的方式）
+- [ ] A22 說「前面有什麼」→ 記錄障礙物偵測率、誤報率與端到端延遲
 
 ---
 
 ## 📦 B. 需要別人交付
 
-- [ ] B1 Obstacle_Recognition：INT8 `.tflite`
-- [ ] B2 Obstacle_Recognition：類別索引對照表（8 類的順序）
-- [ ] B3 Obstacle_Recognition：輸入尺寸
-- [ ] B4 Obstacle_Recognition：前處理規格（正規化方式、RGB/BGR）
-- [ ] B5 Obstacle_Recognition：後處理規格（輸出張量、NMS 是否內建）
-- [ ] B6 Obstacle_Recognition：驗證集 mAP
+- [x] ~~B1 Obstacle_Recognition：模型~~ → **已交付**，改用 ONNX（`obstacle_yolov8.onnx`）
+- [x] ~~B2 類別索引對照表~~ → **已取得**。⚠️ 與 `ObstacleClass` 的 ordinal **有 6 處不一致**，
+      一律按名稱對照，由 `ObstacleClassMappingTest` 鎖住
+- [x] ~~B3 輸入尺寸~~ → 640×640 letterbox
+- [x] ~~B4 前處理規格~~ → RGB、/255、NCHW
+- [x] ~~B5 後處理規格~~ → 輸出 `[1, 44, 8400]`，只讀前 12 通道，NMS 自行實作
+- [ ] B6 驗證集 mAP（仍未取得，但已用 12 張測試圖與 ultralytics 比對通過）
 - [x] ~~B7 端側人臉模型~~ → **已解決**：用 InsightFace 自動下載的
       `buffalo_sc/w600k_mbf.onnx`，改走 ONNX Runtime 直接執行，不需轉檔
 - [x] ~~B8 導航架構決策（A / B / C 案）~~ → **已決策**：A 案（手機 companion
@@ -95,7 +100,9 @@
 - [x] `AndroidTtsAnnouncer`（約 50ms、無障礙音訊通道）
 - [x] 錯誤碼轉成人話
 - [x] `onDone` 契約保證（否則佇列會卡死）
-- [ ] 實機驗證（A2、A3）
+- [x] **小米手機驗證**：修正缺離線語音包時完全無法使用
+- [x] 錯誤碼分類到 `SpeechCapability`，播報依類型分岔
+- [ ] **Rokid 眼鏡**驗證（A2、A3）
 - [ ] 依優先級調整語速（`applyRateFor` 已實作但未呼叫）
 
 ### C5. 相機
@@ -178,10 +185,12 @@
 剩下的（非阻塞）：
 
 - [ ] 接語言偵測（`com.google.mlkit:language-id`）取代目前的來源語言啟發式
+- [x] 支援口述內容直接翻譯（`SpokenTranslation`，仍不需 BFF）
+- [x] 修正 `isReady()` 漏檢來源語言（ML Kit 以英文為樞紐，中翻英 100% 失敗）
 - [ ] 長文分段翻譯（目前超過 1000 字截斷）
 - [ ] 實機驗證：語言包下載時間、翻譯延遲、外語 TTS 是否存在（見 A15–A17）
 
-### D2. 障礙物偵測（等 B1–B6）
+### ~~D2. 障礙物偵測~~ ✅ 已接上（2026-08-07），待 Rokid 實測
 
 **✅ 純 domain 部分已完成（2026-08-06，不需模型）：**
 
@@ -199,14 +208,14 @@
 
 **需要模型之後：**
 
-- [ ] 建立 `ai/ai-vision` 模組（`noCompress += "tflite"`）
-- [ ] `YoloDetector` TFLite + NNAPI/GPU delegate
-- [ ] 前處理（依 B4 規格）
-- [ ] 後處理與 NMS（依 B5 規格）
-- [ ] 接上 `CameraModeController`
+- [x] 建立 `ai/ai-vision` 模組（`noCompress += "onnx"`）
+- [x] `YoloObstacleDetector` —— ONNX Runtime（不轉 tflite，理由同 ai-face）
+- [x] 前處理：letterbox + RGB + /255 + NCHW
+- [x] 後處理與 NMS（以 Python 複刻後與 ultralytics 比對，框差 <6px）
+- [ ] 接上 `CameraModeController`（走路才開相機，眼鏡續航很吃這個）
 - [ ] 導引類與危險類的不同播報節奏
-- [ ] ViewModel 分派（`DETECT_OBSTACLES` 已有 intent）
-- [ ] 實機測試：偵測率、誤報率、端到端延遲
+- [x] ViewModel 分派 + DI 接線
+- [ ] **Rokid 眼鏡**實機測試：偵測率、誤報率、端到端延遲
 
 ### D3. 導航（架構已定，可開工）
 
@@ -310,13 +319,13 @@
 
 | 分類 | 已完成 | 總數 |
 |---|---:|---:|
-| A. 實機驗證 | 0 | 21 |
-| B. 外部交付 | 0 | 11 |
-| C. 已完成的功能 | 60 | 74 |
-| D. 待實作 | 28 | 71 |
+| A. 實機驗證 | 0 | 22 |
+| B. 外部交付 | 7 | 11 |
+| C. 已完成的功能 | 62 | 76 |
+| D. 待實作 | 37 | 71 |
 | E. 交叉整合 | 2 | 6 |
 | F. 技術債 | 1 | 9 |
 | G. 給組員的建議 | 0 | 8 |
-| **合計** | **92** | **199** |
+| **合計** | **110** | **202** |
 
 > 更新這份文件時，順手改一下這個表與檔頭的數字。

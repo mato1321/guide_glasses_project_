@@ -37,24 +37,26 @@ sdk.dir=C\:\\Users\\<你的帳號>\\AppData\\Local\\Android\\Sdk
 
 | 元件 | 版本 | 備註 |
 |---|---|---|
-| Gradle | 8.13 | |
-| AGP | 8.13.2 | **不要升到 9.x** |
+| Gradle | 9.5.0 | |
+| AGP | 9.3.1 | 需要兩個相容開關，見下 |
 | Kotlin | 2.2.10 | |
-| KSP | 2.2.10-2.0.2 | |
+| KSP | 2.3.6 | |
 | Hilt | 2.57.1 | |
 | compileSdk / targetSdk | 36 | |
-| minSdk | 28 | CXR-M SDK 要求 ≥ 28 |
+| minSdk | 28 | |
 
-### 為什麼卡在 AGP 8.x
+### AGP 9 需要的兩個相容開關
 
-實測過 AGP 9.1.0，會遇到兩個阻斷問題：
+寫在 `gradle.properties`，**不要拿掉**：
 
-1. AGP 9 內建 Kotlin 支援，與 `org.jetbrains.kotlin.android` 衝突
-   （`Cannot add extension with name 'kotlin'`）
-2. AGP 9 移除了 `BaseExtension`，Hilt Gradle plugin（至 2.57.1）無法套用
-   （`Android BaseExtension not found`）
+```properties
+android.builtInKotlin=false   # 讓出 kotlin extension 給 kotlin.android plugin
+android.newDsl=false          # 保留舊 DSL，Hilt plugin 才找得到 BaseExtension
+```
 
-待 Hilt 正式支援 AGP 9 之後再評估升級。
+少了它們會分別出現 `Cannot add extension with name 'kotlin'` 與
+`Android BaseExtension not found`。這是**過渡措施** —— Hilt 正式支援
+AGP 9 的新 DSL 之後才能移除。
 
 ---
 
@@ -73,13 +75,14 @@ ai/
   ai-speech/                  Android SpeechRecognizer / TextToSpeech
   ai-agent/                   BFF function calling 協定與 HTTP 閘道
   ai-ocr/                     ML Kit 中文 OCR（bundled，離線）
-  ai-face/                    ML Kit 偵測 + TFLite 端側 / 遠端辨識
+  ai-face/                    ML Kit 偵測 + ONNX 端側 / 遠端辨識
   ai-translate/               ML Kit 翻譯（語言包執行期下載）
+  ai-vision/                  YOLOv8 障礙物偵測（ONNX，八類）
 feature/
   feature-assistant/          助理中樞 ViewModel
 ```
 
-尚未建立：`ai-vision`（障礙物，等模型交付）、`feature-navigation`（等 GPS 架構決策）。
+尚未建立：`feature-navigation`（等 Rokid 實測是否有 GPS）。
 `glasses-cxr` 目前判定為非必要 —— 眼鏡就是 Android 裝置，標準 API 全部可用。
 
 ### `core-domain` 刻意不是 Android 模組
@@ -97,15 +100,15 @@ feature/
 
 已完成：地基（多模組 / Hilt / version catalog）、播報優先級仲裁、
 AI 助理中樞（雙層意圖路由）、STT / TTS、相機（CameraX）、
-OCR 朗讀（含分段控制）、人臉辨識（端側或遠端擇一）、IMU 動作感測、**翻譯**。
+OCR 朗讀（含分段控制）、人臉辨識（端側）、IMU 動作感測、翻譯、
+**障礙物偵測**（YOLOv8 八類）。
 
-尚未實作：**障礙物偵測**（等 `Obstacle_Recognition` 交付 `.tflite`）、
-**導航**（眼鏡無 GPS，需先做架構決策）。這兩個 intent 目前會播報
+尚未實作：**導航**（眼鏡推定無 GPS，待 A10 實測）。這個 intent 目前會播報
 「這個功能還在開發中」—— 刻意不靜默，因為對看不見畫面的使用者，
 沒有聲音等於系統當掉。
 
-> ⚠️ 這個 App **從未在任何實體裝置上執行過**。驗證只有建置成功、
-> 228 個單元測試通過、lint 無錯誤。
+> ⚠️ **小米 Android 手機已驗證**（並因此找出三個真實 bug），
+> 但 **Rokid Glasses 從未執行過**。306 個單元測試通過、lint 無錯誤。
 
 ### 設定 LLM 後端（選用）
 
@@ -125,7 +128,7 @@ App 端刻意不直接呼叫 LLM 供應商 —— 內嵌金鑰必然會被反編
 |---|---|
 | 停 / 安靜 / 別說了 | 立刻停止播報 |
 | 測試相機 / 測試感測器 | 自我檢測（實機驗證用，用聽的就知道通不通） |
-| 前面有什麼 / 可以走嗎 / 有障礙物嗎 | 障礙物偵測（尚未實作，回「開發中」） |
+| 前面有什麼 / 可以走嗎 / 有障礙物嗎 | 障礙物偵測（YOLOv8 八類） |
 | 這是誰 / 這個人是誰 / 誰在我前面 | 人臉辨識（含方位與距離） |
 | 唸給我聽 / 上面寫什麼 | OCR 文件朗讀 |
 | 這是哪裡 / 招牌寫什麼 | OCR 招牌模式（只唸最大的字） |
@@ -156,7 +159,7 @@ App 端刻意不直接呼叫 LLM 供應商 —— 內嵌金鑰必然會被反編
 ./gradlew test
 ```
 
-目前 57 個單元測試，全部是純 JVM，秒級完成，不需要模擬器。
+目前 **306 個單元測試**，全部是純 JVM，秒級完成，不需要模擬器。
 
 守護的是行為而不只是資料結構：
 - 危險警示能否打斷正在進行的長文朗讀
@@ -164,3 +167,5 @@ App 端刻意不直接呼叫 LLM 供應商 —— 內嵌金鑰必然會被反編
 - 已被打斷的 TTS 回呼遲到時，佇列會不會跳號漏播
 - 「這個人是誰」能否命中（舊版關鍵字比對會漏掉）
 - 沒有網路時，助理是否說人話而不是唸出 exception
+- 障礙物的**模型類別索引**是否對到正確的 domain 類別
+  （八類裡有六類的 ordinal 與模型索引不同，錯了不會報錯）

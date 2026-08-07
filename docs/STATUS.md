@@ -5,16 +5,16 @@
 
 | | |
 |---|---|
-| 最後更新 | 2026-08-06 |
-| `main` HEAD | `3b5ce99` |
-| 整體完成度 | **約 70%** |
-| 單元測試 | **279 個，全過**（31 個測試類，純 JVM） |
-| 模組數 | 12 |
-| Kotlin 行數 | 7,545（主程式）+ 3,448（測試） |
-| 建置狀態 | ✅ `./gradlew build` 通過，lint 無錯誤 |
-| APK | debug 約 95 MB（含 ONNX Runtime 18 MB ＋ 人臉模型 13 MB） |
+| 最後更新 | 2026-08-07 |
+| `main` HEAD | `9000bae` |
+| 整體完成度 | **約 78%** |
+| 單元測試 | **306 個，全過**（34 個測試類，純 JVM） |
+| 模組數 | 13 |
+| Kotlin 行數 | 8,535（主程式）+ 3,799（測試） |
+| 建置狀態 | ✅ `./gradlew build` 通過，lint 無錯誤（AGP 9.3.1 / Gradle 9.5.0） |
+| APK | debug 約 106 MB（ONNX Runtime 18 MB ＋ 人臉 13 MB ＋ 障礙物 13 MB） |
 | clone 後可直接建置 | ✅ 模型已進版控，只需自補 `local.properties` |
-| 實機驗證 | ❌ **從未在任何實體裝置上執行過** |
+| 實機驗證 | 🟡 **小米 Android 手機已驗證**；❌ **Rokid Glasses 從未執行過** |
 
 ---
 
@@ -22,7 +22,7 @@
 
 ```
 guide-glasses/
-├── app/                        組裝層  447 行
+├── app/                        組裝層  508 行
 │   ├── MainActivity.kt             單一 Activity，整片畫面是按鈕
 │   ├── GuideGlassesApplication.kt  @HiltAndroidApp
 │   └── di/
@@ -30,7 +30,7 @@ guide-glasses/
 │       └── AssistantModule.kt      全部功能的接線
 │
 ├── core/
-│   ├── core-domain/            3811 行 + 3266 行測試  ★ 純 Kotlin
+│   ├── core-domain/            4,184 行 + 3,532 行測試  ★ 純 Kotlin
 │   │   ├── AppResult.kt            型別化的結果與錯誤
 │   │   ├── announce/               播報優先級仲裁
 │   │   ├── assistant/              意圖路由、對話歷史
@@ -40,7 +40,7 @@ guide-glasses/
 │   │   ├── motion/                 步態、轉向指示、相機模式
 │   │   ├── speech/                 ASR 介面
 │   │   ├── translate/              目標語言解析、翻譯、語言包預下載
-│   │   ├── obstacle/               ★框架：八類、距離、危險分級、去抖動
+│   │   ├── obstacle/               八類、距離、危險分級、去抖動、偵測 UseCase
 │   │   ├── navigation/             ★框架：定位抽象、球面幾何
 │   │   ├── readiness/              出門前檢查
 │   │   └── text/                   ASR 文字正規化（共用）
@@ -53,14 +53,15 @@ guide-glasses/
 │   └── glasses-sensors/          214 行   IMU 感測
 │
 ├── ai/                         AI 能力
-│   ├── ai-speech/                385 行   SpeechRecognizer / TextToSpeech
-│   ├── ai-agent/                 243 行 + 182 行測試   LLM BFF 協定
+│   ├── ai-speech/                466 行   SpeechRecognizer / TextToSpeech
+│   ├── ai-agent/                 251 行 + 193 行測試   LLM BFF 協定
 │   ├── ai-ocr/                   124 行   ML Kit 中文（bundled）
 │   ├── ai-face/                  860 行   ML Kit + ONNX/TFLite + 遠端 + 同步
-│   └── ai-translate/             166 行   ML Kit 翻譯（語言包執行期下載）
+│   ├── ai-translate/             179 行   ML Kit 翻譯（語言包執行期下載）
+│   └── ai-vision/                385 行 + 74 行測試   YOLOv8 障礙物偵測
 │
 ├── feature/
-│   └── feature-assistant/        555 行   AssistantViewModel
+│   └── feature-assistant/        658 行   AssistantViewModel
 │
 └── tools/                      開發工具（不進 APK）
     ├── face_enroll_server.py     瀏覽器上傳照片＋標人名，零依賴
@@ -70,7 +71,7 @@ guide-glasses/
 **依賴方向**：`app` → `feature` → `core-domain` ← `glasses/* + ai/* + core-database`
 
 `core-domain` 只套用 `kotlin.jvm`，任何 `android.*` 的 import 都會編譯失敗 ——
-這是建置層面強制的架構約束，也是為什麼 3266 行測試可以純 JVM 秒級跑完。
+這是建置層面強制的架構約束，也是為什麼 3,532 行測試可以純 JVM 秒級跑完。
 
 **部署形態**：單一 APK，直接裝在 Rokid Glasses 上執行。手機目前**不在必要路徑上**。
 完整的分層決策與未來的手機 companion 設計見
@@ -85,13 +86,13 @@ guide-glasses/
 | 專案地基（多模組、Hilt、version catalog） | 95% | ✅ 缺 CI |
 | 播報優先級仲裁 | 100% | ✅ |
 | AI 助理中樞（雙層意圖路由） | 85% | ✅ 缺 BFF、眼鏡 AI 鍵 |
-| 語音辨識 / 合成 | 90% | ✅ 待實機驗證 |
-| 相機（CameraX） | 80% | ✅ 待實機驗證 |
-| OCR 朗讀 | 75% | ✅ 缺雲端 fallback |
+| 語音辨識 / 合成 | 95% | ✅ 手機已驗證（修掉離線語音包 bug） |
+| 相機（CameraX） | 85% | ✅ 手機已驗證，待 Rokid 校正視角 |
+| OCR 朗讀 | 85% | ✅ 手機已驗證（修掉逐行被切碎） |
 | 人臉辨識 | 95% | ✅ 端側可用，瀏覽器註冊＋語音同步 |
 | IMU 動作感測 | 75% | ✅ 待實機確認感測器 |
-| 翻譯 | 80% | ✅ 語言包首次需網路下載 |
-| 障礙物偵測 | 35% | ⏸ **domain 框架已完成**，等模型交付前後處理 |
+| 翻譯 | 90% | ✅ 支援口述內容；手機已驗證 |
+| 障礙物偵測 | 80% | ✅ YOLOv8 已接上，待 Rokid 實測偵測率與延遲 |
 | 導航 | 15% | 🟡 **定位抽象＋球面幾何已完成**，等 A10 決定實作 |
 
 ---
@@ -112,7 +113,8 @@ guide-glasses/
 | **出門前檢查** | 回報離線可用狀態與該補什麼 | — |
 | **準備翻譯** | 預先下載語言包 | 網路 |
 | 翻成英文 / 翻譯 | 翻譯上一次 OCR 的內容 | 首次該語言需網路下載語言包 |
-| 前面有什麼 | 障礙物偵測 | ⏸ 回「開發中」 |
+| **⋯⋯翻成英文** | 直接翻譯口述內容 | 同上 |
+| **前面有什麼** | 障礙物偵測（YOLOv8 八類） | 相機權限 |
 | 帶我去⋯ | 導航 | ⏸ 回「開發中」，且需 BFF |
 
 **最實用的組合**：「唸給我聽」→ 聽到中文 → 「翻成英文」，同一份內容不必再拍一次。
@@ -127,7 +129,7 @@ guide-glasses/
 
 | # | 卡在什麼 | 誰能解 | 影響 |
 |---|---|---|---|
-| 1 | 障礙物模型未交付 | Obstacle_Recognition 負責人 | 🔴 `ai-vision` 無法開工 |
+| 1 | ~~障礙物模型未交付~~ | ✅ **已解決** | YOLOv8n-seg 八類已接上並進版控 |
 | 2 | ~~端側人臉模型檔~~ | ✅ **已解決** | 用 InsightFace 的 `w600k_mbf.onnx`，直接執行不需轉檔 |
 
 ~~導航架構未定~~ → **已於 2026-08-06 決策**：手機 companion 只當
@@ -171,7 +173,8 @@ cd guide-glasses && ./gradlew build
 | OCR 朗讀（文件／招牌） | — |
 | 人臉辨識（端側） | 先跑註冊工具建幾個人，見 [`tools/README.md`](../guide-glasses/tools/README.md) |
 | 翻譯 | 首次該語言需連網下載語言包 |
-| 障礙物、導航 | ⏸ 尚未實作，會播報「開發中」 |
+| 障礙物偵測 | — |
+| 導航 | ⏸ 尚未實作，會播報「開發中」 |
 
 `local.properties` 可選的兩行（不設也能跑）：
 
@@ -217,20 +220,35 @@ guideglasses.faceEndpoint=http://<你的IP>:8000/recognize   # 遠端人臉備�
 
 ---
 
-## 5.5 最重要的待辦：第一次上機
+## 5.5 最重要的待辦：裝上 Rokid Glasses
 
-**這五分鐘會消掉目前最多的未知數，而且只有你能做。**
+### 目前的驗證狀態
 
-裝到眼鏡上，依序說：
+| 平台 | 狀態 |
+|---|---|
+| 小米 Android 手機 | 🟡 **已跑過**，並因此找出三個真實 bug（見 §7） |
+| **Rokid Glasses** | ❌ **從未執行過** |
+
+**手機通過不代表眼鏡會通過。** 兩者差異大的地方：
+
+| 項目 | 手機 | Rokid Glasses |
+|---|---|---|
+| 相機視角 | 一般廣角 | **官方未載明**，距離估計靠它 |
+| 續航 | 4000mAh+ | **210mAh，開相機可能 <1.5 小時** |
+| RAM | 6–12 GB | **2 GB**，三個 ONNX 模型同時載入未驗證 |
+| Google App / Play Services | 有 | **未知**，STT 與 ML Kit 都可能受影響 |
+| GPS | 有 | **推定沒有** |
+
+### 上機後先做這三件事
 
 1. 「停」→ 確認有沒有聲音（**沒聲音就先解這個**）
 2. 「測試感測器」→ **記下整句回答**，有沒有「電子羅盤」決定導航設計
 3. 「測試相機」→ **記下毫秒數**，那是所有視覺功能的延遲基線
 
-完整清單見 [`TASKS.md`](TASKS.md) §A 與 [`TECHNICAL_NOTES.md`](TECHNICAL_NOTES.md) §7。
+完整清單見 [`TASKS.md`](TASKS.md) §A。
 
-> ⚠️ **這個 App 從未在任何實體裝置上執行過。** 驗證只有建置成功、
-> 279 個單元測試通過、lint 無錯誤。請把第一次上機當成探勘而不是驗收。
+> ⚠️ 請把第一次裝上眼鏡當成**探勘**而不是驗收。手機上已經找出三個
+> 只有實跑才會發現的 bug，眼鏡上大機率還有第四個。
 
 ---
 
@@ -260,7 +278,8 @@ guideglasses.faceEndpoint=http://<你的IP>:8000/recognize   # 遠端人臉備�
   export JAVA_HOME="/c/Program Files/Android/Android Studio/jbr"
   cd guide-glasses && ./gradlew build
 
-不要升級 AGP 到 9.x（實測會與 Kotlin plugin 衝突且 Hilt 無法套用）。
+AGP 已升到 9.3.1，靠 gradle.properties 的 android.builtInKotlin=false
+與 android.newDsl=false 兩個相容開關，**不要拿掉那兩行**。
 
 接下來要做：<寫你要的>
 ```
@@ -270,8 +289,8 @@ guideglasses.faceEndpoint=http://<你的IP>:8000/recognize   # 遠端人臉備�
 | 你的狀況 | 填什麼 |
 |---|---|
 | 跑過自我檢測了 | **把聽到的原話貼上去** —— 最有價值的輸入 |
-| 拿到障礙物模型 | 「實作 ai-vision，模型在 <路徑>，規格如下…」 |
-| 都還沒有 | 「實作障礙物偵測的純 domain 部分」—— 不需模型，可純 JVM 測試 |
+| 拿到 Rokid 眼鏡 | **把三個自我檢測聽到的原話貼上去** |
+| 都還沒有 | 「接上 CameraModeController」—— 走路才開相機，眼鏡續航很吃這個 |
 | 想推進導航 | 「實作 FollowHeadingUseCase」—— 純 IMU，不需 GPS |
 
 ---
@@ -280,6 +299,11 @@ guideglasses.faceEndpoint=http://<你的IP>:8000/recognize   # 遠端人臉備�
 
 | 日期 | 進度 | 內容 |
 |---|---:|---|
+| 2026-08-07 | 78% | YOLOv8 障礙物偵測接上；類別索引按名稱對照（與 ordinal 有 6 處不一致） |
+| 2026-08-07 | 75% | 口述內容直接翻譯；修正 ML Kit `isReady()` 漏檢來源語言（實機 100% 失敗） |
+| 2026-08-07 | 73% | **小米手機實測**：修正 OCR 逐行被切碎、以及謊稱沒有網路 |
+| 2026-08-07 | 72% | **小米手機實測**：缺離線語音包時退回線上辨識（原本按下說話一律失敗） |
+| 2026-08-07 | 70% | 升級 AGP 9.3.1 / Gradle 9.5.0，用兩個相容開關解掉先前認為無解的衝突 |
 | 2026-08-06 | 70% | 新增 `DEVELOPER_GUIDE.md`：新手從零接手的完整文件（11 張 Mermaid） |
 | 2026-08-06 | 70% | 出門前檢查、語言包預下載；障礙物與導航的 domain 框架（不需模型即可測試） |
 | 2026-08-06 | 65% | 人臉模型改為隨 repo 附上，clone 完即可測試；`face_photos/` 加入忽略 |

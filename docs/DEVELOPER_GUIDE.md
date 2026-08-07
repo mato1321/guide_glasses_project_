@@ -60,12 +60,12 @@
 | 人臉辨識 | 認出眼前的人，播報方位、距離與姓名 |
 | 播報仲裁 | 四級優先級，危險警示能打斷任何內容 |
 | IMU 動作感測 | 步態、轉向、相機模式自動切換 |
-| 障礙物偵測 | ⏸ 純邏輯完成，等模型交付 |
+| 障礙物偵測 | ✅ YOLOv8 八類已接上 |
 | 導航 | 🟡 定位抽象與幾何完成，等實機驗證 GPS |
 
 ## 整體架構
 
-多模組 Gradle 專案，共 **12 個模組**。核心約束：
+多模組 Gradle 專案，共 **13 個模組**。核心約束：
 
 ```
 app  →  feature  →  core-domain  ←  glasses/* + ai/* + core-database
@@ -73,7 +73,7 @@ app  →  feature  →  core-domain  ←  glasses/* + ai/* + core-database
 
 `core-domain` **只套用 `kotlin.jvm`，不是 Android 模組**。任何 `android.*`
 的 import 都會編譯失敗 —— 這是建置層面強制的架構約束，也是為什麼
-3,448 行測試能純 JVM 秒級跑完，不需要模擬器。
+3,799 行測試能純 JVM 秒級跑完，不需要模擬器。
 
 ## 適合閱讀對象
 
@@ -245,7 +245,10 @@ cd guide-glasses && ./gradlew build
 
 第一次約 3–5 分鐘（要下載 Gradle 與所有依賴），之後約 10 秒。
 
-看到 `BUILD SUCCESSFUL` 就完成環境建置。這一步也會跑完 **279 個單元測試**。
+看到 `BUILD SUCCESSFUL` 就完成環境建置。這一步也會跑完 **306 個單元測試**。
+
+> 首次建置會下載 Gradle 9.5.0 與所有依賴，網路慢的話可能要 10 分鐘以上。
+> 中途看起來卡住是正常的，讓它跑完。
 
 ## Step 8 — 連接 Rokid Glasses
 
@@ -832,14 +835,28 @@ flowchart LR
 
 ---
 
-## 7.9 障礙物偵測 ⏸
+## 7.9 障礙物偵測
 
 | 項目 | 內容 |
 |---|---|
-| **完成度** | 🟡 **35%**（純 domain 完成，等模型） |
-| **主要 Class** | `ObstacleClass`、`DangerClassifier`、`ObstacleDebouncer`、`ObstacleAnnouncementComposer` |
-| **測試** | 22 個 |
-| **缺什麼** | `Obstacle_Recognition` 交付的 `.tflite` 與規格 |
+| **完成度** | 🟢 **80%**（已接上，待 Rokid 實測） |
+| **主要 Class** | `YoloObstacleDetector`、`DetectObstaclesUseCase`、`DangerClassifier`、`ObstacleDebouncer` |
+| **模型** | `ai-vision/src/main/assets/obstacle_yolov8.onnx`（13MB，已進版控） |
+| **測試** | 22 個 domain ＋ 8 個類別對照 |
+| **缺什麼** | Rokid 實機的偵測率、誤報率、延遲；接上 `CameraModeController` |
+
+### ⚠️ 類別索引不能用 ordinal 對照
+
+`data.yaml` 的順序與 `ObstacleClass` 的 enum 順序**八類裡有六類不同**：
+
+| 模型索引 | data.yaml | 若按 ordinal 會變成 |
+|---:|---|---|
+| 0 | bicycle | ❌ PERSON |
+| 6 | people | ❌ GUIDE_BRICK |
+
+按 ordinal 對照**不會有任何錯誤訊息**，只會把腳踏車唸成行人。
+因此一律按**名稱**對照，並由 `ObstacleClassMappingTest` 鎖住 ——
+其中一個測試專門斷言「不一致的數量正好是 6」。
 
 八類分成兩種 kind：
 
@@ -1080,10 +1097,13 @@ BFF 不存在所以到不了。刪除與更新則連 intent 都沒有。
 
 ### 障礙物
 
-**如何呼叫**：命中 `DETECT_OBSTACLES`（本地片語已就緒）→ 目前落到
-「開發中」分支。
+**如何呼叫**：命中 `DETECT_OBSTACLES` → `dispatch()` → `detectObstacles()`
+→ `DetectObstaclesUseCase` → `YoloObstacleDetector`（ONNX Runtime）
 
-**缺什麼**：只缺 `ai-vision` 模組與模型。domain 邏輯已完成，接上就通。
+**已完整整合。** 助理能問「前面有什麼」並得到含方位與距離的回答。
+
+**缺什麼**：Rokid 實機的偵測率與延遲；以及接上 `CameraModeController`
+（走路才開相機，眼鏡續航很吃這個）。
 
 ### 設定
 
@@ -1134,22 +1154,20 @@ flowchart TB
     D -->|否| F["❌ BFF 不存在"]
     F --> G["✅ 降級：說人話"]
     E --> H{"功能已實作？"}
-    H -->|"OCR/翻譯/人臉/相機/感測器"| I["✅ 執行"]
-    H -->|"障礙物"| J["❌ 缺模型"]
+    H -->|"OCR/翻譯/人臉/障礙物/相機/感測器"| I["✅ 執行"]
     H -->|"導航"| K["❌ 缺 BFF + 定位 + 狀態機"]
     I --> L["✅ 播報仲裁"]
     G --> L
-    J --> L
     K --> L
     L --> M["✅ TTS"]
 
     classDef ok fill:#1b5e20,stroke:#a5d6a7,color:#fff
     classDef bad fill:#b71c1c,stroke:#ef9a9a,color:#fff
     class B,C,E,G,I,L,M ok
-    class F,J,K bad
+    class F,K bad
 ```
 
-**三個缺口**：BFF、障礙物模型、導航實作。其餘全部打通。
+**兩個缺口**：BFF、導航實作。其餘全部打通（障礙物已於 2026-08-07 接上）。
 
 ---
 
@@ -1167,7 +1185,7 @@ flowchart TB
 | **人臉新增** | 🟡 | ❌ | 60% | **只能在瀏覽器做**，語音需 BFF |
 | **人臉刪除** | 🟡 | ❌ | 50% | 只能在瀏覽器做，無 intent |
 | **人臉更新／改名** | 🟡 | ❌ | 50% | 同上 |
-| **障礙物偵測** | ❌ | 🟡 | 35% | 片語已命中但無實作，domain 完成 |
+| **障礙物偵測** | ✅ | ✅ | 80% | YOLOv8 八類已接上，待 Rokid 實測 |
 | **導航** | ❌ | ❌ | 15% | 缺 BFF + 定位 + 狀態機 |
 | **相機自我檢測** | ✅ | ✅ | 100% | |
 | **相機模式控制** | 🟡 | ❌ | 70% | Controller 完成但未接線 |
@@ -1204,7 +1222,7 @@ flowchart TB
 
 | 功能 | 完成度 | 缺什麼 |
 |---|---:|---|
-| 障礙物偵測 | 35% | domain 完成，缺 `.tflite` 與 `ai-vision` 模組 |
+
 | 導航 | 15% | 定位抽象與幾何完成，缺狀態機與實作 |
 | 相機模式自動切換 | 70% | `CameraModeController` 未接線 |
 | 人臉新增／刪除／更新 | 50–60% | 只能在瀏覽器做，眼鏡端無法 |
@@ -1219,10 +1237,36 @@ flowchart TB
 | CI | 0% | 未設定 |
 | Instrumented test | 0% | 目前只有純 JVM 測試 |
 
-## 整體：約 70%
+## 整體：約 78%
 
-> ⚠️ **這個 App 從未在任何實體裝置上執行過。**
-> 上述完成度指的是「程式碼與單元測試完成度」，不是「經過驗證」。
+## 驗證狀態（兩個平台要分開看）
+
+| 平台 | 狀態 |
+|---|---|
+| **小米 Android 手機** | 🟡 **已實際執行過**，並因此找出三個真實 bug |
+| **Rokid Glasses** | ❌ **從未執行過** |
+
+手機上找出的三個 bug，全部是**只有實跑才會發現**、單元測試抓不到的：
+
+| # | 症狀 | 根因 |
+|---|---|---|
+| 1 | 按下說話一律回「我現在無法處理」，App 等於不能用 | 裝置沒有 zh-TW 離線語音包，`SpeechRecognizer` 回 error 12，而 `mapError()` 沒涵蓋該碼 |
+| 2 | 一張藥袋被唸成「標題，標題，標題…」 | ML Kit 的 `getText()` 是逐**行**用 `
+` 串接，不是逐**段**，斷句器把每行都當成一段 |
+| 3 | 中翻英 100% 失敗，拋 `Translation model files not found` | ML Kit 以英文為樞紐，英文模型永遠回報已下載，`isReady()` 只檢查目標語言就誤判為就緒 |
+
+**手機通過不代表眼鏡會通過。** 兩者差異最大的地方：
+
+| 項目 | 手機 | Rokid Glasses |
+|---|---|---|
+| 相機視角 | 一般廣角 | **官方未載明**，距離估計靠它 |
+| 續航 | 4000mAh+ | **210mAh，開相機可能 <1.5 小時** |
+| RAM | 6–12 GB | **2 GB**，三個 ONNX 模型同時載入未驗證 |
+| Google App / Play Services | 有 | **未知**，STT 與 ML Kit 都可能受影響 |
+| GPS | 有 | **推定沒有** |
+
+> ⚠️ 完成度指的是「程式碼與單元測試完成度」加上「手機驗證」，
+> **不包含 Rokid Glasses 驗證**。請把第一次裝上眼鏡當成探勘而不是驗收。
 
 ---
 
@@ -1230,7 +1274,9 @@ flowchart TB
 
 ## 12.1 Bug
 
-**目前沒有已知的 Bug。** 279 個單元測試全過，lint 無錯誤。
+**目前沒有已知的 Bug。** 306 個單元測試全過，lint 無錯誤。
+
+先前在小米手機上找出的三個 bug 都已修正（見 §11 驗證狀態）。
 
 但這只代表**邏輯正確**，不代表**實機可用**。所有硬體相關行為都未驗證。
 
@@ -1536,7 +1582,7 @@ App 直接跑在眼鏡上，不需要配對。Manifest 裡的藍牙權限是早�
 
 | 項目 | 狀態 | 下一步 |
 |---|---|---|
-| 障礙物偵測 | domain 完成（35%） | 等 `.tflite` → 建 `ai-vision` 模組做前後處理 |
+| 障礙物偵測 | **已接上（80%）** | 待 Rokid 實測偵測率與延遲；接上 `CameraModeController` |
 | 導航 | 定位抽象＋幾何完成（15%） | 實機驗證 GPS（A10）→ 選定 `LocationProvider` 實作 → 狀態機 |
 
 ## 規劃中
@@ -1592,11 +1638,14 @@ App 直接跑在眼鏡上，不需要配對。Manifest 裡的藍牙權限是早�
 | 主張 | 依據 |
 |---|---|
 | 眼鏡跑 Android 12、APK 直接安裝 | ✅ 已由 `Face_Recognition/` 實證 |
-| 12 模組、82 檔、279 測試、行數 | ✅ 本次掃描實際計數 |
-| 端側 OCR／人臉／翻譯可運作 | 🟡 **僅建置與單元測試通過，從未上機** |
+| 13 模組、306 測試、行數 | ✅ 本次掃描實際計數 |
+| AGP 9.3.1 可建置 | ✅ 實際 `./gradlew build` 通過 |
+| STT／OCR／翻譯可運作 | 🟡 **小米手機已驗證**，Rokid Glasses 未驗證 |
+| 端側人臉、障礙物可運作 | 🟡 建置與單元測試通過；障礙物前後處理已與 ultralytics 比對 |
 | 相機視角 66° | ⚠️ **預設估算值，官方未載明，待實機校正** |
 | 眼鏡沒有 GPS | ⚠️ **推定**，待 `TASKS.md` A10 實測 |
 | 開相機續航 <1.5 小時 | ⚠️ 估算，待 A12 實測 |
+| 2GB RAM 跑得動三個 ONNX 模型 | ⚠️ **未驗證**。人臉 13MB ＋ 障礙物 13MB ＋ ML Kit |
 | 各項延遲數字（100ms、50ms 等） | ⚠️ 依函式庫官方數據估算，**未在 Rokid Glasses 上量測** |
 
 > **任何要寫進論文或報告的效能數字，都必須先實測。**
