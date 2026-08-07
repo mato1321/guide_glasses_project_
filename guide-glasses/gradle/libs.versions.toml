@@ -4,9 +4,9 @@
 # （至 2.57.1）套用時會失敗（"Android BaseExtension not found"）；
 # AGP 9 亦內建 Kotlin 支援，與 org.jetbrains.kotlin.android 衝突。
 # 待 Hilt 正式支援 AGP 9 後再評估升級。
-agp = "8.13.2"
+agp = "9.3.1"
 kotlin = "2.2.10"
-ksp = "2.2.10-2.0.2"
+ksp = "2.3.6"
 # compileSdk 36 = Android 16。Rokid Glasses 的 YodaOS 基於 Android 12 (API 32)，
 # 而 CXR-M SDK 要求 minSdk >= 28，故 minSdk 取 28。
 compileSdk = "36"
