@@ -703,7 +703,10 @@ interface CompanionLink {
 
 | 主張 | 依據 |
 |---|---|
-| 眼鏡跑 Android 12、APK 直接安裝 | ✅ 已由 `Face_Recognition/` 實證 |
+| 眼鏡跑 Android 12、APK 直接安裝 | ✅ **2026-08-08 本專案親自實證** |
+| 眼鏡沒有 Google Play Services | ✅ **實機確認**（`DEVICE_FINDINGS.md` §2） |
+| 眼鏡沒有任何語音辨識服務 | ✅ **實機確認**（§3） |
+| 眼鏡上 Android TTS 可用 | 🔴 **實機推翻**（§4） |
 | 端側 OCR / 人臉 / 翻譯可運作 | 🟡 **小米手機已驗證**；Rokid Glasses 從未執行過 |
 | 眼鏡沒有 GPS | ⚠️ **推定** —— 規格書未載明，待 A10 實測 |
 | Wi-Fi 卸載比本地推論耗電 | ⚠️ **量級推理，非實測** |

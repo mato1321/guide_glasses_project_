@@ -1244,7 +1244,12 @@ flowchart TB
 | 平台 | 狀態 |
 |---|---|
 | **小米 Android 手機** | 🟡 **已實際執行過**，並因此找出三個真實 bug |
-| **Rokid Glasses** | ❌ **從未執行過** |
+| **Rokid Glasses** | 🔴 **已執行，但語音完全不可用** |
+
+> 🔴 **2026-08-08 首次在 Rokid Glasses 上執行，發現三個硬事實：**
+> 沒有 Google Play Services、沒有任何語音辨識服務、TTS 綁定失敗。
+> **眼鏡上目前無法做任何端到端測試**（沒有輸入也沒有輸出）。
+> 完整診斷與可重跑的指令見 [`DEVICE_FINDINGS.md`](DEVICE_FINDINGS.md)。
 
 手機上找出的三個 bug，全部是**只有實跑才會發現**、單元測試抓不到的：
 
@@ -1262,8 +1267,8 @@ flowchart TB
 | 相機視角 | 一般廣角 | **官方未載明**，距離估計靠它 |
 | 續航 | 4000mAh+ | **210mAh，開相機可能 <1.5 小時** |
 | RAM | 6–12 GB | **2 GB**，三個 ONNX 模型同時載入未驗證 |
-| Google App / Play Services | 有 | **未知**，STT 與 ML Kit 都可能受影響 |
-| GPS | 有 | **推定沒有** |
+| Google App / Play Services | 有 | 🔴 **確認沒有**。STT 因此完全不可用 |
+| GPS | 有 | **推定沒有**（但眼鏡上有 `com.example.gps`，值得問組員） |
 
 > ⚠️ 完成度指的是「程式碼與單元測試完成度」加上「手機驗證」，
 > **不包含 Rokid Glasses 驗證**。請把第一次裝上眼鏡當成探勘而不是驗收。
@@ -1470,6 +1475,19 @@ cd guide-glasses && ./gradlew test
 
 JDK 版本太舊。**JDK 11 無法建置**，需要 17+。設定 `JAVA_HOME`。
 
+### Q: `Error: could not open '...\jbr\lib\jvm.cfg'`
+
+`JAVA_HOME` 指到的 JDK 壞了或被搬走。**Android Studio 更新時會發生** ——
+更新過程會把舊的 `jbr` 掏空，並在旁邊建一個 `Android Studio1` 之類的新資料夾。
+
+先找出還能用的 JDK：
+
+```bash
+for p in "/c/Program Files/Android/Android Studio/jbr" "/c/Program Files/Android/Android Studio1/jbr"; do printf "%s " "$p"; "$p/bin/java.exe" -version 2>&1 | head -1; done
+```
+
+然後把 `JAVA_HOME` 指向能印出版本號的那一個。
+
 ### Q: 我把 AGP 升級了，現在建置失敗
 
 專案已在 AGP 9.3.1 / Gradle 9.5.0。若出現 kotlin extension 或 Hilt `BaseExtension`
@@ -1503,7 +1521,24 @@ JDK 版本太舊。**JDK 11 無法建置**，需要 17+。設定 `JAVA_HOME`。
 adb uninstall com.guideglasses
 ```
 
-### Q: App 完全沒有聲音
+### Q: 在 Rokid Glasses 上完全沒有聲音
+
+**這是已知的硬體問題，不是你裝錯。** 眼鏡上唯一的 TTS 引擎綁定失敗：
+
+```
+E TextToSpeech: Failed to bind to com.github.jing332.tts_server_android
+E TtsAnnouncer: TTS 初始化失敗，status=-1
+```
+
+完整診斷見 [`DEVICE_FINDINGS.md`](DEVICE_FINDINGS.md) §4。目前無解，待決策。
+
+### Q: 在 Rokid Glasses 上說話沒反應
+
+同樣是硬體問題 —— 眼鏡上**沒有任何語音辨識服務**
+（`cmd package query-services -a android.speech.RecognitionService` 回
+`No services found`）。見 `DEVICE_FINDINGS.md` §3。
+
+### Q: 在手機上 App 完全沒有聲音
 
 1. 先看 `adb logcat -s TtsAnnouncer:*`
 2. 常見原因是**眼鏡沒有中文語音資料**。到系統設定 → 文字轉語音 安裝
