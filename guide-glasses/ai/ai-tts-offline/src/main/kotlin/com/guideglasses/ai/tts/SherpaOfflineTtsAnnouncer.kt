@@ -238,14 +238,18 @@ class SherpaOfflineTtsAnnouncer(
                 for (i in samples.indices) samples[i] = input.readFloat()
             }
 
+            // 快取存的是原始樣本，增益在播放時才套 —— 這樣調整 GAIN
+            // 之後舊快取立刻跟著變大聲，不必清快取或重新合成。
+            val amplified = amplify(samples)
+
             track = createTrack(sampleRate)
             currentTrack = track
             track.play()
 
             var offset = 0
-            while (offset < samples.size && !cancelled.get()) {
-                val count = minOf(PLAYBACK_CHUNK_SAMPLES, samples.size - offset)
-                track.write(samples, offset, count, AudioTrack.WRITE_BLOCKING)
+            while (offset < amplified.size && !cancelled.get()) {
+                val count = minOf(PLAYBACK_CHUNK_SAMPLES, amplified.size - offset)
+                track.write(amplified, offset, count, AudioTrack.WRITE_BLOCKING)
                 offset += count
             }
             drain(track, offset.toLong())
@@ -341,6 +345,10 @@ class SherpaOfflineTtsAnnouncer(
         val startedAt = System.currentTimeMillis()
         var firstChunkAt = 0L
 
+        // 增益前的峰值。留著它才知道 [GAIN] 該調多少 —— 不同句子的
+        // 響度差很多，靠猜的不是被削波就是還是太小聲。
+        var rawPeak = 0f
+
         try {
             track = createTrack(sampleRate)
             currentTrack = track
@@ -361,9 +369,14 @@ class SherpaOfflineTtsAnnouncer(
                 override fun invoke(samples: FloatArray): Int {
                     if (cancelled.get()) return STOP_GENERATING
                     if (firstChunkAt == 0L) firstChunkAt = System.currentTimeMillis()
+
+                    // 快取存原始樣本，播放才套增益 —— 兩條路徑因此永遠一樣大聲。
                     collected += samples.copyOf()
-                    track.write(samples, 0, samples.size, AudioTrack.WRITE_BLOCKING)
-                    samplesWritten += samples.size
+                    rawPeak = maxOf(rawPeak, samples.maxOf { kotlin.math.abs(it) })
+
+                    val amplified = amplify(samples)
+                    track.write(amplified, 0, amplified.size, AudioTrack.WRITE_BLOCKING)
+                    samplesWritten += amplified.size
                     return KEEP_GENERATING
                 }
             }
@@ -375,6 +388,9 @@ class SherpaOfflineTtsAnnouncer(
                 TAG,
                 "合成完畢「$text」｜起播 ${firstChunkAt - startedAt}ms｜" +
                     "合成 ${synthesisMs}ms｜音長 ${audioMs}ms｜" +
+                    "原始峰值 ${"%.3f".format(rawPeak)}（增益後 ${
+                        "%.3f".format((rawPeak * GAIN).coerceAtMost(1f))
+                    }）｜" +
                     // RTF < 1 代表合成比播放快，也就是串流播放不會斷。
                     "RTF ${"%.2f".format(if (audioMs > 0) synthesisMs.toDouble() / audioMs else 0.0)}",
             )
@@ -393,6 +409,30 @@ class SherpaOfflineTtsAnnouncer(
             }
         }
     }
+
+    /**
+     * 放大音量。
+     *
+     * ### 為什麼需要
+     *
+     * 把眼鏡上快取的 PCM 拉回來量過：**峰值只有 0.21（-13.6 dBFS）、
+     * RMS 0.039（-28.2 dBFS）**。系統音效通常做到接近 0 dBFS，
+     * 所以我們的播報聽起來就是小一截 —— 使用者的回饋「比系統聲音小」
+     * 不是錯覺，是這 13.6 dB 的空間沒有用到。
+     *
+     * 拉高音訊本身而不是叫使用者調大音量，是因為導盲提示走的是
+     * `STREAM_ACCESSIBILITY`，那條串流的音量是獨立的，
+     * 而且眼鏡上預設只有 8/15 —— 不能假設使用者會去調它。
+     *
+     * ### 為什麼是固定增益而不是逐句正規化
+     *
+     * 串流合成時拿不到整句的峰值（樣本是一塊一塊來的），
+     * 逐句正規化會讓同一句話「現場合成」與「快取播放」不一樣大聲。
+     * 固定增益 ＋ 削波保護在兩條路徑上結果一致，代價是特別響的句子
+     * 會被削掉一點 —— log 裡有原始峰值，真的常削再調 [GAIN]。
+     */
+    private fun amplify(samples: FloatArray): FloatArray =
+        FloatArray(samples.size) { (samples[it] * GAIN).coerceIn(-1f, 1f) }
 
     /** 把逐塊收到的樣本併成一段，寫檔用。 */
     private fun List<FloatArray>.flatten(): FloatArray {
@@ -467,6 +507,15 @@ class SherpaOfflineTtsAnnouncer(
         const val BUFFER_MULTIPLIER = 4
         const val MIN_BUFFER_BYTES = 16 * 1024
         const val DRAIN_POLL_MILLIS = 20L
+
+        /**
+         * 播放前的固定增益。
+         *
+         * 實測合成輸出峰值 0.21，×3.5 之後約 0.73 —— 留了餘裕給比較響的句子，
+         * 真的超過 1.0 也只是削掉一點點，不會破音。要調整看 log 裡的
+         * 「原始峰值」再決定，別憑感覺加。
+         */
+        const val GAIN = 3.5f
 
         /** 快取是裸的 float32 PCM，沒有檔頭 —— 取樣率與聲道數由模型決定，不會變。 */
         const val BYTES_PER_SAMPLE = 4L
