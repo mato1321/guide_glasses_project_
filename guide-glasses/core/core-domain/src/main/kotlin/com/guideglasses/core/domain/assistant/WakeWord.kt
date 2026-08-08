@@ -58,13 +58,36 @@ object WakeWord {
     private val PATTERN = Regex("叫.{0,2}[狗犬]")
 
     /**
+     * 只靠「狗」認人時，句子最多幾個字。
+     *
+     * 第二版只看「叫…狗」，眼鏡上實測 8 次中 4 次 —— 因為**「叫」也不可靠**
+     * （被聽成 照、啸）。真正穩的只有「狗」，8 次裡出現 7 次。
+     *
+     * 但只看「狗」會太鬆，所以加上長度限制。這個數字來自實測資料：
+     * 喚醒嘗試都很短（叫狗、呼叫狗、胡照猛狗、呼叫盲狗，2–4 字），
+     * 而誤收的環境語音都比較長且不含狗
+     * （怎么走、因为现在不、是谢谢谢谢谢、家叫一个然后让这个）。
+     */
+    private const val SHORT_UTTERANCE_LIMIT = 5
+
+    private val DOG = setOf('狗', '犬')
+
+    /**
      * 這句話是不是在叫助理。
+     *
+     * 兩條規則取聯集：
+     * 1. **「叫」＋兩字內＋「狗」** —— 長句子裡也認得出來
+     *    （「欸呼叫盲狗幫我看前面」）。
+     * 2. **很短且含「狗」** —— 「叫」被聽壞時的救援，
+     *    靠「短」把日常對話擋在外面。
      *
      * @param utterance ASR 的原始輸出，不需要先正規化。
      */
     fun matches(utterance: String): Boolean {
         val folded = SpokenText.forMatching(utterance)
         if (folded.isEmpty()) return false
-        return PATTERN.containsMatchIn(folded)
+
+        if (PATTERN.containsMatchIn(folded)) return true
+        return folded.length <= SHORT_UTTERANCE_LIMIT && folded.any { it in DOG }
     }
 }
