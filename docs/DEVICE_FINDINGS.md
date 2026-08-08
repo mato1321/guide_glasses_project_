@@ -350,9 +350,9 @@ adb shell service list | grep -iE "tts|speech|voice"  # 一個都沒有
 
 - 模組：`guide-glasses/ai/ai-tts-offline`（詳見該模組的 `README.md`）
 - 引擎：sherpa-onnx 1.13.4（**static-link 版**，否則 `libonnxruntime.so` 會撞名）
-- 模型：`vits-icefall-zh-aishell3`，30MB，8000Hz
+- 模型：中文 `matcha-icefall-zh-baker`（22050Hz）＋ 英文 `vits-piper-en_US-amy`（22050Hz）
 - 接法：`FallbackAnnouncer` 候選鏈 —— 手機用系統 TTS，眼鏡自動落到離線引擎
-- 代價：APK 從約 106MB → **170MB**
+- 代價：APK 從約 106MB → **288MB**
 
 **眼鏡實測（4 核 @2.0GHz，1.8GB RAM）**：
 

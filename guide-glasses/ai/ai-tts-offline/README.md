@@ -51,38 +51,30 @@ adb shell service list | grep -iE "tts|speech|voice"  # 一個都沒有
 | 快取命中的額外開銷 | **60–150ms** |
 | 合成輸出峰值 | 0.20–0.24（**播放前套 3.5 倍增益**，見下） |
 
-### 為什麼選 aishell3 而不是音質更好的 piper
+### 中文模型換過兩次，這是三顆的實測
 
-兩顆都在眼鏡上實測過：
+| | `matcha-icefall-zh-baker`（採用） | `vits-icefall-zh-aishell3` | `vits-piper-zh_CN-xiao_ya-int8` |
+|---|---:|---:|---:|
+| 取樣率 | **22050 Hz** | 8000 Hz（悶） | 22050 Hz |
+| RTF | 1.47–1.84 | **1.00** | 2.20 |
+| 模型載入 | 11.4 s | **4.7 s** | 12.4 s |
+| 資產大小 | 92 MB | **30 MB** | 19 MB |
+| 播放前增益 | ×1.3 | ×4.0 | ×3.5 |
 
-| | `vits-icefall-zh-aishell3`（採用） | `vits-piper-zh_CN-xiao_ya-medium-int8` |
-|---|---:|---:|
-| 模型載入 | **4.7 s** | 12.4 s |
-| 起播延遲 | **0.4–1.0 s** | 2.1–2.5 s |
-| RTF | **1.05** | 2.20 |
-| 取樣率 | 8000 Hz（電話音質） | **22050 Hz（清晰）** |
-| 模型大小 | 30 MB | **18.6 MB** |
+**使用者實際聽過三顆之後選了 matcha**：8000Hz 被回報「很模糊」，
+而 piper 雖然也是 22050Hz 但 RTF 2.2 斷得太厲害。
 
-**對導盲裝置，延遲比音質重要。** RTF 2.2 代表合成永遠追不上播放，音訊會持續
-underrun（實測一句話 10 次），聽起來斷斷續續；RTF 1.05 則勉強跟得上。
-8000Hz 是電話音質，仍然完全可辨識。
+RTF 1.5 代表新句子合成跟不上播放、會斷續，但**快取命中完全不受影響** ——
+導盲用語重複性極高，實際使用時多數播報是快取，只有每句話的第一次會頓。
+這個取捨是使用者自己聽過後決定的。
 
-> 換模型：把檔案放進 `assets/tts/<名字>/`，改 `SherpaOfflineTtsAnnouncer` 的
-> `ASSET_DIR` 與 `MODEL_FILE` 兩個常數即可，程式邏輯不用動。
-> 快取目錄跟著 `ASSET_DIR` 走，所以換模型會自動失效舊音訊。
+> ⚠️ **每顆模型的輸出響度差很多**，換模型一定要重新校 `gain`：
+> matcha 峰值 0.33–0.66、aishell3 0.19–0.23、piper 0.20–0.24。
+> 沿用別顆的倍率，不是小聲到聽不見就是整段削波破音（實測 matcha
+> 沿用 4.0 會頂到 1.000）。log 裡有每則的「原始峰值」，照著調。
 
-#### ⚠️ fp16 模型在這台裝置上會直接 SIGABRT
-
-試過 `vits-piper-zh_CN-xiao_ya-medium-fp16`，想驗證「int8 動態量化在 ARM 上
-反而比較慢」的假設。結果模型**載入當場就 abort**：
-
-```
-F libc: Fatal signal 6 (SIGABRT) in tid (offline-tts)
-F DEBUG: #13 libsherpa-onnx-jni.so (Java_com_k2fsa_sherpa_onnx_OfflineTts_newFromAsset+800)
-```
-
-ONNX Runtime 在這台裝置上跑不了 fp16。而且是**原生 abort，`runCatching` 攔不住**，
-整個行程死掉 —— 跟 lambda 那個坑同一類。**不要用 fp16 模型。**
+> 換模型只要把檔案放進 `assets/tts/<名字>/` 並改 `OfflineVoice` 的常數。
+> aishell3 的資產已從 repo 移除以省 30MB，需要時從 git 歷史取回。
 
 ### 🔊 為什麼播放前要放大 3.5 倍
 
@@ -119,11 +111,13 @@ ONNX Runtime 在這台裝置上跑不了 fp16。而且是**原生 abort，`runCa
 | 檔案 | 大小 | 說明 |
 |---|---:|---|
 | `libs/com/k2fsa/.../sherpa-onnx-static-link-onnxruntime-1.13.4.aar` | 35.9 MB | 推論引擎（只有 arm64-v8a 進 APK，23.6 MB） |
-| `src/main/assets/tts/zh-aishell3/model.onnx` | 30.5 MB | VITS 中文，8000Hz |
-| `src/main/assets/tts/zh-aishell3/lexicon.txt` | 2.0 MB | 中文 G2P 詞典 |
-| `src/main/assets/tts/zh-aishell3/*.fst` | 0.2 MB | 數字/日期/破音字正規化 |
+| `src/main/assets/tts/zh-matcha/model-steps-3.onnx` | 75 MB | Matcha 聲學模型，22050Hz |
+| `src/main/assets/tts/zh-matcha/hifigan_v2.onnx` | 3.7 MB | 聲碼器 |
+| `src/main/assets/tts/zh-matcha/dict/` | 14 MB | jieba 斷詞（**必須複製到檔案系統**，同 espeak） |
+| `src/main/assets/tts/zh-matcha/lexicon.txt` | 1.4 MB | 中文 G2P 詞典 |
+| `src/main/assets/tts/en-amy/` | 19 MB | 英文 piper amy，22050Hz |
 
-**APK 約 170 MB**（原本約 106 MB）。模型 29 MB ＋ 引擎 .so 22.5 MB 是主要增量。
+**APK 約 288 MB**（原本約 106 MB）。中文 92 ＋ 英文 19 ＋ ASR 26 ＋ 引擎 .so 22.5 是主要增量。
 
 > ⚠️ 原始 tarball 裡還有一個 **180MB 的 `rule.far`**，那是 `.fst` 規則的替代品，
 > 不需要，**不要放進來**，否則 APK 會爆到 300MB 以上。

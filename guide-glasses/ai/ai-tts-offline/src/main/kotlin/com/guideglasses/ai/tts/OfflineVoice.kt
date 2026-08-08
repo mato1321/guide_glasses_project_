@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.k2fsa.sherpa.onnx.OfflineTts
 import com.k2fsa.sherpa.onnx.OfflineTtsConfig
+import com.k2fsa.sherpa.onnx.OfflineTtsMatchaModelConfig
 import com.k2fsa.sherpa.onnx.OfflineTtsModelConfig
 import com.k2fsa.sherpa.onnx.OfflineTtsVitsModelConfig
 import java.io.File
@@ -39,20 +40,39 @@ internal enum class OfflineVoice(
     private val lexiconFile: String,
     private val ruleFstNames: List<String>,
     private val needsEspeakData: Boolean,
+    /**
+     * Matcha-TTS 的聲碼器。非空代表這是 Matcha 而不是 VITS ——
+     * 兩者的設定物件不同，模型檔也分成「聲學模型 + 聲碼器」兩個。
+     */
+    private val vocoderFile: String = "",
+    /**
+     * jieba 斷詞資料夾。Matcha 的中文模型要靠它切詞，
+     * 而且跟 espeak 一樣**必須是真實檔案系統路徑**。
+     */
+    private val dictDirName: String = "",
 ) {
 
+    /**
+     * 中文（Matcha-TTS，22050Hz）。
+     *
+     * ⚠️ **實驗中**：先前用 aishell3（8000Hz）被回報「很模糊」。
+     * 這顆是 22050Hz，但模型 75MB、外加 14MB jieba 詞典，
+     * 在 4 核 2.0GHz 上不一定跑得動。RTF 若明顯超過 1 就要換回
+     * `tts/zh-aishell3`（資產仍在 repo 裡，改兩個常數即可）。
+     */
     CHINESE(
         languagePrefix = "zh",
-        assetDir = "tts/zh-aishell3",
-        // 實測峰值 0.19–0.23。×4.0 之後約 0.76–0.92，仍留一點餘裕。
-        // 使用者回報 3.5 倍時「比系統聲音小」—— 8kHz 的內容聽感本來就偏悶，
-        // 響度要壓到接近滿刻度才跟得上系統音效。
-        gain = 4.0f,
-        modelFile = "model.onnx",
+        assetDir = "tts/zh-matcha",
+        // 實測峰值 0.44–0.66，是 aishell3（0.19–0.23）的三倍響。
+        // 沿用 4.0 會整段削到 1.000 變破音 —— ×1.3 之後約 0.58–0.86。
+        gain = 1.3f,
+        modelFile = "model-steps-3.onnx",
         lexiconFile = "lexicon.txt",
         // 導盲播報滿是數字（「前方 3 公尺」），少了這些「30」可能整個被跳過。
-        ruleFstNames = listOf("date.fst", "number.fst", "phone.fst", "new_heteronym.fst"),
+        ruleFstNames = listOf("date.fst", "number.fst", "phone.fst"),
         needsEspeakData = false,
+        vocoderFile = "hifigan_v2.onnx",
+        dictDirName = "dict",
     ),
 
     /**
@@ -81,28 +101,43 @@ internal enum class OfflineVoice(
      * 攔不住，整個行程死。int8 與 fp32 都正常。
      */
     fun createEngine(context: Context): OfflineTts? {
-        val dataDir = if (needsEspeakData) espeakDataDir(context) ?: return null else ""
+        val dataDir = if (needsEspeakData) copyToFiles(context, ESPEAK_DIR) ?: return null else ""
+        val dictDir = if (dictDirName.isEmpty()) "" else copyToFiles(context, dictDirName) ?: return null
         val ruleFsts = ruleFstNames.joinToString(",") { "$assetDir/$it" }
 
         // rule FST 若載入失敗就退回沒有正規化再試一次 ——
         // 數字唸得不漂亮，總比完全沒有聲音好。
-        return build(context, dataDir, ruleFsts)
-            ?: build(context, dataDir, ruleFsts = "")?.also {
+        return build(context, dataDir, dictDir, ruleFsts)
+            ?: build(context, dataDir, dictDir, ruleFsts = "")?.also {
                 Log.w(TAG, "$name：rule FST 載入失敗，數字與日期不會被正規化")
             }
     }
 
-    private fun build(context: Context, dataDir: String, ruleFsts: String): OfflineTts? =
+    private fun build(
+        context: Context,
+        dataDir: String,
+        dictDir: String,
+        ruleFsts: String,
+    ): OfflineTts? =
         runCatching {
             OfflineTts(
                 assetManager = context.assets,
                 config = OfflineTtsConfig(
                     model = OfflineTtsModelConfig(
-                        vits = OfflineTtsVitsModelConfig(
+                        vits = if (vocoderFile.isNotEmpty()) OfflineTtsVitsModelConfig() else
+                        OfflineTtsVitsModelConfig(
                             model = "$assetDir/$modelFile",
                             lexicon = if (lexiconFile.isEmpty()) "" else "$assetDir/$lexiconFile",
                             tokens = "$assetDir/tokens.txt",
                             dataDir = dataDir,
+                        ),
+                        matcha = if (vocoderFile.isEmpty()) OfflineTtsMatchaModelConfig() else
+                        OfflineTtsMatchaModelConfig(
+                            acousticModel = "$assetDir/$modelFile",
+                            vocoder = "$assetDir/$vocoderFile",
+                            lexicon = "$assetDir/$lexiconFile",
+                            tokens = "$assetDir/tokens.txt",
+                            dictDir = dictDir,
                         ),
                         /*
                          * 眼鏡是 4 核 2.0GHz。實測 2 → 4 執行緒**沒有差別**
@@ -129,18 +164,22 @@ internal enum class OfflineVoice(
      * 只複製一次；已存在就直接用。原始的 espeak-ng-data 含全部語言的字典
      * 共 18MB，這裡只放了英文需要的部分（約 1MB）。
      */
-    private fun espeakDataDir(context: Context): String? {
-        val target = File(context.filesDir, ESPEAK_DIR)
-        val marker = File(target, "phontab")
-        if (marker.isFile) return target.absolutePath
+    private fun copyToFiles(context: Context, dirName: String): String? {
+        // 目標帶著 assetDir，不同模型的同名資料夾才不會互相覆蓋。
+        val target = File(context.filesDir, "${assetDir.substringAfterLast('/')}/$dirName")
+        val done = File(target, COPY_MARKER)
+        if (done.isFile) return target.absolutePath
 
         return runCatching {
-            copyAssetDir(context, "$assetDir/$ESPEAK_DIR", target)
-            Log.i(TAG, "espeak 資料已複製到 ${target.absolutePath}")
+            target.deleteRecursively()
+            copyAssetDir(context, "$assetDir/$dirName", target)
+            // 全部複製完才寫標記 —— 中途被砍留下的殘缺目錄，
+            // 下次不會被當成完整的拿來用。
+            done.writeText("ok")
+            Log.i(TAG, "$name：$dirName 已複製到 ${target.absolutePath}")
             target.absolutePath
         }.onFailure { error ->
-            Log.e(TAG, "espeak 資料複製失敗，英文語音不可用", error)
-            // 複製到一半失敗留下的殘缺目錄，下次會被當成完整的用 —— 砍掉。
+            Log.e(TAG, "$name：$dirName 複製失敗，這個語音不可用", error)
             target.deleteRecursively()
         }.getOrNull()
     }
@@ -165,6 +204,9 @@ internal enum class OfflineVoice(
     internal companion object {
         private const val TAG = "OfflineTts"
         private const val ESPEAK_DIR = "espeak-ng-data"
+
+        /** 複製完成的標記。沒有它就無法分辨「複製完」與「複製到一半」。 */
+        private const val COPY_MARKER = ".copy-complete"
 
         /**
          * 依 `Announcement.languageTag` 挑語音。null 代表系統預設（中文）。
