@@ -10,6 +10,7 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 import android.os.Bundle
 import android.view.View
+import android.view.WindowManager
 import android.widget.Button
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
@@ -67,6 +68,19 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        /*
+         * 眼鏡的螢幕逾時只有 5 秒，一暗掉 Activity 就不再是前景，
+         * 連帶影響觸控、除錯廣播與麥克風的 appop（RECORD_AUDIO 是
+         * foreground 模式）。
+         *
+         * 用視窗旗標而不是改系統的 screen_off_timeout —— 這樣只在本 App
+         * 在前景時生效，關掉 App 就恢復裝置原本的行為，不留下副作用。
+         *
+         * 耗電是刻意接受的：使用者明確表示會外接行動電源，而螢幕一直暗掉
+         * 造成的操作中斷比續航更痛。
+         */
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         tvStatus = findViewById(R.id.tvStatus)
         tvTranscript = findViewById(R.id.tvTranscript)
@@ -174,6 +188,21 @@ class MainActivity : AppCompatActivity() {
             viewModel.onAssistantTriggered()
         } else {
             requestPermissions.launch(missing.toTypedArray())
+        }
+    }
+
+    /**
+     * 有麥克風權限就開始聽喚醒詞。
+     *
+     * 放在 [onStart] 而不是 [onCreate]：使用者從別的 App 切回來時
+     * 要能重新開始聽 —— 離開時 ViewModel 會把麥克風讓出去。
+     */
+    override fun onStart() {
+        super.onStart()
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            viewModel.startWakeWordListening()
         }
     }
 

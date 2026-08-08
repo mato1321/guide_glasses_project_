@@ -9,6 +9,7 @@ import com.guideglasses.core.domain.announce.AnnouncementManager
 import com.guideglasses.core.domain.announce.AnnouncementPriority
 import com.guideglasses.core.domain.assistant.AssistantIntent
 import com.guideglasses.core.domain.assistant.IntentRouter
+import com.guideglasses.core.domain.assistant.WakeWord
 import com.guideglasses.core.domain.assistant.RoutedIntent
 import com.guideglasses.core.domain.translate.TargetLanguage
 import com.guideglasses.core.domain.readiness.ReadinessCheckUseCase
@@ -32,6 +33,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -63,6 +65,12 @@ class AssistantViewModel @Inject constructor(
 
     private var listeningJob: Job? = null
 
+    /**
+     * 喚醒詞監聽。與 [listeningJob] **互斥** —— 眼鏡只有一組麥克風，
+     * 兩邊同時開 `AudioRecord` 會互相搶，實測會有一邊完全收不到聲音。
+     */
+    private var wakeWordJob: Job? = null
+
     /** 上一次播報的內容，供「再說一次」使用。 */
     private var lastSpoken: String? = null
 
@@ -89,6 +97,10 @@ class AssistantViewModel @Inject constructor(
             cancelListening()
             return
         }
+
+        // 麥克風只有一組，喚醒監聽必須先讓位。
+        wakeWordJob?.cancel()
+        wakeWordJob = null
 
         if (!speechGateway.isAvailable) {
             announce(MESSAGE_NO_ASR, AnnouncementPriority.USER_RESPONSE)
@@ -122,7 +134,65 @@ class AssistantViewModel @Inject constructor(
                     }
                 }
             }
+
+            // 這一輪結束（不論成功與否）就把耳朵還給喚醒詞。
+            startWakeWordListening()
         }
+    }
+
+    /**
+     * 開始監聽喚醒詞。
+     *
+     * 使用者不必先按按鈕 —— 喊一聲「[WakeWord.CANONICAL]」就開始聽指令。
+     * 對戴在頭上、看不到按鈕在哪的使用者，這是差別最大的互動改進。
+     *
+     * ### 為什麼是「一輪一輪」而不是一條長串流
+     *
+     * `listen()` 沒聽到人聲時會在數秒後結束，這裡就再開一輪。
+     * 換來的空窗只有建立 `AudioRecord` 的幾十毫秒，
+     * 但好處是逾時、資源釋放這些邏輯完全沿用指令聆聽那一套，
+     * 不必為喚醒詞維護第二份。
+     *
+     * ### 為什麼逾時不播報
+     *
+     * 指令聆聽逾時會說「我沒有聽到聲音，請再說一次」——
+     * 喚醒監聽是**常駐**的，照著做的話會變成每隔幾秒自言自語一次。
+     * 所以這裡只看 [SpeechEvent.FinalResult]，其餘一律忽略。
+     */
+    fun startWakeWordListening() {
+        if (wakeWordJob?.isActive == true || listeningJob?.isActive == true) return
+        if (!speechGateway.isAvailable) return
+
+        wakeWordJob = viewModelScope.launch {
+            while (isActive) {
+                var woken = false
+
+                speechGateway.listen().collect { event ->
+                    if (event !is SpeechEvent.FinalResult) return@collect
+
+                    // 喚醒模式下聽到的每一句都記下來 —— 「盲狗」不是常見詞，
+                    // 模型實際會聽成什麼只能靠這個累積，WakeWord 的變體清單
+                    // 才有依據可以長大。
+                    Log.i(TAG, "喚醒監聽聽到：「${event.text}」")
+
+                    // 不必在這裡中斷收集 —— gateway 給出 FinalResult 之後
+                    // 那一輪就結束了，collect 會自然收尾。
+                    if (WakeWord.matches(event.text)) woken = true
+                }
+
+                if (woken) {
+                    onWakeWordDetected()
+                    return@launch
+                }
+            }
+        }
+    }
+
+    /** 被叫醒了。先出個聲讓使用者知道可以講了，再進指令聆聽。 */
+    private fun onWakeWordDetected() {
+        wakeWordJob = null
+        announce(MESSAGE_WOKEN, AnnouncementPriority.USER_RESPONSE)
+        onAssistantTriggered()
     }
 
     /**
@@ -630,6 +700,7 @@ class AssistantViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
+        wakeWordJob?.cancel()
         listeningJob?.cancel()
         speechGateway.shutdown()
     }
@@ -661,6 +732,14 @@ class AssistantViewModel @Inject constructor(
          * 混在一起講會讓使用者以為系統壞掉而放棄，實際上再說一次就好。
          */
         const val MESSAGE_NO_SPEECH_HEARD = "我沒有聽到聲音，請再說一次"
+
+        /**
+         * 被喚醒詞叫醒時的回應。
+         *
+         * 刻意極短 —— 使用者已經準備好要講下一句了，這裡拖長只會讓他
+         * 對著還在講話的助理說指令，然後被自己的播報蓋掉。
+         */
+        const val MESSAGE_WOKEN = "我在"
         const val MESSAGE_GENERIC_FAILURE = "我現在無法處理，請再試一次"
         const val MESSAGE_NOTHING_TO_REPEAT = "目前沒有可以重複的內容"
         const val MESSAGE_CAMERA_TESTING = "正在測試相機"
