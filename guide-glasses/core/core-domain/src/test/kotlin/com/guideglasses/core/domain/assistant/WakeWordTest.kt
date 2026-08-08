@@ -6,8 +6,32 @@ import org.junit.Test
 class WakeWordTest {
 
     @Test
-    fun `標準說法會被叫醒`() {
+    fun `推薦說法會被叫醒`() {
         assertThat(WakeWord.matches(WakeWord.CANONICAL)).isTrue()
+    }
+
+    @Test
+    fun `所有支援的說法都會被叫醒`() {
+        listOf("小幫手", "小助手", "你好眼鏡", "嘿眼鏡", "呼叫盲狗").forEach { say ->
+            assertThat(WakeWord.matches(say)).isTrue()
+        }
+    }
+
+    @Test
+    fun `常見同音誤判也要接受`() {
+        // 這幾個是同音字替換，模型很常這樣轉。
+        listOf("小邦手", "小帮守", "眼竟", "演镜").forEach { heard ->
+            assertThat(WakeWord.matches(heard)).isTrue()
+        }
+    }
+
+    @Test
+    fun `命中時要說得出是哪一組`() {
+        // log 需要這個資訊才能判斷哪一組說法最穩、該不該淘汰其他的。
+        assertThat(WakeWord.match("小幫手")).isEqualTo("幫手")
+        assertThat(WakeWord.match("你好眼鏡")).isEqualTo("眼鏡")
+        assertThat(WakeWord.match("呼叫盲狗")).isEqualTo("叫狗")
+        assertThat(WakeWord.match("前面有什麼")).isNull()
     }
 
     /**
@@ -26,6 +50,8 @@ class WakeWordTest {
             "胡照猛狗",   // 連「叫」都被聽成「照」
             "呼啸狗",     // 「叫」→「啸」
             "不道狗",     // 「呼叫」整個變成「不道」
+            "忙够",       // 連「狗」都變成同音的「够」
+            "芒够",       // 盲→芒、狗→够
         ).forEach { heard ->
             assertThat(WakeWord.matches(heard)).isTrue()
         }
@@ -44,6 +70,7 @@ class WakeWordTest {
             "是谢谢谢谢谢",
             "家叫一个然后让这个",
             "进",
+            "那昨前方那昨天方没一轮呢几",
         ).forEach { noise ->
             assertThat(WakeWord.matches(noise)).isFalse()
         }

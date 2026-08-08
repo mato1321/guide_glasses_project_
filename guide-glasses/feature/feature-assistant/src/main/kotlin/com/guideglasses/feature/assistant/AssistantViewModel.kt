@@ -71,6 +71,9 @@ class AssistantViewModel @Inject constructor(
      */
     private var wakeWordJob: Job? = null
 
+    /** 被叫醒時的提示音。延遲敏感，所以不用語音播報。 */
+    private val ackTone by lazy { AckTone() }
+
     /** 上一次播報的內容，供「再說一次」使用。 */
     private var lastSpoken: String? = null
 
@@ -195,7 +198,11 @@ class AssistantViewModel @Inject constructor(
 
                     // 不必在這裡中斷收集 —— gateway 給出 FinalResult 之後
                     // 那一輪就結束了，collect 會自然收尾。
-                    if (WakeWord.matches(event.text)) woken = true
+                    val matched = WakeWord.match(event.text)
+                    if (matched != null) {
+                        Log.i(TAG, "喚醒詞命中（$matched）")
+                        woken = true
+                    }
                 }
 
                 if (woken) {
@@ -206,10 +213,16 @@ class AssistantViewModel @Inject constructor(
         }
     }
 
-    /** 被叫醒了。先出個聲讓使用者知道可以講了，再進指令聆聽。 */
+    /**
+     * 被叫醒了。
+     *
+     * 用**提示音**而不是唸「我在」：合成一句話要一秒以上，而那一秒
+     * 全部算在使用者感受到的延遲裡；提示音是立即的，而且更明確地
+     * 表示「換你講了」。真正需要用到語音的是有內容要傳達的時候。
+     */
     private fun onWakeWordDetected() {
         wakeWordJob = null
-        announce(MESSAGE_WOKEN, AnnouncementPriority.USER_RESPONSE)
+        ackTone.play()
         onAssistantTriggered()
     }
 
@@ -720,6 +733,7 @@ class AssistantViewModel @Inject constructor(
         super.onCleared()
         wakeWordJob?.cancel()
         listeningJob?.cancel()
+        ackTone.release()
         speechGateway.shutdown()
     }
 

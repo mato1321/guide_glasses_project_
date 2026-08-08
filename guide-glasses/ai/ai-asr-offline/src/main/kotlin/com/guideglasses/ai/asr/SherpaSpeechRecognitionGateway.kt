@@ -14,6 +14,7 @@ import com.guideglasses.core.domain.speech.SpeechCapability
 import com.guideglasses.core.domain.speech.SpeechEvent
 import com.guideglasses.core.domain.speech.SpeechRecognitionGateway
 import com.k2fsa.sherpa.onnx.EndpointConfig
+import com.k2fsa.sherpa.onnx.EndpointRule
 import com.k2fsa.sherpa.onnx.FeatureConfig
 import com.k2fsa.sherpa.onnx.OnlineModelConfig
 import com.k2fsa.sherpa.onnx.OnlineRecognizer
@@ -272,7 +273,19 @@ class SherpaSpeechRecognitionGateway(
                     ),
                     // 讓模型自己判斷句子結束，使用者不必按第二次。
                     enableEndpoint = true,
-                    endpointConfig = EndpointConfig(),
+                    /*
+                     * 預設的「講完後要靜音多久才算結束」是 1.2 秒，
+                     * 那 1.2 秒是使用者眼中「它怎麼還沒反應」的一部分。
+                     * 指令都很短（喚醒詞 3–4 字、指令 4–6 字），
+                     * 0.6 秒足夠分辨句中停頓與講完了。
+                     *
+                     * 第三條規則是「講太久就強制斷句」，維持預設。
+                     */
+                    endpointConfig = EndpointConfig(
+                        rule1 = EndpointRule(false, TRAILING_SILENCE_NO_SPEECH, 0f),
+                        rule2 = EndpointRule(true, TRAILING_SILENCE_AFTER_SPEECH, 0f),
+                        rule3 = EndpointRule(false, 0f, MAX_UTTERANCE_SECONDS),
+                    ),
                 ),
             )
         }.onFailure { error ->
@@ -393,6 +406,20 @@ class SherpaSpeechRecognitionGateway(
          * 目的是分辨「一片死寂」與「有聲音但太小」，不是判斷有沒有人講話。
          */
         const val SILENCE_PEAK_THRESHOLD = 0.002f
+
+        /** 還沒聽到人聲時，要靜音多久才判定這一段結束。 */
+        const val TRAILING_SILENCE_NO_SPEECH = 2.4f
+
+        /**
+         * 講完之後要靜音多久才算「講完了」。
+         *
+         * 預設 1.2 秒，但那整整 1.2 秒都算在使用者感受到的延遲裡。
+         * 本專案的指令都很短，0.6 秒足以分辨句中停頓與真的講完。
+         */
+        const val TRAILING_SILENCE_AFTER_SPEECH = 0.6f
+
+        /** 講超過這麼久就強制斷句，避免一直講導致永遠不出結果。 */
+        const val MAX_UTTERANCE_SECONDS = 20f
 
         /** 一直沒聽到人聲就放棄，避免麥克風一直開著耗電。 */
         const val SILENCE_TIMEOUT_MILLIS = 8_000L
