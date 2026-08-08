@@ -54,6 +54,8 @@ include(":glasses:glasses-sensors")
 include(":ai:ai-speech")
 // APK 內建的離線語音合成。眼鏡上 Android TextToSpeech 綁不上，這是唯一的出聲途徑。
 include(":ai:ai-tts-offline")
+// APK 內建的離線語音辨識。眼鏡上沒有任何 RecognitionService，這是唯一的輸入途徑。
+include(":ai:ai-asr-offline")
 include(":ai:ai-agent")
 include(":ai:ai-ocr")
 include(":ai:ai-face")

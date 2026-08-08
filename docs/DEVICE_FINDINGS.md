@@ -85,7 +85,25 @@ adb shell "cmd package query-services --brief -a android.speech.RecognitionServi
 `AndroidSpeechRecognitionGateway.isAvailable` 因此為 false，
 助理播報「這台裝置沒有可用的語音辨識服務」。
 
-**這是正確的行為，不是 bug。** 但它代表**語音輸入在這台眼鏡上目前完全不能用**。
+**這是正確的行為，不是 bug。**
+
+### ✅ 已用 APK 內建模型繞過（2026-08-08）
+
+跟 TTS 同樣的解法：把辨識引擎當函式庫，不走 `SpeechRecognizer`。
+模組 `guide-glasses/ai/ai-asr-offline`，串流 zipformer CTC（26MB，中文）。
+
+| 項目 | 狀態 |
+|---|---|
+| 模型載入 | ✅ 6.0 秒 |
+| 麥克風 | ✅ `AUDIO_SOURCE_VOICE_RECOGNITION`、16kHz float |
+| 逾時邏輯 | ✅ 8 秒無人聲會正確回報 |
+| **辨識準確度** | 🔴 **尚未驗證**，需要有人對眼鏡說話 |
+
+觸發方式（眼鏡螢幕 5 秒就睡，`input tap` 點不到按鈕）：
+
+```bash
+adb shell am broadcast -a com.guideglasses.DEBUG --es cmd LISTEN
+```
 
 ---
 
@@ -299,8 +317,8 @@ adb shell service list | grep -iE "tts|speech|voice"  # 一個都沒有
 > ⚠️ 模型授權：aishell3 的資料集授權值得查證；先前的 piper 模型
 > 明載 non-commercial（data-baker）。畢專可用，商用前要確認。
 
-> **STT 仍然無解。** 方案 G 只解決了輸出。輸入端的候選是
-> sherpa-onnx 自己的 ASR（同一顆 .so 就支援，只差模型）或方案 D。
+> **STT 也走同一條路解決了**（見 §3）—— sherpa-onnx 的 ASR 用同一顆 `.so`，
+> 只差一個模型檔。辨識準確度尚待驗證。
 
 ### 🔴 方案 A 已排除（2026-08-08 用 uiautomator 逐頁查核）
 

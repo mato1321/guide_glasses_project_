@@ -7,6 +7,7 @@ import com.guideglasses.ai.agent.OfflineLlmIntentGateway
 import com.guideglasses.ai.agent.RemoteLlmIntentGateway
 import com.guideglasses.ai.speech.AndroidSpeechRecognitionGateway
 import com.guideglasses.ai.speech.AndroidTtsAnnouncer
+import com.guideglasses.ai.asr.SherpaSpeechRecognitionGateway
 import com.guideglasses.ai.tts.SherpaOfflineTtsAnnouncer
 import com.guideglasses.ai.face.MlKitFaceDetector
 import com.guideglasses.ai.face.RemoteFaceIdentification
@@ -120,11 +121,32 @@ object AssistantModule {
         scope: CoroutineScope,
     ): AnnouncementManager = AnnouncementManager(announcer, scope)
 
+    /**
+     * 語音輸入。手機用系統服務，眼鏡用 APK 內建的離線引擎。
+     *
+     * Rokid Glasses 上**完全沒有任何 `RecognitionService`**
+     * （`docs/DEVICE_FINDINGS.md` §3），所以 `SpeechRecognizer` 那條路
+     * 在眼鏡上永遠不可用，只能改用內建模型。
+     *
+     * 這裡在建構時就決定用哪個，而不是像播報那樣每次重挑 ——
+     * `SpeechRecognizer.isRecognitionAvailable()` 讀的是系統上有沒有裝
+     * 對應服務，那不會在執行期改變。
+     */
     @Provides
     @Singleton
     fun provideSpeechGateway(
         @ApplicationContext context: Context,
-    ): SpeechRecognitionGateway = AndroidSpeechRecognitionGateway(context)
+    ): SpeechRecognitionGateway {
+        val system = AndroidSpeechRecognitionGateway(context)
+        if (system.isAvailable) {
+            Log.i("SpeechGateway", "使用系統語音辨識")
+            return system
+        }
+
+        system.shutdown()
+        Log.i("SpeechGateway", "系統沒有語音辨識服務，改用 APK 內建的離線引擎")
+        return SherpaSpeechRecognitionGateway(context)
+    }
 
     /**
      * 未設定 BFF 位址時退回離線閘道。

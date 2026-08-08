@@ -8,5 +8,6 @@
 # 詞典解析器不預期 \r，轉了之後模型可能載不起來，而且錯誤看起來
 # 會像是「模型檔壞掉」，非常難查。
 guide-glasses/ai/ai-tts-offline/src/main/assets/** -text
+guide-glasses/ai/ai-asr-offline/src/main/assets/** -text
 *.onnx -text
 *.fst -text

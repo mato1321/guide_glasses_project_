@@ -112,6 +112,21 @@ class MainActivity : AppCompatActivity() {
                 when (val cmd = intent.getStringExtra("cmd").orEmpty()) {
                     "" -> Log.w(DEBUG_TAG, "缺少 --es cmd")
 
+                    /*
+                     * 開始聆聽。
+                     *
+                     * 其他指令都是「直接執行某個功能」，只有這個是走
+                     * 完整的「聽 → 辨識 → 路由」流程，用來驗證離線 ASR。
+                     *
+                     * 需要獨立指令是因為眼鏡的螢幕逾時只有 5 秒，
+                     * 睡著之後 `input tap` 點不到按鈕，而且 launcher
+                     * 會把焦點搶走 —— UI 點擊在這台機器上不是可靠的測試方式。
+                     */
+                    "LISTEN" -> {
+                        Log.i(DEBUG_TAG, "LISTEN：開始聆聽")
+                        triggerAssistant()
+                    }
+
                     else -> {
                         val args = buildMap {
                             intent.getStringExtra("target_language")?.let { put("target_language", it) }

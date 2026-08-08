@@ -3,7 +3,7 @@
 > **完成一項就把 `[ ]` 改成 `[x]`。** 順手更新 [`STATUS.md`](STATUS.md) 的完成度。
 > 怎麼做見 [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md)。
 
-最後更新：2026-08-08 ｜ 已完成 **128 / 229**
+最後更新：2026-08-08 ｜ 已完成 **130 / 231**
 
 ---
 
@@ -29,7 +29,9 @@
       宣告有 `location.gps` 特徵但無 provider、無 GNSS HAL → **確定走手機 companion**
 - [ ] A11 測試邊充邊用是否可行
 - [ ] A12 連續 2fps 偵測下的實際續航
-- [ ] A13 測試能否設 Device Owner
+- [ ] A13 測試能否設 Device Owner → 🟡 **唯讀檢查已做**：0 帳號、無既有 owner ✅，
+      但 `device_provisioned=1` ❌（通常要恢復原廠後才能設）。
+      **未實際嘗試** —— 設定成功後多半要恢復原廠才能解除。見 `docs/PROVISIONING.md`
 - [ ] A14 相機水平視角校正（2 公尺實測比對）
 - [ ] A15 說「唸給我聽」再說「翻成英文」→ 記錄語言包下載耗時
 - [ ] A16 **確認眼鏡有沒有英文 TTS 語音資料** —— 沒有的話翻譯結果會用中文腔唸出來
@@ -62,14 +64,20 @@
 - [x] ~~A0-11 量測離線合成延遲~~ → 載入 4.7s、起播 **0.48s**、RTF **1.00**、快取命中 +73ms
 - [ ] A0-12 確認數字唸法正確（說「測試相機」聽它怎麼唸 480）——
       唸成「四八零」代表 rule FST 沒生效。⚠️ 實測 FST 有載入成功，但**耳朵尚未確認**
-- [ ] A0-13 用 sherpa-onnx 的 ASR 解 STT —— `.so` 已在 APK 裡，只差模型檔
+- [x] ~~A0-13 用 sherpa-onnx 的 ASR 解 STT~~ → ✅ `ai/ai-asr-offline` 已實作，
+      模型載入 6.0s、麥克風與逾時邏輯實測正常
+- [ ] A0-17 🔴 **驗證 ASR 辨識準確度** —— 需要有人對眼鏡說話。
+      `adb shell am broadcast -a com.guideglasses.DEBUG --es cmd LISTEN` 後立刻說話
+- [ ] A0-18 量測 ASR 的即時性（同一顆 CPU 跑 TTS 的 RTF 已接近 1）
 - [x] ~~A0-14 驗證框架端有無 TTS system service~~ → 🔴 **確定沒有**。204 個系統服務裡
       `tts`/`speech`/`voice` 一個都沒有 → sideload 引擎 APK 確定無效
-- [ ] A0-15 眼鏡上沒有英文語音 → 翻譯結果目前**沒有聲音**（落到 LogOnlyAnnouncer）
+- [x] ~~A0-15 翻譯結果沒有聲音~~ → ✅ 加了英文模型（piper amy，22050Hz），
+      實測「Beware of the steps」正常唸出。⚠️ 順手修掉英文峰值 0.58 沿用
+      中文 3.5 倍增益造成的削波，改成每個語音各自的增益
 - [ ] A0-16 預先合成安全用語（「前方有車」等）灌進快取，讓第一次也能即時
 - [x] ~~A23 Foreground Service~~ → ✅ **已完成並實測**：背景 40 秒存活
       （`oom adj` 905 → 200）、背景開相機成功、背景播報正常
-- [ ] A23b 🔴 **產品化：背景限制要靠 adb 解除** ——
+- [ ] A23b 🔴 **產品化：背景限制要靠 adb 解除**（見 `docs/PROVISIONING.md`）——
       YodaOS 預設把每個 App 都設成 `RUN_ANY_IN_BACKGROUND: ignore`（連 Maps 也是），
       每台眼鏡要跑一次 `adb shell cmd appops set com.guideglasses RUN_ANY_IN_BACKGROUND allow`。
       量產需要 Device Owner 或 MDM（見 A13）
@@ -361,14 +369,14 @@
 
 | 分類 | 已完成 | 總數 |
 |---|---:|---:|
-| A. 實機驗證 | 21 | 44 |
+| A. 實機驗證 | 23 | 46 |
 | B. 外部交付 | 7 | 11 |
 | C. 已完成的功能 | 66 | 82 |
 | D. 待實作 | 30 | 67 |
 | E. 交叉整合 | 2 | 6 |
 | F. 技術債 | 1 | 9 |
 | G. 給組員的建議 | 0 | 8 |
-| **合計** | **128** | **229** |
+| **合計** | **130** | **231** |
 
 > 更新這份文件時，順手改一下這個表與檔頭的數字。
 >

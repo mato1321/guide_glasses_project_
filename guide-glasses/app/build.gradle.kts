@@ -148,6 +148,7 @@ dependencies {
     implementation(project(":glasses:glasses-sensors"))
     implementation(project(":ai:ai-speech"))
     implementation(project(":ai:ai-tts-offline"))
+    implementation(project(":ai:ai-asr-offline"))
     implementation(project(":ai:ai-agent"))
     implementation(project(":ai:ai-ocr"))
     implementation(project(":ai:ai-face"))
