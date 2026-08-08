@@ -48,7 +48,8 @@ adb shell service list | grep -iE "tts|speech|voice"  # 一個都沒有
 | 模型載入 | **4.7 秒** |
 | 起播延遲（現場合成） | **0.4–1.0 秒** |
 | RTF（合成時間 ÷ 音長） | **約 1.05** |
-| 快取命中的額外開銷 | **60–130ms** |
+| 快取命中的額外開銷 | **60–150ms** |
+| 合成輸出峰值 | 0.20–0.24（**播放前套 3.5 倍增益**，見下） |
 
 ### 為什麼選 aishell3 而不是音質更好的 piper
 
@@ -66,9 +67,43 @@ adb shell service list | grep -iE "tts|speech|voice"  # 一個都沒有
 underrun（實測一句話 10 次），聽起來斷斷續續；RTF 1.05 則勉強跟得上。
 8000Hz 是電話音質，仍然完全可辨識。
 
-> 要換回 piper（或任何其他模型）：把檔案放進 `assets/tts/<名字>/`，
-> 改 `SherpaOfflineTtsAnnouncer` 的 `ASSET_DIR` 與 `MODEL_FILE` 兩個常數即可，
-> 程式邏輯不用動。快取目錄跟著 `ASSET_DIR` 走，所以換模型會自動失效舊音訊。
+> 換模型：把檔案放進 `assets/tts/<名字>/`，改 `SherpaOfflineTtsAnnouncer` 的
+> `ASSET_DIR` 與 `MODEL_FILE` 兩個常數即可，程式邏輯不用動。
+> 快取目錄跟著 `ASSET_DIR` 走，所以換模型會自動失效舊音訊。
+
+#### ⚠️ fp16 模型在這台裝置上會直接 SIGABRT
+
+試過 `vits-piper-zh_CN-xiao_ya-medium-fp16`，想驗證「int8 動態量化在 ARM 上
+反而比較慢」的假設。結果模型**載入當場就 abort**：
+
+```
+F libc: Fatal signal 6 (SIGABRT) in tid (offline-tts)
+F DEBUG: #13 libsherpa-onnx-jni.so (Java_com_k2fsa_sherpa_onnx_OfflineTts_newFromAsset+800)
+```
+
+ONNX Runtime 在這台裝置上跑不了 fp16。而且是**原生 abort，`runCatching` 攔不住**，
+整個行程死掉 —— 跟 lambda 那個坑同一類。**不要用 fp16 模型。**
+
+### 🔊 為什麼播放前要放大 3.5 倍
+
+使用者回報「聽得到，但比系統聲音小」。把眼鏡上快取的 PCM 拉回來量：
+
+```
+峰值 0.2097 (-13.6 dBFS)｜RMS 0.0388 (-28.2 dBFS)
+```
+
+系統音效通常做到接近 0 dBFS —— **我們白白浪費了 13.6 dB**。
+套 3.5 倍增益後實測輸出電平從 -21~-30dB 提升到 -7.5~-17dB。
+
+兩個設計決定：
+
+- **拉高音訊而不是叫使用者調音量**：導盲提示走 `STREAM_ACCESSIBILITY`，
+  那條串流的音量獨立於媒體音量，眼鏡上預設只有 8/15，不能假設使用者會去調。
+- **快取存原始樣本，播放時才套增益**：調整 `GAIN` 之後舊快取立刻跟著變大聲，
+  也保證同一句話「現場合成」與「快取播放」一樣大聲。
+
+不用逐句正規化，是因為串流合成拿不到整句峰值（樣本一塊一塊來），
+逐句算會讓兩條路徑不一樣大聲。log 會記每則的原始峰值，要調 `GAIN` 時有數據可依。
 
 ### 🔴 這顆 CPU 達不到障礙物播報的 300ms 預算
 

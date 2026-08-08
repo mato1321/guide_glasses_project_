@@ -272,6 +272,14 @@ adb shell service list | grep -iE "tts|speech|voice"  # 一個都沒有
 | 起播延遲 | **0.48 秒** |
 | RTF | **1.00** |
 | 快取命中的額外開銷 | 73ms |
+| 合成輸出峰值 | 0.21（-13.6 dBFS）→ 播放前套 3.5 倍增益 |
+
+**音量**：合成輸出只有 -13.6 dBFS，比系統音效小一截（使用者實際回報過）。
+播放前套 3.5 倍增益後，輸出電平從 -21~-30dB 提升到 -7.5~-17dB。
+注意眼鏡的 `STREAM_ACCESSIBILITY` 預設只有 8/15，且與媒體音量獨立。
+
+**⚠️ fp16 模型會 SIGABRT**：試過 piper 的 fp16 版，
+`OfflineTts_newFromAsset` 當場 abort（原生訊號，攔不住）。這台跑不了 fp16。
 
 音訊確實送到喇叭（`dumpsys media.audio_flinger` 有真實的 dB 訊號軌跡）。
 
