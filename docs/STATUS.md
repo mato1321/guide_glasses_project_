@@ -7,7 +7,7 @@
 |---|---|
 | 最後更新 | 2026-08-08 |
 | `main` HEAD | `1c7066c` |
-| 整體完成度 | **約 84%** |
+| 整體完成度 | **約 86%** |
 | 單元測試 | **308 個，全過**（34 個測試類，純 JVM） |
 | 模組數 | 14 |
 | Kotlin 行數 | 8,535（主程式）+ 3,799（測試） |
@@ -131,7 +131,7 @@ guide-glasses/
 
 | # | 卡在什麼 | 誰能解 | 影響 |
 |---|---|---|---|
-| 1 | 🔴 **App 退到背景 2.4 秒就被殺** | Foreground Service（A23） | **比語音更基本**：螢幕一關什麼功能都沒有（`DEVICE_FINDINGS.md` §21） |
+| 1 | ✅ ~~App 退到背景就被殺~~ | Foreground Service 已完成 | ⚠️ 但每台眼鏡要跑一次 `adb shell cmd appops set com.guideglasses RUN_ANY_IN_BACKGROUND allow`，否則系統會**靜默**拒絕（`DEVICE_FINDINGS.md` §21） |
 | 1b | 🔴 **STT 仍完全不可用** | 同一顆 sherpa-onnx `.so` 就支援 ASR，只差模型檔 | 眼鏡上無法用說話觸發任何功能 |
 | 2 | ~~障礙物模型未交付~~ | ✅ **已解決** | YOLOv8n-seg 八類已接上並進版控 |
 | 3 | ~~端側人臉模型檔~~ | ✅ **已解決** | 用 InsightFace 的 `w600k_mbf.onnx`，直接執行不需轉檔 |
@@ -299,7 +299,9 @@ guideglasses.faceEndpoint=http://<你的IP>:8000/recognize   # 遠端人臉備�
 - 🔴 反覆出現的陷阱：pm list features 宣告有，實際上沒有。
   GPS、前鏡頭、TTS 都中過。**任何硬體能力都要實測，不能看 API 宣告。**
 
-## 眼鏡上怎麼測（沒有語音，只能這樣）
+## 眼鏡上怎麼測
+  # 🔴 每台眼鏡第一次要跑這行，否則前景服務會被系統「靜默」擋掉
+  adb shell cmd appops set com.guideglasses RUN_ANY_IN_BACKGROUND allow
   adb shell am set-inactive com.guideglasses false
   adb shell svc power stayon true
   adb shell am start -n com.guideglasses/.MainActivity
@@ -323,8 +325,8 @@ cmd 可用任何 AssistantIntent 名稱，可帶 --es target_language / text / n
 
 | 你的狀況 | 填什麼 |
 |---|---|
-| **手上有眼鏡**（最高優先） | 「驗證 ai-tts-offline 在眼鏡上真的會出聲」 |
-| **想讓眼鏡能用** | 「實作 Foreground Service，解決 idle UID 擋相機」 |
+| **想讓翻譯有聲音** | 「加英文 TTS 模型 —— 翻譯結果目前落到 LogOnly，完全沒聲音」 |
+| **想解決產品化** | 「研究 Device Owner，讓背景限制不必靠 adb 解除」 |
 | 想解決語音**輸入** | 「用 sherpa-onnx 的 ASR 接 STT —— .so 已經在 APK 裡了，只差模型」 |
 | 想繼續做功能 | 「接上 CameraModeController」—— 走路才開相機，眼鏡續航很吃這個 |
 | 想驗證人臉 | 「跑註冊工具建幾個人，在眼鏡上測同步與辨識」 |
@@ -336,6 +338,7 @@ cmd 可用任何 AssistantIntent 名稱，可帶 --es target_language / text / n
 
 | 日期 | 進度 | 內容 |
 |---|---:|---|
+| 2026-08-08 | 86% | **Foreground Service 完成並實測**：背景 40 秒存活、背景開相機成功。發現 YodaOS 預設把每個 App 背景限制（連 Maps 也是），`startForeground` 被**靜默拒絕** —— 程式已加主動查證。修正播報音量（+11dB） |
 | 2026-08-08 | 84% | **眼鏡實測離線 TTS 會出聲**：修掉 JNI lambda 導致的行程 abort、換成 aishell3（RTF 2.2→1.0、起播 2.3s→0.48s）、加合成快取（+73ms）。發現 **App 退到背景 2.4 秒就被殺** |
 | 2026-08-08 | 82% | **繞開眼鏡壞掉的 TTS 框架**：新增 `ai-tts-offline`（sherpa-onnx + VITS 中文模型），`FallbackAnnouncer` 候選鏈讓手機用系統 TTS、眼鏡自動落到離線引擎（+13 測試）。⚠️ 未上機驗證 |
 | 2026-08-08 | 80% | **眼鏡實測：相機／OCR／障礙物／翻譯／感測器全通過**；修掉假前鏡頭旗標；A3/A4 解答 |

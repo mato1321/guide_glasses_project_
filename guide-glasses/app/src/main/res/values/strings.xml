@@ -13,4 +13,9 @@
 
     <string name="desc_transcript">你說的話</string>
     <string name="desc_reply">助理的回應</string>
+
+    <!-- 前景服務通知。使用者多半看不到這塊螢幕，但 Android 強制要有。 -->
+    <string name="foreground_service_channel">導盲服務運作中</string>
+    <string name="foreground_service_title">導盲眼鏡運作中</string>
+    <string name="foreground_service_text">持續偵測障礙物並提供語音提示</string>
 </resources>

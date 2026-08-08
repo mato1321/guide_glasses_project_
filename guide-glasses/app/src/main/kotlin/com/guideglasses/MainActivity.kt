@@ -78,6 +78,10 @@ class MainActivity : AppCompatActivity() {
 
         observeState()
         registerDebugTrigger()
+
+        // 眼鏡上 App 退到背景 2.4 秒就會被系統回收，而導盲的使用情境
+        // 本來就是螢幕關著的。沒有這一行，整套系統在真實情境下等於不存在。
+        GuideGlassesForegroundService.start(this)
     }
 
     /**

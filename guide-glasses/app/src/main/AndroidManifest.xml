@@ -9,6 +9,21 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
+    <!--
+        前景服務。
+
+        眼鏡上實測 App 退到背景 2.4 秒就被系統回收（adj 900 cached），
+        而導盲的使用情境本來就是螢幕關著的 —— 沒有前景服務，
+        這套系統在真實情境下等於不存在。細節見 GuideGlassesForegroundService。
+
+        CAMERA / MICROPHONE 兩個細分權限是 Android 14 起的要求；
+        眼鏡是 Android 12 用不到，但 targetSdk 是 36，裝到新機器上就需要。
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <!-- 眼鏡連線（CXR-M SDK 需求：藍牙 + 定位）-->
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
@@ -48,6 +63,17 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!--
+            型別在執行期還會依「當下實際拿到哪些權限」再算一次
+            （見 GuideGlassesForegroundService.currentServiceType）——
+            Android 14 起宣告 camera 型別卻沒有 CAMERA 執行期權限會直接
+            丟 SecurityException，而語音播報本來就不需要相機。
+        -->
+        <service
+            android:name=".GuideGlassesForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="camera|microphone" />
     </application>
 
 </manifest>

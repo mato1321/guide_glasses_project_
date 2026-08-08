@@ -715,9 +715,9 @@ adb logcat -c && adb shell am force-stop com.guideglasses && adb shell am start 
 
 ---
 
-## 21. 🔴 App 一退到背景就被系統殺掉
+## 21. ✅ App 退到背景就被殺 —— 已解決，但需要一次性佈建
 
-**這是目前最根本的阻塞，比語音更基本。**
+**這曾是最根本的阻塞。已用 Foreground Service 解決，但有一個裝置層級的前提。**
 
 實測：觸發一則播報後把 Activity 切到背景，2.4 秒後 ——
 
@@ -748,12 +748,66 @@ adb shell am start -n com.guideglasses/.MainActivity && sleep 1
 adb shell am broadcast -a com.guideglasses.DEBUG --es cmd SENSOR_TEST
 ```
 
-### 解法
+### 🔴 解法有個陷阱：YodaOS 預設把每個 App 都背景限制
 
-**Foreground Service**（`TASKS.md` A23）。原本的理由是「解除 idle UID 的相機限制」，
-現在多了一個更強的理由：**沒有它，App 根本活不到能播報的時候。**
-電池最佳化白名單（`dumpsys deviceidle whitelist +com.guideglasses`）已經加過，
-**不足以**阻止 `cached` 回收。
+先做了 `GuideGlassesForegroundService`，log 顯示 `startForeground()` 成功 ——
+**但那是假的**：
+
+```
+W ActivityManager: Service.startForeground() not allowed due to bg restriction:
+                   service com.guideglasses/.GuideGlassesForegroundService
+```
+
+系統**靜默拒絕**了：不丟例外、不回傳值。行程仍然是 `oom adj 905`（cached），
+`dumpsys activity services` 裡也沒有 `isForeground`。
+這是這台裝置反覆出現的模式，跟 `bindSecurityService` 不回呼、
+`pm list features` 假宣告完全同一類。
+
+原因：
+
+```bash
+adb shell cmd appops get com.guideglasses RUN_ANY_IN_BACKGROUND
+# RUN_ANY_IN_BACKGROUND: ignore
+
+# 對照組 —— 不是只有我們：
+adb shell cmd appops get com.example.ocr RUN_ANY_IN_BACKGROUND          # ignore
+adb shell cmd appops get com.google.android.apps.maps RUN_ANY_IN_BACKGROUND  # ignore
+```
+
+**YodaOS 預設把每一個 App 都設成背景限制，連 Google Maps 也是。**
+電池最佳化白名單（`deviceidle whitelist`，本專案早就在裡面）**解不了這個** ——
+那是另一層限制。
+
+### ✅ 佈建指令（每台眼鏡執行一次）
+
+```bash
+adb shell cmd appops set com.guideglasses RUN_ANY_IN_BACKGROUND allow
+```
+
+執行後實測：
+
+| 項目 | 解除前 | 解除後 |
+|---|---|---|
+| `oom adj` | 905（cached） | **200（fg-service）** |
+| `isForeground` | 無 | **true** |
+| 背景 40 秒 | 被殺 | **存活** |
+| 背景開相機 | `Access Denial: idle UID` | **成功**（480×640、1476ms） |
+| 背景播報 | 行程消失 | **正常** |
+
+### 程式端已主動查證
+
+`startForeground()` 不丟例外不代表成功，所以服務啟動後用
+`getRunningServices` 查自己有沒有 `foreground` 旗標，被擋時會在 log 印出
+
+```
+E GuideService: 🔴 前景服務被系統擋下（背景限制=true）。螢幕關閉後 App 會被回收⋯
+```
+
+而不是謊報成功。
+
+> ⚠️ **產品化的待解問題**：這條指令要靠 adb。量產時需要 Device Owner
+> 或 MDM 佈建（`TASKS.md` A13）。使用者自己在設定裡關掉背景限制，
+> 對全盲使用者不現實。
 
 ---
 
