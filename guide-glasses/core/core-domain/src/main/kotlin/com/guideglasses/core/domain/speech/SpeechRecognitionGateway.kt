@@ -51,6 +51,15 @@ object SpeechCapability {
 
     /** 麥克風不可用，多半被其他 App 佔用。 */
     const val MICROPHONE = "speech-microphone"
+
+    /**
+     * 有在聽，但**完全沒聽到人聲**就逾時了。
+     *
+     * 這與 [RECOGNITION]（裝置上根本沒有辨識能力）是**完全不同的兩件事**，
+     * 必須分開 —— 播報端若把兩者講成同一句，使用者會以為系統壞了，
+     * 實際上只是講得太小聲或太晚開口。
+     */
+    const val NO_SPEECH = "speech-not-heard"
 }
 
 sealed interface SpeechEvent {

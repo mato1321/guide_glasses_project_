@@ -18,6 +18,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import com.guideglasses.ai.asr.MicrophoneProbe
 import com.guideglasses.feature.assistant.AssistantViewModel
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
@@ -126,6 +127,15 @@ class MainActivity : AppCompatActivity() {
                         Log.i(DEBUG_TAG, "LISTEN：開始聆聽")
                         triggerAssistant()
                     }
+
+                    /*
+                     * 逐一測試每種音訊來源。
+                     *
+                     * 眼鏡上 VOICE_RECOGNITION 收到的全是 0，而權限、appop、
+                     * 佔用、靜音、行程狀態全部正常 —— 廠商只實作部分音訊來源
+                     * 是很常見的事，只能一個一個試。測試時要持續說話。
+                     */
+                    "MIC_TEST" -> Thread { MicrophoneProbe.runAll() }.start()
 
                     else -> {
                         val args = buildMap {

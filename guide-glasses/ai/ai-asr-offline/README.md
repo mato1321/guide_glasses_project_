@@ -53,6 +53,46 @@ Google App 提供 `RecognitionService`，這台沒裝，也沒有 Play 商店可
 
 ---
 
+## 🔴 這台裝置最大的坑：VOICE_RECOGNITION 是啞的
+
+一開始用 `MediaRecorder.AudioSource.VOICE_RECOGNITION`（對語音辨識而言
+最合適的來源，系統會套降噪與 AGC）。結果**收到的全是 0**，而權限、appop、
+麥克風佔用、全域靜音、行程狀態（連 TOP 都試過）全部正常，
+換成 16-bit 也一樣 —— 錄音「成功」了，只是沒有聲音。
+
+寫了 [`MicrophoneProbe`](src/main/kotlin/com/guideglasses/ai/asr/MicrophoneProbe.kt)
+把每種來源都試一遍：
+
+```
+VOICE_RECOGNITION：0.0000  ← 靜音
+MIC：              0.0387
+DEFAULT：          0.0227
+VOICE_COMMUNICATION：0.0287
+CAMCORDER：        0.0439
+UNPROCESSED：      0.0086
+```
+
+**這台裝置上唯一沒接的來源，剛好就是最該用的那一個。**
+廠商沒實作它，而且不報錯、只是靜靜回傳靜音 —— 又是招牌失敗方式。
+現在用 `MIC`。
+
+哪天換裝置或韌體更新後又聽不到，先跑這個再猜：
+
+```bash
+adb shell am broadcast -a com.guideglasses.DEBUG --es cmd MIC_TEST
+adb logcat -d | grep MicProbe   # 測試時要持續說話
+```
+
+### 實測的音量基準（眼鏡）
+
+| 情況 | 峰值 |
+|---|---|
+| 音訊來源沒接 | **0.0000**（乾淨的零） |
+| 環境底噪 | 約 0.005 |
+| 正常說話 | 約 0.039 |
+
+---
+
 ## 已知限制與尚未驗證
 
 | 項目 | 狀態 |
@@ -60,6 +100,7 @@ Google App 提供 `RecognitionService`，這台沒裝，也沒有 Play 商店可
 | 模型載入 | ✅ 眼鏡實測 **6.0 秒** |
 | 麥克風開啟 | ✅ 實測 `AUDIO_SOURCE_VOICE_RECOGNITION`、16kHz float |
 | 逾時邏輯 | ✅ 實測 8 秒無人聲會正確回報 |
+| 音訊來源 | ✅ 已修：`VOICE_RECOGNITION` 在這台是啞的，改用 `MIC`（見上） |
 | **實際辨識準確度** | 🔴 **尚未驗證** —— 需要有人對著眼鏡說話 |
 | 即時性（RTF） | 🔴 未實測。同一顆 CPU 跑 TTS 的 RTF 已接近 1 |
 | 語言 | 只有中文 |

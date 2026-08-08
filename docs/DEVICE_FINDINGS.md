@@ -97,7 +97,32 @@ adb shell "cmd package query-services --brief -a android.speech.RecognitionServi
 | 模型載入 | ✅ 6.0 秒 |
 | 麥克風 | ✅ `AUDIO_SOURCE_VOICE_RECOGNITION`、16kHz float |
 | 逾時邏輯 | ✅ 8 秒無人聲會正確回報 |
+| 音訊來源 | 🔴 **`VOICE_RECOGNITION` 在這台是啞的**，見下 |
 | **辨識準確度** | 🔴 **尚未驗證**，需要有人對眼鏡說話 |
+
+#### 🔴 又一個「宣告有、實際沒有」：VOICE_RECOGNITION 音訊來源
+
+用 `MediaRecorder.AudioSource.VOICE_RECOGNITION` 錄音**收到的全是 0**，
+而權限、appop、麥克風佔用、全域靜音、行程狀態（TOP）全部正常。
+逐一探測每種來源：
+
+```
+VOICE_RECOGNITION：0.0000  ← 靜音
+MIC：              0.0387
+DEFAULT：          0.0227
+VOICE_COMMUNICATION：0.0287
+CAMCORDER：        0.0439
+UNPROCESSED：      0.0086
+```
+
+**唯一沒接的來源剛好是最該用的那一個**，而且不報錯、只是靜靜回傳靜音。
+已改用 `MIC`。探針保留在 repo 裡：
+
+```bash
+adb shell am broadcast -a com.guideglasses.DEBUG --es cmd MIC_TEST
+```
+
+音量基準：來源沒接 = 乾淨的 0.0000｜環境底噪 ≈ 0.005｜正常說話 ≈ 0.039。
 
 觸發方式（眼鏡螢幕 5 秒就睡，`input tap` 點不到按鈕）：
 

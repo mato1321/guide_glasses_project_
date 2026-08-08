@@ -622,6 +622,7 @@ class AssistantViewModel @Inject constructor(
             SpeechCapability.LANGUAGE_PACK -> MESSAGE_NO_SPEECH_LANGUAGE
             SpeechCapability.BUSY -> MESSAGE_RECOGNIZER_BUSY
             SpeechCapability.MICROPHONE -> MESSAGE_MIC_BUSY
+            SpeechCapability.NO_SPEECH -> MESSAGE_NO_SPEECH_HEARD
             else -> MESSAGE_NO_ASR
         }
         else -> MESSAGE_GENERIC_FAILURE
@@ -653,6 +654,13 @@ class AssistantViewModel @Inject constructor(
             "這台裝置沒有中文語音辨識資料。請到系統設定的語音輸入中下載中文，再試一次"
         const val MESSAGE_RECOGNIZER_BUSY = "我還在處理上一句，請稍等一下再說"
         const val MESSAGE_MIC_BUSY = "麥克風好像正被其他程式使用中"
+
+        /**
+         * 有在聽但沒聽到 —— 與「沒有辨識服務」是不同的事。
+         *
+         * 混在一起講會讓使用者以為系統壞掉而放棄，實際上再說一次就好。
+         */
+        const val MESSAGE_NO_SPEECH_HEARD = "我沒有聽到聲音，請再說一次"
         const val MESSAGE_GENERIC_FAILURE = "我現在無法處理，請再試一次"
         const val MESSAGE_NOTHING_TO_REPEAT = "目前沒有可以重複的內容"
         const val MESSAGE_CAMERA_TESTING = "正在測試相機"
