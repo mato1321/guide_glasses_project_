@@ -98,7 +98,7 @@ adb logcat -d | grep MicProbe   # 測試時要持續說話
 | 項目 | 狀態 |
 |---|---|
 | 模型載入 | ✅ 眼鏡實測 **6.0 秒** |
-| 麥克風開啟 | ✅ 實測 `AUDIO_SOURCE_VOICE_RECOGNITION`、16kHz float |
+| 麥克風開啟 | ✅ 實測 `AUDIO_SOURCE_MIC`、16kHz、16-bit（兩者都是踩過坑才定下來的，見上） |
 | 逾時邏輯 | ✅ 實測 8 秒無人聲會正確回報 |
 | 音訊來源 | ✅ 已修：`VOICE_RECOGNITION` 在這台是啞的，改用 `MIC`（見上） |
 | **實際辨識準確度** | 🔴 **尚未驗證** —— 需要有人對著眼鏡說話 |
