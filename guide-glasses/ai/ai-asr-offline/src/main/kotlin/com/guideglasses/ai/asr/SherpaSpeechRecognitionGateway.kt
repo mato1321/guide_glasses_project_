@@ -64,6 +64,22 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 class SherpaSpeechRecognitionGateway(
     context: Context,
+    /**
+     * 系統此刻是不是正在播報。
+     *
+     * 眼鏡的喇叭與麥克風距離只有幾公分，**它一定會聽到自己講的話**。
+     * 而播報內容裡就含有指令詞 —— 實機 log：
+     *
+     * ```
+     * 01:12:26 播報「我還不會回答這種問題。你可以說「唸給我聽」、「這是誰」⋯」
+     * 01:12:31 辨識完成：「这是谁」      ← 播報還沒結束就聽到自己
+     * ```
+     *
+     * 於是同一則回應被觸發第二次，使用者聽到的是「同一句話講兩遍」。
+     * 播報期間的音訊必須整段丟掉，這不是可以之後再修的細節 ——
+     * 它會讓助理陷入自問自答。
+     */
+    private val isSpeaking: () -> Boolean = { false },
 ) : SpeechRecognitionGateway {
 
     private val appContext = context.applicationContext
@@ -117,6 +133,11 @@ class SherpaSpeechRecognitionGateway(
         var micPeak = 0f
         var loudChunks = 0
 
+        // 播報期間丟掉的時間，不能算進逾時 —— 否則助理話還沒講完，
+        // 聆聽就已經因為「沒聽到人聲」而放棄了。
+        var mutedMillis = 0L
+        var mutedSince = 0L
+
         try {
             record.startRecording()
             Log.i(TAG, "開始聆聽")
@@ -125,6 +146,19 @@ class SherpaSpeechRecognitionGateway(
             while (currentCoroutineContext().isActive && !cancelled.get()) {
                 val read = record.read(buffer, 0, buffer.size, AudioRecord.READ_BLOCKING)
                 if (read <= 0) continue
+
+                if (isSpeaking()) {
+                    // 這段音訊是喇叭傳回來的自己的聲音，整段丟掉並重置串流。
+                    // 不重置的話，前半句真人語音會跟後半句自己的聲音黏成一句。
+                    if (mutedSince == 0L) mutedSince = System.currentTimeMillis()
+                    engine.reset(stream)
+                    lastPartial = ""
+                    continue
+                }
+                if (mutedSince != 0L) {
+                    mutedMillis += System.currentTimeMillis() - mutedSince
+                    mutedSince = 0L
+                }
 
                 val chunk = buffer.toFloatSamples(read)
                 val chunkPeak = chunk.maxOf { abs(it) }
@@ -156,7 +190,7 @@ class SherpaSpeechRecognitionGateway(
                     }
                 }
 
-                if (System.currentTimeMillis() - startedAt > timeoutFor(heardSpeech)) {
+                if (System.currentTimeMillis() - startedAt - mutedMillis > timeoutFor(heardSpeech)) {
                     // 逾時也要給出結果 —— 對看不見的使用者，靜默等待
                     // 跟當機沒有區別。
                     if (lastPartial.isNotEmpty()) {

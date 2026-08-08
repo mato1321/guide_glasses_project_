@@ -136,6 +136,7 @@ object AssistantModule {
     @Singleton
     fun provideSpeechGateway(
         @ApplicationContext context: Context,
+        announcer: Announcer,
     ): SpeechRecognitionGateway {
         val system = AndroidSpeechRecognitionGateway(context)
         if (system.isAvailable) {
@@ -145,7 +146,9 @@ object AssistantModule {
 
         system.shutdown()
         Log.i("SpeechGateway", "系統沒有語音辨識服務，改用 APK 內建的離線引擎")
-        return SherpaSpeechRecognitionGateway(context)
+        // 把播報狀態接進去 —— 眼鏡的喇叭與麥克風只隔幾公分，
+        // 不擋掉播報期間的音訊，助理會聽到自己講的指令詞而自問自答。
+        return SherpaSpeechRecognitionGateway(context) { announcer.isSpeaking }
     }
 
     /**

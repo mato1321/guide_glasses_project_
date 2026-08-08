@@ -44,8 +44,10 @@ internal enum class OfflineVoice(
     CHINESE(
         languagePrefix = "zh",
         assetDir = "tts/zh-aishell3",
-        // 實測峰值 0.20–0.24 → ×3.5 約 0.7–0.85。
-        gain = 3.5f,
+        // 實測峰值 0.19–0.23。×4.0 之後約 0.76–0.92，仍留一點餘裕。
+        // 使用者回報 3.5 倍時「比系統聲音小」—— 8kHz 的內容聽感本來就偏悶，
+        // 響度要壓到接近滿刻度才跟得上系統音效。
+        gain = 4.0f,
         modelFile = "model.onnx",
         lexiconFile = "lexicon.txt",
         // 導盲播報滿是數字（「前方 3 公尺」），少了這些「30」可能整個被跳過。
