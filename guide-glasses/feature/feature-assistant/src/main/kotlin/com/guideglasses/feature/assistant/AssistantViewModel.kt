@@ -135,9 +135,14 @@ class AssistantViewModel @Inject constructor(
                 }
             }
 
-            // 這一輪結束（不論成功與否）就把耳朵還給喚醒詞。
-            startWakeWordListening()
         }
+
+        /*
+         * 用 invokeOnCompletion 而不是在 job 內部直接呼叫 ——
+         * 在 job 裡呼叫時 `listeningJob.isActive` 還是 true，
+         * 會被自己的防重入檢查擋掉，耳朵就再也還不回來了。
+         */
+        listeningJob?.invokeOnCompletion { startWakeWordListening() }
     }
 
     /**
@@ -160,9 +165,22 @@ class AssistantViewModel @Inject constructor(
      * 所以這裡只看 [SpeechEvent.FinalResult]，其餘一律忽略。
      */
     fun startWakeWordListening() {
-        if (wakeWordJob?.isActive == true || listeningJob?.isActive == true) return
-        if (!speechGateway.isAvailable) return
+        // 這幾行看似囉嗦，但「沒啟動」在眼鏡上完全沒有徵兆 ——
+        // 使用者只會看到喊了沒反應，log 裡一片安靜。
+        if (wakeWordJob?.isActive == true) {
+            Log.d(TAG, "喚醒監聽：已經在跑了")
+            return
+        }
+        if (listeningJob?.isActive == true) {
+            Log.d(TAG, "喚醒監聽：指令聆聽進行中，等它結束")
+            return
+        }
+        if (!speechGateway.isAvailable) {
+            Log.w(TAG, "喚醒監聽：語音辨識不可用（缺麥克風權限或模型載入失敗）")
+            return
+        }
 
+        Log.i(TAG, "喚醒監聽已啟動，等你說「${WakeWord.CANONICAL}」")
         wakeWordJob = viewModelScope.launch {
             while (isActive) {
                 var woken = false
