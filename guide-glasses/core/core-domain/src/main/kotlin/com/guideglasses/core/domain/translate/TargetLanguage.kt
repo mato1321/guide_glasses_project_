@@ -60,7 +60,7 @@ enum class TargetLanguage(
          * @return 找不到任何語言時回傳 null，由呼叫端決定要不要套用 [DEFAULT]。
          */
         fun fromSpoken(utterance: String): TargetLanguage? {
-            val normalised = SpokenText.normalise(utterance)
+            val normalised = SpokenText.forMatching(utterance)
             if (normalised.isEmpty()) return null
 
             var best: TargetLanguage? = null
@@ -68,7 +68,9 @@ enum class TargetLanguage(
 
             for (language in entries) {
                 for (alias in language.aliases) {
-                    val index = normalised.lastIndexOf(SpokenText.normalise(alias))
+                    // 兩邊都要摺 —— utterance 來自 zh-CN 的辨識模型（「日文」
+                    // 可能回來是「日文」但「韓文」會是「韩文」），別名寫的是繁體。
+                    val index = normalised.lastIndexOf(SpokenText.forMatching(alias))
                     if (index > bestIndex) {
                         bestIndex = index
                         best = language

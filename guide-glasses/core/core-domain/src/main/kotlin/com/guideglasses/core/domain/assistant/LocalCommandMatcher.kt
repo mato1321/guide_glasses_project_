@@ -28,7 +28,7 @@ class LocalCommandMatcher {
 
         // 依序比對，順序即優先級：STOP 必須最先，否則
         // 「停，前面有什麼」會被誤判成障礙物查詢而繼續播報。
-        for ((intent, phrases) in ORDERED_RULES) {
+        for ((intent, phrases) in FOLDED_RULES) {
             if (phrases.any { normalised.contains(it) }) {
                 // 「⋯⋯翻成英文」形式時，觸發詞前面那段是使用者**口述要翻譯的
                 // 內容**，不是指令。內容裡完全可能出現「繼續」「重複」「拍一張」
@@ -55,9 +55,22 @@ class LocalCommandMatcher {
      * 需要完全一致的正規化 —— 兩份實作若不同步會出現「同一句話在這裡有效、
      * 在那裡無效」這種很難查的問題。
      */
-    private fun normalise(raw: String): String = SpokenText.normalise(raw)
+    private fun normalise(raw: String): String = SpokenText.forMatching(raw)
 
     private companion object {
+
+        /**
+         * [ORDERED_RULES] 摺疊成簡體之後的版本，實際比對用這個。
+         *
+         * 片語寫的是繁體，而眼鏡上的離線辨識模型是 zh-CN 訓練的，
+         * 說「前面有什麼」回來的是「前面有什么」—— 兩邊都摺到同一種寫法
+         * 才比對得到。摺疊只做一次，不是每次比對都算。
+         */
+        val FOLDED_RULES: List<Pair<AssistantIntent, List<String>>> by lazy {
+            ORDERED_RULES.map { (intent, phrases) ->
+                intent to phrases.map(SpokenText::fold)
+            }
+        }
 
         /**
          * 片語一律以正規化後的形式書寫（無標點、無空白、英文小寫）。

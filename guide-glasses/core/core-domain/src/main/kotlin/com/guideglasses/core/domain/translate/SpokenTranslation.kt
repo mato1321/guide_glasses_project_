@@ -125,8 +125,8 @@ object SpokenTranslation {
     private fun String.removeLanguageAlias(): String {
         val language = TargetLanguage.fromSpoken(this) ?: return this
         for (alias in language.aliases.sortedByDescending { it.length }) {
-            val normalisedAlias = SpokenText.normalise(alias)
-            val index = indexOf(normalisedAlias)
+            val normalisedAlias = SpokenText.forMatching(alias)
+            val index = SpokenText.fold(this).indexOf(normalisedAlias)
             if (index >= 0) return removeRange(index, index + normalisedAlias.length)
         }
         return this
@@ -142,8 +142,18 @@ object SpokenTranslation {
         var bestIndex = -1
         var bestTrigger = ""
 
-        for (trigger in TRIGGERS) {
-            val index = normalised.lastIndexOf(trigger)
+        /*
+         * 找位置用摺疊過的字串（辨識模型輸出簡體、觸發詞寫繁體），
+         * 但**切出來的內容用原字串** —— 那是使用者要翻譯的東西，
+         * 不該被摺成簡體。
+         *
+         * 這樣做安全的前提是摺疊逐字進行、長度不變，索引可以互換。
+         */
+        val folded = SpokenText.fold(normalised)
+
+        for (rawTrigger in TRIGGERS) {
+            val trigger = SpokenText.fold(rawTrigger)
+            val index = folded.lastIndexOf(trigger)
             if (index < 0) continue
             // 同一個位置有多個觸發詞命中時取最長的，邊界才會對。
             if (index > bestIndex || (index == bestIndex && trigger.length > bestTrigger.length)) {
