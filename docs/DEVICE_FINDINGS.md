@@ -5,14 +5,19 @@
 > 這份文件記錄的是**用 adb 實際查出來的事實**，不是規格書、不是推論。
 > 每一項都附上取得方式，任何人都可以重跑驗證。
 >
-> 最後更新：2026-08-08（新增 §9 GPS、§10 Glass3 SDK、§11 Sprite TTS）
+> 最後更新：2026-08-08（§8 語音已解決並實測、新增 §21 背景被殺）
 
 ---
 
 ## 0. 一句話總結
 
-**這台眼鏡沒有可用的 Android 語音堆疊。** STT 完全不存在，TTS 綁定失敗。
+**這台眼鏡沒有可用的 Android 語音堆疊** —— 204 個系統服務裡連一個語音相關的都沒有。
 專案原本「語音一律走 Android 原生、50ms、離線可用」的前提**在這台硬體上不成立**。
+
+**但輸出已經解決了**：把合成引擎當函式庫嵌進 APK，繞開整層框架，
+眼鏡上實測會出聲、起播 0.48 秒（見 §8）。**STT 仍然無解。**
+
+還有一個更基本的問題擋在前面：**App 一退到背景就被系統殺掉**（見 §21）。
 
 ---
 
@@ -220,7 +225,7 @@ com.qti.pasrservice                  Qualcomm PASR
 | **D. 改用非語音輸入** | — | ✅ | 中 | 🟡 眼鏡實體鍵觸發固定功能，放棄自由語句 |
 | ~~E. Glass3 企業版 SDK~~ | — | — | — | 🔴 **已排除**，見 §10 |
 | **F. YodaOS Sprite 原生服務** | ? | ? | ? | 🟡 可能可行但需要介面文件，見 §11 |
-| **G. 把合成引擎當函式庫嵌進 APK** | ? | ✅ | 中 | 🟢 **已實作（2026-08-08），待實機驗證** |
+| **G. 把合成引擎當函式庫嵌進 APK** | 起播 0.5 秒 | ✅ | 中 | ✅ **已實作並在眼鏡上實測會出聲（2026-08-08）** |
 
 ### 🔴 一個被忽略的關鍵區別：綁不上 TTS ≠ 不能出聲
 
@@ -230,13 +235,17 @@ com.qti.pasrservice                  Qualcomm PASR
 
 這推出兩件事：
 
-**B 的問題**：錯誤是 `System service is not available!`，那是**框架端**的問題，
-而任何 TTS 引擎 APK 都得透過同一個框架被綁定。所以 sideload 另一顆引擎
-大機率一樣綁不上。這是推論不是實測，驗證只要一行：
+**B 的問題（🔴 已實測證實）**：錯誤是 `System service is not available!`，
+那是**框架端**的問題，而任何 TTS 引擎 APK 都得透過同一個框架被綁定。
 
 ```bash
-adb shell service list | grep -i -E "texttospeech|tts"
+adb shell service list | wc -l                        # 204
+adb shell service list | grep -c activity             # 2（對照組，指令有效）
+adb shell service list | grep -iE "tts|speech|voice"  # 一個都沒有
 ```
+
+**204 個系統服務裡沒有任何語音相關的。** 這個 YodaOS 精簡版把整層 TTS 框架
+拿掉了 —— 所以 sideload 引擎 APK **確定沒用**，不是「大概沒用」。
 
 **方案 G**：把離線合成引擎當成**函式庫**，而不是當成系統 TTS 引擎 ——
 
@@ -247,16 +256,40 @@ adb shell service list | grep -i -E "texttospeech|tts"
 整條路徑不碰 `TextToSpeech`，也就繞開了壞掉的那一層。
 專案本來就有 ONNX Runtime（人臉、YOLO 都在用），增量成本主要是模型體積。
 
-### ✅ 方案 G 已實作（2026-08-08）
+### ✅ 方案 G 已實作並實測（2026-08-08）
 
 - 模組：`guide-glasses/ai/ai-tts-offline`（詳見該模組的 `README.md`）
 - 引擎：sherpa-onnx 1.13.4（**static-link 版**，否則 `libonnxruntime.so` 會撞名）
-- 模型：`vits-piper-zh_CN-xiao_ya-medium-int8`，18.6MB，中文女聲
+- 模型：`vits-icefall-zh-aishell3`，30MB，8000Hz
 - 接法：`FallbackAnnouncer` 候選鏈 —— 手機用系統 TTS，眼鏡自動落到離線引擎
-- 代價：APK 從約 106MB → **143MB**
+- 代價：APK 從約 106MB → **170MB**
 
-⚠️ **尚未在眼鏡上跑過**（機器不在手邊）。上機驗證步驟見模組 README。
-⚠️ 模型授權是 **non-commercial**（data-baker 資料集），畢專可用、商用要換。
+**眼鏡實測（4 核 @2.0GHz，1.8GB RAM）**：
+
+| 指標 | 實測 |
+|---|---:|
+| 模型載入 | 4.7 秒 |
+| 起播延遲 | **0.48 秒** |
+| RTF | **1.00** |
+| 快取命中的額外開銷 | 73ms |
+
+音訊確實送到喇叭（`dumpsys media.audio_flinger` 有真實的 dB 訊號軌跡）。
+
+### 換過模型：延遲比音質重要
+
+先用 `vits-piper-zh_CN-xiao_ya-medium-int8`（22050Hz、音質好），
+實測 **RTF 2.2、起播 2.3 秒、一句話 10 次 underrun** —— 合成永遠追不上播放，
+聽起來斷斷續續。換成 aishell3 後 RTF 降到 1.0、起播 0.48 秒，
+代價是取樣率只有 8000Hz（電話音質，仍完全可辨識）。
+
+### 🔴 這顆 CPU 達不到障礙物的 300ms 預算
+
+起播 0.48 秒是硬限制，不是實作問題。因此加了**磁碟快取**：
+合成過的句子存成裸 PCM，命中時額外開銷只有 73ms。導盲用語重複性極高，
+但**每句話的第一次仍要付合成延遲**。
+
+> ⚠️ 模型授權：aishell3 的資料集授權值得查證；先前的 piper 模型
+> 明載 non-commercial（data-baker）。畢專可用，商用前要確認。
 
 > **STT 仍然無解。** 方案 G 只解決了輸出。輸入端的候選是
 > sherpa-onnx 自己的 ASR（同一顆 .so 就支援，只差模型）或方案 D。
@@ -669,4 +702,72 @@ adb shell dumpsys package com.rokid.os.sprite.assistserver | grep -E "^\s+Action
 
 ```bash
 adb logcat -c && adb shell am force-stop com.guideglasses && adb shell am start -n com.guideglasses/.MainActivity && sleep 5 && adb logcat -d | grep -iE "tts|texttospeech"
+```
+
+
+---
+
+## 21. 🔴 App 一退到背景就被系統殺掉
+
+**這是目前最根本的阻塞，比語音更基本。**
+
+實測：觸發一則播報後把 Activity 切到背景，2.4 秒後 ——
+
+```
+08-08 18:28:04.033 I AssistantVM: debugDispatch → READINESS_CHECK
+08-08 18:28:06.467 I ActivityManager: Killing 12242:com.guideglasses/u0a87 (adj 900): cached #1
+```
+
+`adj 900` = `CACHED_APP`，也就是「使用者看不到、可以隨時回收」。
+播報講到一半整個行程直接消失。
+
+### 為什麼這比想像中嚴重
+
+| 情境 | 結果 |
+|---|---|
+| 使用者戴著眼鏡走路，螢幕關閉 | **App 被殺，什麼功能都沒有** |
+| 障礙物偵測 | 早就知道會被擋（idle UID，§15），現在連行程都留不住 |
+| 語音播報 | **同樣活不下來** —— 先前以為只有相機受影響 |
+
+### 這解釋了先前的測試假象
+
+早期測試會成功，只是因為 `MainActivity` 剛好在前景。
+一旦 launcher 或其他 App 跳到前景（眼鏡的 launcher 會自動輪播開啟其他 App），
+我們的行程就沒了。**在眼鏡上測試時，每次觸發前都要先把 Activity 拉回前景：**
+
+```bash
+adb shell am start -n com.guideglasses/.MainActivity && sleep 1
+adb shell am broadcast -a com.guideglasses.DEBUG --es cmd SENSOR_TEST
+```
+
+### 解法
+
+**Foreground Service**（`TASKS.md` A23）。原本的理由是「解除 idle UID 的相機限制」，
+現在多了一個更強的理由：**沒有它，App 根本活不到能播報的時候。**
+電池最佳化白名單（`dumpsys deviceidle whitelist +com.guideglasses`）已經加過，
+**不足以**阻止 `cached` 回收。
+
+---
+
+## 22. 音訊：怎麼在沒有耳朵的情況下確認有沒有出聲
+
+眼鏡戴在頭上，遠端開發時聽不到。兩個客觀確認方式：
+
+```bash
+# 1. AudioFlinger 的輸出訊號軌跡
+adb shell dumpsys media.audio_flinger | sed -n '/AudioOut_D/,/^$/p' | grep -A20 Master
+#   -86.8 -81.4 -56.6 -44.5 -40.8 ⋯  ← 有起伏的 dB 數列 = 真的有語音訊號
+#   沒有數列或全部低於 -100          = 沒有輸出
+
+# 2. 無障礙串流的音量（跟媒體音量是分開的！）
+adb shell dumpsys audio | grep -A6 "^- STREAM_ACCESSIBILITY"
+```
+
+⚠️ **眼鏡上 `STREAM_ACCESSIBILITY` 預設只有 8/15**，而我們的播報走的正是這條
+（`USAGE_ASSISTANCE_ACCESSIBILITY`）。聽起來很小聲時先查這個。
+Android 的音量鍵只調「當下正在播的那條串流」，所以**必須在播放期間按**：
+
+```bash
+adb shell am broadcast -a com.guideglasses.DEBUG --es cmd SENSOR_TEST
+sleep 2 && for i in $(seq 1 10); do adb shell input keyevent KEYCODE_VOLUME_UP; done
 ```

@@ -3,7 +3,7 @@
 > **完成一項就把 `[ ]` 改成 `[x]`。** 順手更新 [`STATUS.md`](STATUS.md) 的完成度。
 > 怎麼做見 [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md)。
 
-最後更新：2026-08-08 ｜ 已完成 **121 / 223**
+最後更新：2026-08-08 ｜ 已完成 **126 / 227**
 
 ---
 
@@ -56,18 +56,20 @@
 - [x] ~~A0-7 sideload 離線 TTS 引擎 APK~~ → 🟡 **不做**。錯誤指向框架本身，
       任何引擎 APK 都得透過同一個框架，大機率一樣綁不上
 - [x] ~~A0-8 實作 APK 內建離線 TTS~~ → ✅ `ai/ai-tts-offline`（sherpa-onnx + VITS）
-- [ ] A0-9 🔴 **上機驗證 `ai-tts-offline` 真的會出聲** ⭐ 拿到眼鏡第一件事。
-      步驟見 `guide-glasses/ai/ai-tts-offline/README.md`
-- [ ] A0-10 確認眼鏡 ABI 是 arm64-v8a（`adb shell getprop ro.product.cpu.abilist`）——
-      不是的話 app 的 `abiFilters` 要改，否則載入 .so 會直接崩
-- [ ] A0-11 量測離線合成延遲：模型載入耗時、觸發到第一個字出聲幾毫秒
+- [x] ~~A0-9 上機驗證 `ai-tts-offline` 真的會出聲~~ → ✅ **會出聲**。
+      `dumpsys media.audio_flinger` 有真實 dB 訊號軌跡
+- [x] ~~A0-10 確認眼鏡 ABI~~ → ✅ `arm64-v8a,armeabi-v7a,armeabi`，`abiFilters` 設定正確
+- [x] ~~A0-11 量測離線合成延遲~~ → 載入 4.7s、起播 **0.48s**、RTF **1.00**、快取命中 +73ms
 - [ ] A0-12 確認數字唸法正確（說「測試相機」聽它怎麼唸 480）——
-      唸成「四八零」代表 rule FST 沒生效
+      唸成「四八零」代表 rule FST 沒生效。⚠️ 實測 FST 有載入成功，但**耳朵尚未確認**
 - [ ] A0-13 用 sherpa-onnx 的 ASR 解 STT —— `.so` 已在 APK 裡，只差模型檔
-- [ ] A0-14 驗證 `adb shell service list | grep -i tts`，
-      確認框架端的 TTS system service 到底存不存在（一行就能證實或推翻推論）
-- [ ] A23 🔴 **解決 idle UID 擋相機** —— 需要 Foreground Service，
-      否則使用者戴著眼鏡、螢幕關閉時障礙物偵測完全不能用
+- [x] ~~A0-14 驗證框架端有無 TTS system service~~ → 🔴 **確定沒有**。204 個系統服務裡
+      `tts`/`speech`/`voice` 一個都沒有 → sideload 引擎 APK 確定無效
+- [ ] A0-15 眼鏡上沒有英文語音 → 翻譯結果目前**沒有聲音**（落到 LogOnlyAnnouncer）
+- [ ] A0-16 預先合成安全用語（「前方有車」等）灌進快取，讓第一次也能即時
+- [ ] A23 🔴🔴 **Foreground Service** —— 最高優先。理由從「idle UID 擋相機」升級為
+      **App 退到背景 2.4 秒就被系統殺掉**（`adj 900 cached`，見 `DEVICE_FINDINGS.md` §21）。
+      沒有它，語音與相機都活不下來
 - [ ] A24 量測相機是否每次都要 930ms，還是只有首次（CameraX 初始化）
 
 ---
@@ -355,14 +357,14 @@
 
 | 分類 | 已完成 | 總數 |
 |---|---:|---:|
-| A. 實機驗證 | 15 | 40 |
+| A. 實機驗證 | 19 | 42 |
 | B. 外部交付 | 7 | 11 |
 | C. 已完成的功能 | 66 | 82 |
 | D. 待實作 | 30 | 67 |
 | E. 交叉整合 | 2 | 6 |
 | F. 技術債 | 1 | 9 |
 | G. 給組員的建議 | 0 | 8 |
-| **合計** | **121** | **223** |
+| **合計** | **126** | **227** |
 
 > 更新這份文件時，順手改一下這個表與檔頭的數字。
 >

@@ -7,14 +7,14 @@
 |---|---|
 | 最後更新 | 2026-08-08 |
 | `main` HEAD | `1c7066c` |
-| 整體完成度 | **約 82%** |
+| 整體完成度 | **約 84%** |
 | 單元測試 | **308 個，全過**（34 個測試類，純 JVM） |
 | 模組數 | 14 |
 | Kotlin 行數 | 8,535（主程式）+ 3,799（測試） |
 | 建置狀態 | ✅ `./gradlew build` 通過，lint 無錯誤（AGP 9.3.1 / Gradle 9.5.0） |
-| APK | debug **143 MB**（ONNX Runtime 18 ＋ 人臉 13 ＋ 障礙物 13 ＋ **離線 TTS 引擎 24 ＋ 語音模型 19**） |
+| APK | debug **170 MB**（ONNX Runtime 17 ＋ 人臉 13 ＋ 障礙物 13 ＋ **離線 TTS 引擎 23 ＋ 語音模型 29**） |
 | clone 後可直接建置 | ✅ 模型已進版控，只需自補 `local.properties` |
-| 實機驗證 | 🟡 **Rokid Glasses：相機／OCR／障礙物／翻譯／感測器全部實測通過**；🟡 **TTS 已改走 APK 內建離線引擎，尚未上機驗證**；🔴 **STT 仍不可用**。見 [`DEVICE_FINDINGS.md`](DEVICE_FINDINGS.md) |
+| 實機驗證 | ✅ **相機／OCR／障礙物／翻譯／感測器／TTS 全部在眼鏡上實測通過**（TTS 起播 0.48s、RTF 1.00）；🔴 **STT 仍不可用**；🔴 **App 退到背景 2.4 秒就被系統殺掉**。見 [`DEVICE_FINDINGS.md`](DEVICE_FINDINGS.md) |
 
 ---
 
@@ -87,7 +87,7 @@ guide-glasses/
 | 專案地基（多模組、Hilt、version catalog） | 95% | ✅ 缺 CI |
 | 播報優先級仲裁 | 100% | ✅ |
 | AI 助理中樞（雙層意圖路由） | 85% | ✅ 缺 BFF、眼鏡 AI 鍵 |
-| 語音**合成**（TTS） | 80% | 🟡 眼鏡改走 APK 內建離線引擎（`ai-tts-offline`），**待上機驗證**。只有中文 |
+| 語音**合成**（TTS） | 90% | ✅ **眼鏡實測會出聲**。起播 0.48s、RTF 1.00、快取命中 +73ms。只有中文、8kHz |
 | 語音**辨識**（STT） | 🔴 **阻塞** | 眼鏡上沒有任何辨識服務。手機可用 |
 | 相機（CameraX） | 85% | ✅ **眼鏡實測通過**（修掉假前鏡頭旗標）。⚠️ 擷取 **930ms**，比估計慢 6 倍 |
 | OCR 朗讀 | 85% | ✅ **眼鏡實測管線完整** |
@@ -131,7 +131,7 @@ guide-glasses/
 
 | # | 卡在什麼 | 誰能解 | 影響 |
 |---|---|---|---|
-| 1 | 🟡 **TTS：已實作繞道，待驗證** | 把合成引擎當函式庫嵌進 APK，繞開壞掉的 Android TTS 框架（`DEVICE_FINDINGS.md` §8 方案 G） | 驗證通過後端到端測試才解鎖 |
+| 1 | 🔴 **App 退到背景 2.4 秒就被殺** | Foreground Service（A23） | **比語音更基本**：螢幕一關什麼功能都沒有（`DEVICE_FINDINGS.md` §21） |
 | 1b | 🔴 **STT 仍完全不可用** | 同一顆 sherpa-onnx `.so` 就支援 ASR，只差模型檔 | 眼鏡上無法用說話觸發任何功能 |
 | 2 | ~~障礙物模型未交付~~ | ✅ **已解決** | YOLOv8n-seg 八類已接上並進版控 |
 | 3 | ~~端側人臉模型檔~~ | ✅ **已解決** | 用 InsightFace 的 `w600k_mbf.onnx`，直接執行不需轉檔 |
@@ -336,6 +336,7 @@ cmd 可用任何 AssistantIntent 名稱，可帶 --es target_language / text / n
 
 | 日期 | 進度 | 內容 |
 |---|---:|---|
+| 2026-08-08 | 84% | **眼鏡實測離線 TTS 會出聲**：修掉 JNI lambda 導致的行程 abort、換成 aishell3（RTF 2.2→1.0、起播 2.3s→0.48s）、加合成快取（+73ms）。發現 **App 退到背景 2.4 秒就被殺** |
 | 2026-08-08 | 82% | **繞開眼鏡壞掉的 TTS 框架**：新增 `ai-tts-offline`（sherpa-onnx + VITS 中文模型），`FallbackAnnouncer` 候選鏈讓手機用系統 TTS、眼鏡自動落到離線引擎（+13 測試）。⚠️ 未上機驗證 |
 | 2026-08-08 | 80% | **眼鏡實測：相機／OCR／障礙物／翻譯／感測器全通過**；修掉假前鏡頭旗標；A3/A4 解答 |
 | 2026-08-08 | 78% | 實測確認 Glass3 SDK 在消費版眼鏡不可用（`isReady()=false`）；排除 Glass3 企業版 SDK（缺 `com.rokid.security.system.server`）；找到 Sprite 原生 TTS action |

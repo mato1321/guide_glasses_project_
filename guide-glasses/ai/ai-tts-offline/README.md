@@ -1,6 +1,6 @@
 # ai-tts-offline
 
-APK 內建的離線語音合成。**這是 Rokid Glasses 上唯一能發出聲音的途徑。**
+APK 內建的離線語音合成。**這是 Rokid Glasses 上唯一能發出聲音的途徑，已在眼鏡上實測會出聲。**
 
 ---
 
@@ -13,25 +13,69 @@ E TextToSpeech: System service is not available!
 E TextToSpeech: Failed to bind to com.github.jing332.tts_server_android
 ```
 
-系統上唯一的 TTS 引擎是一個第三方 App，而它的三個設定頁全是空的 ——
-沒有任何語音來源可選。詳細查核見 [`docs/DEVICE_FINDINGS.md`](../../../docs/DEVICE_FINDINGS.md) §4、§8。
+### 🔴 已證實：框架端的 TTS system service 根本不存在
+
+2026-08-08 在眼鏡上實測：
+
+```bash
+adb shell service list | wc -l                        # 204
+adb shell service list | grep -c activity             # 2（對照組，指令有效）
+adb shell service list | grep -iE "tts|speech|voice"  # 一個都沒有
+```
+
+**204 個系統服務裡沒有任何語音相關的。** 這不是設定問題，是這個 YodaOS 精簡版
+把整層 TTS 框架拿掉了。所以「sideload 另一顆 TTS 引擎 APK」確定沒用 ——
+任何引擎都得透過這層框架才能被綁定。
 
 ### 關鍵區別：綁不上 TTS ≠ 不能出聲
 
-眼鏡的**音訊輸出本身是好的** —— 組員的 App 用 `MediaPlayer` 播 mp3 就會出聲。
-壞掉的只有 Android TTS 那一層框架。
-
-所以解法不是「把語音搬到手機」，而是**把合成引擎當成函式庫**：
+眼鏡的**音訊輸出本身是好的**。解法是把合成引擎當成函式庫：
 
 ```
 文字 → VITS (ONNX 推論) → PCM float → AudioTrack → 眼鏡喇叭
 ```
 
-整條路徑不碰 `TextToSpeech`，也就繞開了壞掉的那一層。
+整條路徑不碰 `TextToSpeech`，也就繞開了被拿掉的那一層。
 
-> 這也順帶說明為什麼 sideload 一顆 TTS 引擎 APK（`DEVICE_FINDINGS.md` §8 方案 B）
-> 大機率沒用：錯誤訊息指向框架本身，而任何引擎 APK 都得透過同一個框架被綁定。
-> 這是推論不是實測，一行就能驗證：`adb shell service list | grep -i tts`
+---
+
+## 📊 眼鏡實測數據（2026-08-08）
+
+裝置：Rokid Glasses，4 核 @ 2.0GHz，1.8GB RAM。
+
+| 指標 | 實測 |
+|---|---:|
+| 模型載入 | **4.7 秒** |
+| 起播延遲（現場合成） | **0.4–1.0 秒** |
+| RTF（合成時間 ÷ 音長） | **約 1.05** |
+| 快取命中的額外開銷 | **60–130ms** |
+
+### 為什麼選 aishell3 而不是音質更好的 piper
+
+兩顆都在眼鏡上實測過：
+
+| | `vits-icefall-zh-aishell3`（採用） | `vits-piper-zh_CN-xiao_ya-medium-int8` |
+|---|---:|---:|
+| 模型載入 | **4.7 s** | 12.4 s |
+| 起播延遲 | **0.4–1.0 s** | 2.1–2.5 s |
+| RTF | **1.05** | 2.20 |
+| 取樣率 | 8000 Hz（電話音質） | **22050 Hz（清晰）** |
+| 模型大小 | 30 MB | **18.6 MB** |
+
+**對導盲裝置，延遲比音質重要。** RTF 2.2 代表合成永遠追不上播放，音訊會持續
+underrun（實測一句話 10 次），聽起來斷斷續續；RTF 1.05 則勉強跟得上。
+8000Hz 是電話音質，仍然完全可辨識。
+
+> 要換回 piper（或任何其他模型）：把檔案放進 `assets/tts/<名字>/`，
+> 改 `SherpaOfflineTtsAnnouncer` 的 `ASSET_DIR` 與 `MODEL_FILE` 兩個常數即可，
+> 程式邏輯不用動。快取目錄跟著 `ASSET_DIR` 走，所以換模型會自動失效舊音訊。
+
+### 🔴 這顆 CPU 達不到障礙物播報的 300ms 預算
+
+起播 0.4–1.0 秒是這顆 CPU 跑神經 TTS 的硬限制，不是實作問題。
+**只有走快取才進得了 300ms。** 因此加了磁碟快取：合成過的句子存成裸 PCM，
+下次直接播。導盲用語重複性極高（「前面沒有偵測到障礙物」每次都一樣），
+命中率會很高，但**每句話的第一次仍然要付合成延遲**。
 
 ---
 
@@ -39,107 +83,115 @@ E TextToSpeech: Failed to bind to com.github.jing332.tts_server_android
 
 | 檔案 | 大小 | 說明 |
 |---|---:|---|
-| `libs/com/k2fsa/sherpa-onnx-static-link-onnxruntime/1.13.4/*.aar` | 35.9 MB | 推論引擎（只有 arm64-v8a 會進 APK） |
-| `src/main/assets/tts/zh/zh_CN-xiao_ya-medium.onnx` | 18.6 MB | 小雅，中文女聲，int8 量化 |
-| `src/main/assets/tts/zh/lexicon.txt` | 2.0 MB | 中文 G2P 詞典（含破音字） |
-| `src/main/assets/tts/zh/{date,number,phone}.fst` | 0.2 MB | 把「30」唸成「三十」的正規化規則 |
+| `libs/com/k2fsa/.../sherpa-onnx-static-link-onnxruntime-1.13.4.aar` | 35.9 MB | 推論引擎（只有 arm64-v8a 進 APK，23.6 MB） |
+| `src/main/assets/tts/zh-aishell3/model.onnx` | 30.5 MB | VITS 中文，8000Hz |
+| `src/main/assets/tts/zh-aishell3/lexicon.txt` | 2.0 MB | 中文 G2P 詞典 |
+| `src/main/assets/tts/zh-aishell3/*.fst` | 0.2 MB | 數字/日期/破音字正規化 |
 
-**APK 因此從約 106MB 變成 143MB。**
+**APK 約 170 MB**（原本約 106 MB）。模型 29 MB ＋ 引擎 .so 22.5 MB 是主要增量。
 
-### ⚠️ 授權：模型是「非商業使用」
-
-`MODEL_CARD` 寫明訓練資料集是 [data-baker](https://www.data-baker.com/data/index/TNtts/)，
-授權為 **non-commercial use**。畢業專題沒問題，**要商用就得換模型**。
-
-替代選項（都在 [sherpa-onnx 的 tts-models release](https://github.com/k2-fsa/sherpa-onnx/releases/tag/tts-models)）：
-
-| 模型 | 大小 | 備註 |
-|---|---:|---|
-| `vits-icefall-zh-aishell3` | 30 MB | 資料集是 AISHELL-3，授權**值得查證**，可能比較寬鬆 |
-| `vits-melo-tts-zh_en` | 159 MB | 中英雙語，可順便解掉下面的「只有中文」限制，但 2GB RAM 要實測 |
-
-換模型只需替換 `assets/tts/zh/` 底下的檔案並改
-`SherpaOfflineTtsAnnouncer.MODEL_FILE`，程式邏輯不用動。
+> ⚠️ 原始 tarball 裡還有一個 **180MB 的 `rule.far`**，那是 `.fst` 規則的替代品，
+> 不需要，**不要放進來**，否則 APK 會爆到 300MB 以上。
 
 ---
 
 ## 怎麼接進系統
 
-`SherpaOfflineTtsAnnouncer` 實作 domain 的 `Announcer` 介面，
-由 `AssistantModule` 放進 `FallbackAnnouncer` 的候選鏈：
+`SherpaOfflineTtsAnnouncer` 實作 domain 的 `Announcer`，由 `AssistantModule`
+放進 `FallbackAnnouncer` 候選鏈：
 
 | 順位 | 實作 | 什麼時候輪到它 |
 |---|---|---|
 | 1 | `AndroidTtsAnnouncer` | 一般 Android 手機。系統引擎既省資源又支援多語言 |
-| 2 | **`SherpaOfflineTtsAnnouncer`** | **眼鏡走這條**。第 1 順位在眼鏡上永遠不可用 |
+| 2 | **`SherpaOfflineTtsAnnouncer`** | **眼鏡走這條**（第 1 順位在眼鏡上永遠不可用） |
 | 3 | `LogOnlyAnnouncer` | 前兩個都失敗。不會有聲音，只把該唸的話寫進 log |
 
-選擇發生在**每次播報前**而不是建構時 —— Android TTS 初始化是非同步的，
-建構當下問到的答案還不算數。
-
 ---
 
-## 已知限制
+## ⚠️ 三個踩過的坑
 
-| 限制 | 影響 | 怎麼解 |
-|---|---|---|
-| **只有中文** | 翻譯結果（英文、日文）在眼鏡上**沒有聲音**，會落到第 3 順位只進 log | 加對應語言的模型，或換 `vits-melo-tts-zh_en` |
-| **首次載入慢** | 要讀進 18.6MB ONNX。載入完成前 `isAvailable` 是 false | 已在背景執行緒載入，不擋 UI |
-| **合成速度未實測** | 2GB RAM 的眼鏡上 RTF 未知 | 見下方待驗證 |
+### 1. 回呼不能寫成 lambda，否則整個 App 當場 abort
 
----
-
-## 🔴 尚未在眼鏡上驗證
-
-**程式編譯通過、APK 打包正確，但從未在真機上跑過。** 眼鏡目前不在手邊。
-
-上機後依序確認：
-
-```bash
-# 0. 先確認 ABI 是不是 arm64-v8a（不是的話要改 app 的 abiFilters）
-adb shell getprop ro.product.cpu.abilist
-
-# 1. 裝上去，看模型載入有沒有成功
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-adb logcat -c
-adb shell am set-inactive com.guideglasses false
-adb shell svc power stayon true
-adb shell am start -n com.guideglasses/.MainActivity
-adb logcat -d | grep -E "OfflineTts|TtsAnnouncer"
-#   期待：「離線 TTS 就緒，取樣率 22050Hz，耗時 ____ms」
-#   若看到「模型載入失敗」，錯誤堆疊會一起印出來
-
-# 2. 觸發一則播報，確認真的有聲音
-adb shell am broadcast -a com.guideglasses.DEBUG --es cmd SENSOR_TEST
+```
+JNI DETECTED ERROR IN APPLICATION: JNI NewFloatArray called with pending exception
+java.lang.NoSuchMethodError: no non-static method
+  "L...$$ExternalSyntheticLambda6;.invoke([F)Ljava/lang/Integer;"
 ```
 
-| 要記錄的數字 | 為什麼重要 |
-|---|---|
-| 模型載入耗時 | 超過 3–4 秒的話開機後那段時間是啞的，可能要考慮預載提示 |
-| **從觸發到第一個字出聲的延遲** | 障礙物播報的安全預算是 <300ms。串流合成就是為了這個 |
-| 記憶體有沒有爆 | YOLO + 人臉 + TTS 三個模型同時載入，2GB RAM 是真的緊 |
-| 數字有沒有唸對 | 說「測試相機」，聽它怎麼唸「480」。唸成「四八零」代表 rule FST 沒生效 |
+sherpa 的 JNI 用**特化簽章** `invoke([F)Ljava/lang/Integer;` 去找回呼。
+Kotlin 2.x 預設把 lambda 編成 invokedynamic，D8 生成的合成類別**只有**泛型橋接
+`invoke(Object)Object`。而且失敗方式是 **JNI abort，不是丟例外** ——
+`FallbackAnnouncer` 攔不住，整個行程直接死。
 
-> rule FST 能不能吃 assets 路徑無法在沒有機器的情況下確認，
-> 所以載入時做了兩段式：先帶 FST 試，失敗就退回不帶 FST 再試一次
-> （數字唸得不漂亮，總比完全沒聲音好）。log 會寫明走了哪一條。
+解法是寫成具名的 `object : Function1<FloatArray, Int>`。改完可以驗證：
 
----
+```bash
+javap -p '.../SherpaOfflineTtsAnnouncer$synthesizeAndPlay$onSamples$1.class'
+#   public java.lang.Integer invoke(float[]);   ← 要有這行
+#   public java.lang.Object invoke(java.lang.Object);
+```
 
-## 為什麼相依關係寫得這麼彆扭
+### 2. 無障礙音訊串流的音量是獨立的，預設只有 8/15
 
-`build.gradle.kts` 裡是 `api("com.k2fsa:sherpa-onnx-static-link-onnxruntime:1.13.4@aar")`，
-而 repository 宣告在 `settings.gradle.kts`。三件事值得記著：
+我們走 `USAGE_ASSISTANCE_ACCESSIBILITY`（stream 10），它**跟媒體音量分開**。
+眼鏡上預設只有 8/15，聽起來很小聲。而 Android 的音量鍵只調「當下正在播的那條
+串流」，所以**必須在播放期間按**才調得到：
+
+```bash
+adb shell am broadcast -a com.guideglasses.DEBUG --es cmd SENSOR_TEST
+sleep 2 && for i in $(seq 1 10); do adb shell input keyevent KEYCODE_VOLUME_UP; done
+adb shell dumpsys audio | grep -A6 "^- STREAM_ACCESSIBILITY"
+```
+
+### 3. 相依關係為什麼寫得這麼彆扭
 
 1. **sherpa-onnx 不在 Maven Central。** 網路文章流傳的
    `com.k2fsa.sherpa.onnx:sherpa-onnx-android` 座標是錯的，那個 group 不存在。
-   官方只提供 GitHub release 的 AAR，所以檔案直接進版控。
-2. **一定要用 static-link 版本。** 一般版 AAR 內含自己的 `libonnxruntime.so`，
-   會與 `ai-face` / `ai-vision` 用的 onnxruntime-android **撞名**。
-3. **不能用 `files("....aar")`，也不要用 `flatDir`。** 前者被 AGP 直接擋下
-   （library module 不支援）；後者能編譯，但產生的座標沒有 group，
-   lint 的 `GradleDetector` 會拿它去組路徑然後丟 `InvalidPathException`。
+2. **一定要用 static-link 版 AAR。** 一般版內含自己的 `libonnxruntime.so`，
+   會與 `ai-face` / `ai-vision` 用的 onnxruntime-android 撞名。
+   app 模組另外排除 `lib/x86/**` —— static-link 版唯獨 x86 那顆仍帶著它，
+   而 `abiFilters` 擋不住（合併發生在 ABI 過濾之前）。
+3. **不能用 `files("....aar")`，也不要用 `flatDir`。** 前者被 AGP 直接擋；
+   後者產生的座標沒有 group，lint 的 `GradleDetector` 會丟 `InvalidPathException`。
    本地 maven 佈局 + `metadataSources { artifact() }` 是唯一乾淨的走法。
 
-app 模組另外排除了 `lib/x86/**` —— static-link 版唯獨 x86 那顆仍帶著
-`libonnxruntime.so`，而 `abiFilters` 擋不住它（合併發生在 ABI 過濾之前）。
+---
+
+## 怎麼在眼鏡上驗證
+
+```bash
+adb shell am set-inactive com.guideglasses false
+adb shell svc power stayon true
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb shell am start -n com.guideglasses/.MainActivity
+sleep 8 && adb logcat -d | grep OfflineTts
+#   期待：「離線 TTS 就緒，取樣率 8000Hz，耗時 4692ms」
+
+# ⚠️ 每次觸發前都要先把 Activity 拉回前景，否則 App 會被系統殺掉（見下）
+adb shell am start -n com.guideglasses/.MainActivity && sleep 1
+adb shell am broadcast -a com.guideglasses.DEBUG --es cmd SENSOR_TEST
+adb logcat -d | grep OfflineTts
+#   「合成完畢…｜起播 493ms｜合成 7779ms｜音長 7718ms｜RTF 1.01」
+#   第二次同一句會變成「快取命中…」
+```
+
+確認音訊真的送到喇叭（不必靠耳朵）：
+
+```bash
+adb shell dumpsys media.audio_flinger | sed -n '/AudioOut_D/,/^$/p' | grep -A20 Master
+# 會看到 -44.5 -40.8 -42.8 ⋯ 這種起伏的 dB 軌跡 = 真的有語音訊號
+# 全是 -100 以下或沒有數列 = 沒有輸出
+```
+
+---
+
+## 🔴 尚未解決：App 一退到背景就被殺
+
+```
+I ActivityManager: Killing 12242:com.guideglasses/u0a87 (adj 900): cached #1
+```
+
+實測 App 退到背景後 **2.4 秒**就被系統回收，播報中途直接消失。
+這跟 `TASKS.md` A23「idle UID 擋相機」是同一個根因，但影響更廣 ——
+**語音路徑也活不下來**。在做出 Foreground Service 之前，
+所有眼鏡上的測試都必須確保 Activity 在前景。
