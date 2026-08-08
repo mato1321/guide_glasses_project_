@@ -69,7 +69,7 @@
 
 ## 整體架構
 
-多模組 Gradle 專案，共 **13 個模組**。核心約束：
+多模組 Gradle 專案，共 **14 個模組**。核心約束：
 
 ```
 app  →  feature  →  core-domain  ←  glasses/* + ai/* + core-database
@@ -249,7 +249,7 @@ cd guide-glasses && ./gradlew build
 
 第一次約 3–5 分鐘（要下載 Gradle 與所有依賴），之後約 10 秒。
 
-看到 `BUILD SUCCESSFUL` 就完成環境建置。這一步也會跑完 **306 個單元測試**。
+看到 `BUILD SUCCESSFUL` 就完成環境建置。這一步也會跑完 **308 個單元測試**。
 
 > 首次建置會下載 Gradle 9.5.0 與所有依賴，網路慢的話可能要 10 分鐘以上。
 > 中途看起來卡住是正常的，讓它跑完。
@@ -393,6 +393,7 @@ guide_glasses_project_/
 | `glasses/glasses-camerax/` | 364 | CameraX 影像來源 | `CameraXFrameSource` |
 | `glasses/glasses-sensors/` | 214 | IMU 感測 | `AndroidMotionSensorGateway` |
 | `ai/ai-speech/` | 385 | STT / TTS | `AndroidTtsAnnouncer`、`AndroidSpeechRecognitionGateway` |
+| `ai/ai-tts-offline/` | 220 | **離線語音合成**（眼鏡唯一出聲途徑） | `SherpaOfflineTtsAnnouncer` |
 | `ai/ai-agent/` | 243 | LLM BFF 協定 | `RemoteLlmIntentGateway`、`AgentProtocol` |
 | `ai/ai-ocr/` | 124 | ML Kit 中文 OCR | `MlKitTextRecognizer` |
 | `ai/ai-face/` | 860 | 人臉偵測／特徵／遠端／同步 | `OnnxFaceEmbedder`、`HttpPhotoSource` |
@@ -496,6 +497,7 @@ flowchart LR
     app --> glasses1["glasses-camerax"]
     app --> glasses2["glasses-sensors"]
     app --> ai1["ai-speech"]
+    app --> ai1b["ai-tts-offline"]
     app --> ai2["ai-agent"]
     app --> ai3["ai-ocr"]
     app --> ai4["ai-face"]
@@ -812,7 +814,23 @@ flowchart LR
 | **Class** | `AndroidSpeechRecognitionGateway` | `AndroidTtsAnnouncer` |
 | **完成度** | 🟢 90% | 🟢 90% |
 | **特性** | 串流、`EXTRA_PREFER_OFFLINE = true` | 約 50ms、無障礙音訊通道 |
-| **Rokid 眼鏡上** | 🔴 **不可用**（無 RecognitionService） | 🔴 **不可用**（綁不上引擎） |
+| **Rokid 眼鏡上** | 🔴 **不可用**（無 RecognitionService） | 🔴 **框架綁不上** → 改走 `ai-tts-offline` |
+
+### 眼鏡上怎麼還是有聲音：`FallbackAnnouncer` 候選鏈
+
+眼鏡上 Android 的 `TextToSpeech` 綁定失敗，但**音訊輸出本身是好的** ——
+綁不上 TTS ≠ 不能出聲。所以 `Announcer` 有了 `isAvailable`，
+`AssistantModule` 把三個實作串成一條鏈，每次播報前重新挑：
+
+| 順位 | 實作 | 什麼時候輪到它 |
+|---|---|---|
+| 1 | `AndroidTtsAnnouncer` | 一般 Android 手機。系統引擎既省資源又支援多語言 |
+| 2 | `SherpaOfflineTtsAnnouncer` | **眼鏡走這條**。APK 內建 VITS 模型，只有中文 |
+| 3 | `LogOnlyAnnouncer` | 前兩個都失敗。不會有聲音，只把該唸的話寫進 log |
+
+為什麼是「每次播報前」而不是啟動時決定一次：Android TTS 初始化是非同步的，
+建構當下問到的答案還不算數。細節見
+[`ai/ai-tts-offline/README.md`](../guide-glasses/ai/ai-tts-offline/README.md)。
 
 **TTS 的三個關鍵設計：**
 
@@ -1284,7 +1302,7 @@ flowchart TB
 
 ## 12.1 Bug
 
-**目前沒有已知的 Bug。** 306 個單元測試全過，lint 無錯誤。
+**目前沒有已知的 Bug。** 308 個單元測試全過，lint 無錯誤。
 
 先前在小米手機上找出的三個 bug 都已修正（見 §11 驗證狀態）。
 
@@ -1712,7 +1730,7 @@ App 直接跑在眼鏡上，不需要配對。Manifest 裡的藍牙權限是早�
 | 主張 | 依據 |
 |---|---|
 | 眼鏡跑 Android 12、APK 直接安裝 | ✅ 已由 `Face_Recognition/` 實證 |
-| 13 模組、306 測試、行數 | ✅ 本次掃描實際計數 |
+| 14 模組、308 測試、行數 | ✅ 本次掃描實際計數 |
 | AGP 9.3.1 可建置 | ✅ 實際 `./gradlew build` 通過 |
 | STT／OCR／翻譯可運作 | 🟡 **小米手機已驗證**，Rokid Glasses 未驗證 |
 | 端側人臉、障礙物可運作 | 🟡 建置與單元測試通過；障礙物前後處理已與 ultralytics 比對 |

@@ -1,2 +1,12 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# 模型資產一律照原樣，不做行尾正規化。
+#
+# 離線 TTS 的 lexicon.txt（2MB 的中文 G2P 詞典）與 tokens.txt 會被
+# `text=auto` 判定成文字檔而在 Windows 上轉成 CRLF。sherpa-onnx 的
+# 詞典解析器不預期 \r，轉了之後模型可能載不起來，而且錯誤看起來
+# 會像是「模型檔壞掉」，非常難查。
+guide-glasses/ai/ai-tts-offline/src/main/assets/** -text
+*.onnx -text
+*.fst -text

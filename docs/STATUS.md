@@ -6,15 +6,15 @@
 | | |
 |---|---|
 | 最後更新 | 2026-08-08 |
-| `main` HEAD | `9000bae` |
-| 整體完成度 | **約 78%** |
-| 單元測試 | **306 個，全過**（34 個測試類，純 JVM） |
-| 模組數 | 13 |
+| `main` HEAD | `1c7066c` |
+| 整體完成度 | **約 82%** |
+| 單元測試 | **308 個，全過**（34 個測試類，純 JVM） |
+| 模組數 | 14 |
 | Kotlin 行數 | 8,535（主程式）+ 3,799（測試） |
 | 建置狀態 | ✅ `./gradlew build` 通過，lint 無錯誤（AGP 9.3.1 / Gradle 9.5.0） |
-| APK | debug 約 106 MB（ONNX Runtime 18 MB ＋ 人臉 13 MB ＋ 障礙物 13 MB） |
+| APK | debug **143 MB**（ONNX Runtime 18 ＋ 人臉 13 ＋ 障礙物 13 ＋ **離線 TTS 引擎 24 ＋ 語音模型 19**） |
 | clone 後可直接建置 | ✅ 模型已進版控，只需自補 `local.properties` |
-| 實機驗證 | 🟡 **Rokid Glasses：相機／OCR／障礙物／翻譯／感測器全部實測通過**；🔴 **語音（TTS+STT）不可用**。見 [`DEVICE_FINDINGS.md`](DEVICE_FINDINGS.md) |
+| 實機驗證 | 🟡 **Rokid Glasses：相機／OCR／障礙物／翻譯／感測器全部實測通過**；🟡 **TTS 已改走 APK 內建離線引擎，尚未上機驗證**；🔴 **STT 仍不可用**。見 [`DEVICE_FINDINGS.md`](DEVICE_FINDINGS.md) |
 
 ---
 
@@ -54,6 +54,7 @@ guide-glasses/
 │
 ├── ai/                         AI 能力
 │   ├── ai-speech/                466 行   SpeechRecognizer / TextToSpeech
+│   ├── ai-tts-offline/           220 行   ★ APK 內建離線合成（眼鏡唯一出聲途徑）
 │   ├── ai-agent/                 251 行 + 193 行測試   LLM BFF 協定
 │   ├── ai-ocr/                   124 行   ML Kit 中文（bundled）
 │   ├── ai-face/                  860 行   ML Kit + ONNX/TFLite + 遠端 + 同步
@@ -86,7 +87,8 @@ guide-glasses/
 | 專案地基（多模組、Hilt、version catalog） | 95% | ✅ 缺 CI |
 | 播報優先級仲裁 | 100% | ✅ |
 | AI 助理中樞（雙層意圖路由） | 85% | ✅ 缺 BFF、眼鏡 AI 鍵 |
-| 語音辨識 / 合成 | 🔴 **阻塞** | 手機可用；**眼鏡上 STT 不存在、TTS 綁定失敗** |
+| 語音**合成**（TTS） | 80% | 🟡 眼鏡改走 APK 內建離線引擎（`ai-tts-offline`），**待上機驗證**。只有中文 |
+| 語音**辨識**（STT） | 🔴 **阻塞** | 眼鏡上沒有任何辨識服務。手機可用 |
 | 相機（CameraX） | 85% | ✅ **眼鏡實測通過**（修掉假前鏡頭旗標）。⚠️ 擷取 **930ms**，比估計慢 6 倍 |
 | OCR 朗讀 | 85% | ✅ **眼鏡實測管線完整** |
 | 人臉辨識 | 95% | ✅ 端側可用，瀏覽器註冊＋語音同步 |
@@ -129,7 +131,8 @@ guide-glasses/
 
 | # | 卡在什麼 | 誰能解 | 影響 |
 |---|---|---|---|
-| 1 | 🔴 **眼鏡上沒有可用的語音堆疊** | 需 Rokid 提供 Sprite 介面文件，或 sideload 離線 TTS（`DEVICE_FINDINGS.md` §8） | **眼鏡上無法做任何端到端測試** |
+| 1 | 🟡 **TTS：已實作繞道，待驗證** | 把合成引擎當函式庫嵌進 APK，繞開壞掉的 Android TTS 框架（`DEVICE_FINDINGS.md` §8 方案 G） | 驗證通過後端到端測試才解鎖 |
+| 1b | 🔴 **STT 仍完全不可用** | 同一顆 sherpa-onnx `.so` 就支援 ASR，只差模型檔 | 眼鏡上無法用說話觸發任何功能 |
 | 2 | ~~障礙物模型未交付~~ | ✅ **已解決** | YOLOv8n-seg 八類已接上並進版控 |
 | 3 | ~~端側人臉模型檔~~ | ✅ **已解決** | 用 InsightFace 的 `w600k_mbf.onnx`，直接執行不需轉檔 |
 
@@ -244,11 +247,15 @@ guideglasses.faceEndpoint=http://<你的IP>:8000/recognize   # 遠端人臉備�
 
 1. ~~「停」→ 確認有沒有聲音~~ → ✅ **已做，沒有聲音**。原因見
    [`DEVICE_FINDINGS.md`](DEVICE_FINDINGS.md) §4
-2. 「測試感測器」→ 記下整句回答 ← **語音問題解決前做不了**
-3. 「測試相機」→ 記下毫秒數 ← **同上**
+2. ~~「測試感測器」~~ → ✅ 已用 debug 廣播做完（沒有羅盤）
+3. ~~「測試相機」~~ → ✅ 已用 debug 廣播做完（930ms）
 
-> 🔴 **語音是目前的總阻塞。** 眼鏡上沒有輸入也沒有輸出，
-> 所有需要「說話 → 聽回應」的驗證都做不了。先解 `DEVICE_FINDINGS.md` §8。
+> 🟡 **輸出端已有解法待驗證。** 下次上機第一件事：確認 `ai-tts-offline`
+> 真的會出聲（步驟見該模組 `README.md`）。這一關過了，所有功能才終於
+> 能做端到端測試。
+>
+> 🔴 **輸入端仍然無解。** 眼鏡上沒有任何語音辨識服務，
+> 目前只能靠 debug 廣播觸發功能。
 
 完整清單見 [`TASKS.md`](TASKS.md) §A。
 
@@ -284,7 +291,8 @@ guideglasses.faceEndpoint=http://<你的IP>:8000/recognize   # 遠端人臉備�
 ## 眼鏡上的硬事實（全部 adb 實測，別再假設）
 - ❌ 沒有 Google Play Services、沒有 Play Store
 - ❌ 沒有任何語音辨識服務 → STT 完全不可用
-- ❌ TTS 綁定失敗（唯一引擎是未設定的第三方 App）→ 聽不到任何播報
+- ❌ Android TTS 框架綁定失敗 → 已改走 APK 內建離線引擎（`ai-tts-offline`），**待上機驗證**
+- 💡 但**音訊輸出本身是好的** —— 綁不上 TTS ≠ 不能出聲，這個區別是解法的關鍵
 - ❌ 沒有 GPS provider、沒有電子羅盤（磁力計）
 - ⚠️ 相機擷取 930ms（文件原本估 145ms）
 - ⚠️ 螢幕逾時 5 秒，App idle 時 Android 會擋掉相機
@@ -315,8 +323,9 @@ cmd 可用任何 AssistantIntent 名稱，可帶 --es target_language / text / n
 
 | 你的狀況 | 填什麼 |
 |---|---|
-| **想讓眼鏡能用**（最高優先） | 「實作 Foreground Service，解決 idle UID 擋相機」 |
-| 想解決語音 | 「研究 com.rokid.os.sprite.tts.TTS_SERVICE 怎麼呼叫」 |
+| **手上有眼鏡**（最高優先） | 「驗證 ai-tts-offline 在眼鏡上真的會出聲」 |
+| **想讓眼鏡能用** | 「實作 Foreground Service，解決 idle UID 擋相機」 |
+| 想解決語音**輸入** | 「用 sherpa-onnx 的 ASR 接 STT —— .so 已經在 APK 裡了，只差模型」 |
 | 想繼續做功能 | 「接上 CameraModeController」—— 走路才開相機，眼鏡續航很吃這個 |
 | 想驗證人臉 | 「跑註冊工具建幾個人，在眼鏡上測同步與辨識」 |
 | 想推進導航 | 「實作 FollowHeadingUseCase」—— 純 IMU，但注意沒有羅盤 |
@@ -327,6 +336,7 @@ cmd 可用任何 AssistantIntent 名稱，可帶 --es target_language / text / n
 
 | 日期 | 進度 | 內容 |
 |---|---:|---|
+| 2026-08-08 | 82% | **繞開眼鏡壞掉的 TTS 框架**：新增 `ai-tts-offline`（sherpa-onnx + VITS 中文模型），`FallbackAnnouncer` 候選鏈讓手機用系統 TTS、眼鏡自動落到離線引擎（+13 測試）。⚠️ 未上機驗證 |
 | 2026-08-08 | 80% | **眼鏡實測：相機／OCR／障礙物／翻譯／感測器全通過**；修掉假前鏡頭旗標；A3/A4 解答 |
 | 2026-08-08 | 78% | 實測確認 Glass3 SDK 在消費版眼鏡不可用（`isReady()=false`）；排除 Glass3 企業版 SDK（缺 `com.rokid.security.system.server`）；找到 Sprite 原生 TTS action |
 | 2026-08-08 | 78% | **A10 解答：眼鏡宣告有 GPS 但沒有 provider**，確認須走手機 companion |

@@ -64,6 +64,9 @@ desktop.ini
 # 障礙物模型同理 —— 12.7MB，少了它 clone 下來的人說「前面有什麼」
 # 只會聽到「障礙物偵測目前不可用，缺少模型檔」。
 !guide-glasses/ai/ai-vision/src/main/assets/*.onnx
+# 離線 TTS 模型（18.6MB）—— 這個更不能少：眼鏡上 Android TextToSpeech
+# 綁不上，沒有這個檔案就**完全沒有聲音**，等於整個 App 不能用。
+!guide-glasses/ai/ai-tts-offline/src/main/assets/tts/*/*.onnx
 
 # ===== 執行期產物 =====
 *.log

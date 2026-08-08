@@ -56,6 +56,19 @@ class AndroidTtsAnnouncer(
         }
     }
 
+    /**
+     * 引擎綁定成功且中文語音可用時才是 true。
+     *
+     * 在 Rokid Glasses 上這個值**永遠是 false** —— 該裝置的
+     * `TextToSpeech` 綁定失敗（`System service is not available!`）。
+     * [com.guideglasses.core.domain.announce.FallbackAnnouncer] 讀這個值
+     * 來決定要不要改用 APK 內建的離線引擎。
+     *
+     * 它是動態的：初始化是非同步的，建構完成的那一刻仍是 false。
+     */
+    override val isAvailable: Boolean
+        get() = ready.get()
+
     override val isSpeaking: Boolean
         get() = speaking.get()
 
@@ -64,6 +77,9 @@ class AndroidTtsAnnouncer(
         if (engine == null || !ready.get()) {
             // 契約要求 onDone 一定要被呼叫一次，否則 AnnouncementManager 會卡住
             // 不再取下一則 —— 那會讓使用者從此聽不到任何提示。
+            //
+            // 走到這裡代表呼叫端沒有先看 [isAvailable]。包在 FallbackAnnouncer
+            // 裡時不會發生，這條路徑是給單獨使用的情況留的保險。
             Log.e(TAG, "TTS 尚未就緒，略過：${announcement.text}")
             onDone()
             return

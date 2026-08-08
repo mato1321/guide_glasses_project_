@@ -94,6 +94,21 @@ android {
         buildConfig = true
     }
 
+    packaging {
+        jniLibs {
+            /*
+             * sherpa-onnx 的 static-link AAR 把 onnxruntime 靜態連進去了，
+             * 唯獨 x86 那顆仍然附帶自己的 `libonnxruntime.so`，會與
+             * ai-face / ai-vision 用的 onnxruntime-android 撞名，
+             * 在 mergeNativeLibs 直接失敗。
+             *
+             * `abiFilters` 擋不住這個 —— 合併發生在 ABI 過濾之前。
+             * 反正眼鏡是 arm64，x86 一開始就不該進來。
+             */
+            excludes += "lib/x86/**"
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
@@ -132,6 +147,7 @@ dependencies {
     implementation(libs.androidx.camera.camera2)
     implementation(project(":glasses:glasses-sensors"))
     implementation(project(":ai:ai-speech"))
+    implementation(project(":ai:ai-tts-offline"))
     implementation(project(":ai:ai-agent"))
     implementation(project(":ai:ai-ocr"))
     implementation(project(":ai:ai-face"))

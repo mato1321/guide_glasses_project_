@@ -3,7 +3,7 @@
 > **完成一項就把 `[ ]` 改成 `[x]`。** 順手更新 [`STATUS.md`](STATUS.md) 的完成度。
 > 怎麼做見 [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md)。
 
-最後更新：2026-08-08 ｜ 已完成 **123 / 217**
+最後更新：2026-08-08 ｜ 已完成 **121 / 223**
 
 ---
 
@@ -49,10 +49,23 @@
 - [x] ~~A0-1 確認 `tts_server_android` 缺什麼設定~~ → 🔴 **三處全空，無解**（`DEVICE_FINDINGS.md` §8）
 - [ ] A0-2 問組員：他們的 App 在眼鏡上語音怎麼處理的
 - [x] ~~A0-3 問組員 `com.example.gps`~~ → 組員說沒試過；**我直接用 adb 查出答案**（見 A10）
-- [ ] A0-4 決定語音方案（`DEVICE_FINDINGS.md` §8 的 A–E）
+- [x] ~~A0-4 決定語音方案~~ → ✅ **走方案 G：把合成引擎當函式庫嵌進 APK**，
+      繞開壞掉的 Android TTS 框架。理由與實作見 `DEVICE_FINDINGS.md` §8
 - [x] ~~A0-5 Glass3 SDK 實測~~ → 🔴 探針實跑 `isReady()=false`，**確定不可用**
 - [ ] A0-6 **向 Rokid 索取 Sprite 語音服務介面文件**（`com.rokid.os.sprite.tts.TTS_SERVICE`）⭐ 最有希望
-- [ ] A0-7 試 sideload 一個不依賴 Play Services 的離線 TTS 引擎 APK
+- [x] ~~A0-7 sideload 離線 TTS 引擎 APK~~ → 🟡 **不做**。錯誤指向框架本身，
+      任何引擎 APK 都得透過同一個框架，大機率一樣綁不上
+- [x] ~~A0-8 實作 APK 內建離線 TTS~~ → ✅ `ai/ai-tts-offline`（sherpa-onnx + VITS）
+- [ ] A0-9 🔴 **上機驗證 `ai-tts-offline` 真的會出聲** ⭐ 拿到眼鏡第一件事。
+      步驟見 `guide-glasses/ai/ai-tts-offline/README.md`
+- [ ] A0-10 確認眼鏡 ABI 是 arm64-v8a（`adb shell getprop ro.product.cpu.abilist`）——
+      不是的話 app 的 `abiFilters` 要改，否則載入 .so 會直接崩
+- [ ] A0-11 量測離線合成延遲：模型載入耗時、觸發到第一個字出聲幾毫秒
+- [ ] A0-12 確認數字唸法正確（說「測試相機」聽它怎麼唸 480）——
+      唸成「四八零」代表 rule FST 沒生效
+- [ ] A0-13 用 sherpa-onnx 的 ASR 解 STT —— `.so` 已在 APK 裡，只差模型檔
+- [ ] A0-14 驗證 `adb shell service list | grep -i tts`，
+      確認框架端的 TTS system service 到底存不存在（一行就能證實或推翻推論）
 - [ ] A23 🔴 **解決 idle UID 擋相機** —— 需要 Foreground Service，
       否則使用者戴著眼鏡、螢幕關閉時障礙物偵測完全不能用
 - [ ] A24 量測相機是否每次都要 930ms，還是只有首次（CameraX 初始化）
@@ -120,6 +133,10 @@
 - [x] 錯誤碼轉成人話
 - [x] `onDone` 契約保證（否則佇列會卡死）
 - [x] **小米手機驗證**：修正缺離線語音包時完全無法使用
+- [x] `FallbackAnnouncer` 候選鏈 —— 手機用系統 TTS、眼鏡自動落到離線引擎（13 個測試）
+- [x] `LogOnlyAnnouncer` —— 全部失敗時仍保證佇列不卡死，並保留 logcat 觀察路徑
+- [x] `Announcer.isAvailable` —— 上層終於能知道「有實作」不等於「有聲音」
+- [x] `SherpaOfflineTtsAnnouncer` —— VITS/ONNX 串流合成 → AudioTrack
 - [x] 錯誤碼分類到 `SpeechCapability`，播報依類型分岔
 - [ ] **Rokid 眼鏡**驗證（A2、A3）
 - [ ] 依優先級調整語速（`applyRateFor` 已實作但未呼叫）
@@ -338,13 +355,16 @@
 
 | 分類 | 已完成 | 總數 |
 |---|---:|---:|
-| A. 實機驗證 | 13 | 37 |
+| A. 實機驗證 | 15 | 40 |
 | B. 外部交付 | 7 | 11 |
-| C. 已完成的功能 | 62 | 76 |
-| D. 待實作 | 37 | 71 |
+| C. 已完成的功能 | 66 | 82 |
+| D. 待實作 | 30 | 67 |
 | E. 交叉整合 | 2 | 6 |
 | F. 技術債 | 1 | 9 |
 | G. 給組員的建議 | 0 | 8 |
-| **合計** | **123** | **217** |
+| **合計** | **121** | **223** |
 
 > 更新這份文件時，順手改一下這個表與檔頭的數字。
+>
+> ⚠️ 2026-08-08 之前這個表與實際勾選數對不上（寫 123/217，實際不是）。
+> 現在的數字是直接數 `- [x]` 與 `- [ ]` 得出的 —— 別再用「上次的數字 +N」推。

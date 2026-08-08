@@ -1,11 +1,13 @@
 package com.guideglasses.di
 
 import android.content.Context
+import android.util.Log
 import com.guideglasses.BuildConfig
 import com.guideglasses.ai.agent.OfflineLlmIntentGateway
 import com.guideglasses.ai.agent.RemoteLlmIntentGateway
 import com.guideglasses.ai.speech.AndroidSpeechRecognitionGateway
 import com.guideglasses.ai.speech.AndroidTtsAnnouncer
+import com.guideglasses.ai.tts.SherpaOfflineTtsAnnouncer
 import com.guideglasses.ai.face.MlKitFaceDetector
 import com.guideglasses.ai.face.RemoteFaceIdentification
 import com.guideglasses.ai.face.TfLiteFaceEmbedder
@@ -15,6 +17,8 @@ import com.guideglasses.glasses.sensors.AndroidMotionSensorGateway
 import com.guideglasses.core.common.DispatcherProvider
 import com.guideglasses.core.domain.announce.AnnouncementManager
 import com.guideglasses.core.domain.announce.Announcer
+import com.guideglasses.core.domain.announce.FallbackAnnouncer
+import com.guideglasses.core.domain.announce.LogOnlyAnnouncer
 import com.guideglasses.core.domain.assistant.ConversationHistory
 import com.guideglasses.core.domain.assistant.IntentRouter
 import com.guideglasses.core.domain.assistant.LlmIntentGateway
@@ -71,10 +75,43 @@ object AssistantModule {
     fun provideAnnouncementScope(dispatchers: DispatcherProvider): CoroutineScope =
         CoroutineScope(SupervisorJob() + dispatchers.main)
 
+    /**
+     * 語音輸出的候選鏈，依序嘗試直到有一個真的能出聲。
+     *
+     * | 順位 | 實作 | 什麼時候輪到它 |
+     * |---|---|---|
+     * | 1 | [AndroidTtsAnnouncer] | 一般 Android 手機。系統引擎最省資源，也支援多語言 |
+     * | 2 | [SherpaOfflineTtsAnnouncer] | **Rokid Glasses 走這條**。APK 內建 VITS 模型，只有中文 |
+     * | 3 | [LogOnlyAnnouncer] | 前兩個都失敗。**不會有聲音**，只把該唸的話寫進 log |
+     *
+     * 之所以需要這條鏈，是因為 Rokid Glasses 上 `TextToSpeech` 綁定失敗
+     * （`System service is not available!`），系統上唯一的引擎是一個沒有任何
+     * 語音來源的第三方 App。同一份 APK 要同時能在手機與眼鏡上跑，就不能寫死。
+     *
+     * 順序是刻意的：手機上系統引擎既省資源又支援多語言，沒理由背著自己的模型跑；
+     * 眼鏡上第 1 順位永遠不可用，自然落到第 2。
+     *
+     * 見 `docs/DEVICE_FINDINGS.md` §8 與 `ai/ai-tts-offline/README.md`。
+     */
     @Provides
     @Singleton
     fun provideAnnouncer(@ApplicationContext context: Context): Announcer =
-        AndroidTtsAnnouncer(context)
+        FallbackAnnouncer(
+            candidates = listOf(
+                AndroidTtsAnnouncer(context),
+                SherpaOfflineTtsAnnouncer(context) { ok ->
+                    Log.i("TtsAnnouncer", if (ok) "離線 TTS 就緒" else "離線 TTS 不可用")
+                },
+                LogOnlyAnnouncer { announcement ->
+                    // 眼鏡上沒有 STT 也沒有 TTS，這行是目前唯一的觀察手段：
+                    //   adb logcat -d | grep TtsAnnouncer
+                    Log.w("TtsAnnouncer", "無可用語音，本來要唸：${announcement.text}")
+                },
+            ),
+            onFailure = { announcer, error ->
+                Log.e("TtsAnnouncer", "${announcer::class.simpleName} 播報失敗", error)
+            },
+        )
 
     @Provides
     @Singleton
