@@ -37,6 +37,10 @@ cd guide-glasses/tools && python face_enroll_server.py
 
 同一頁下方會列出已註冊的人，可以刪除。
 
+> 💡 **眼鏡不在同一個 Wi-Fi 也可以**：接著 USB 跑
+> `adb reverse tcp:8100 tcp:8100`，然後把 `photoEndpoint` 設成
+> `http://127.0.0.1:8100`。眼鏡的 localhost 會被導到這台電腦。
+
 ### 3. 讓眼鏡同步
 
 把上面那行 `guideglasses.photoEndpoint=...` 貼進 `guide-glasses/local.properties`，
@@ -111,3 +115,26 @@ python face_enroll_server.py --dir D:\my_photos --port 9000
 不要放在公開網路上。
 
 已做的防護：路徑穿越（`../`）會被擋、只接受圖片副檔名、單檔上限 10MB。
+
+---
+
+## 語音指令辨識率測試
+
+眼鏡上沒有畫面也沒有鍵盤，測語音只能「人對著它講、看 logcat」。
+`test_commands.ps1` 把那件事變成照著唸就好：
+
+```powershell
+cd guide-glasses	ools
+.	est_commands.ps1
+```
+
+它會逐條提示要說什麼、觸發聆聽、收集結果，最後列出「該說的 / 聽到的」對照表。
+
+只測某幾條：
+
+```powershell
+.	est_commands.ps1 -Only "這是誰","唸給我聽"
+```
+
+> 「聽到的」是簡體字是**正常的** —— 模型是 zh-CN 訓練的，
+> 比對前會做繁簡摺疊（`SpokenText.forMatching`）。
