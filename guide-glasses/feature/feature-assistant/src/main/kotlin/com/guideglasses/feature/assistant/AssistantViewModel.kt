@@ -9,7 +9,7 @@ import com.guideglasses.core.domain.announce.AnnouncementManager
 import com.guideglasses.core.domain.announce.AnnouncementPriority
 import com.guideglasses.core.domain.assistant.AssistantIntent
 import com.guideglasses.core.domain.assistant.IntentRouter
-import com.guideglasses.core.domain.assistant.WakeWord
+import com.guideglasses.core.domain.assistant.VoiceCommand
 import com.guideglasses.core.domain.assistant.RoutedIntent
 import com.guideglasses.core.domain.translate.TargetLanguage
 import com.guideglasses.core.domain.readiness.ReadinessCheckUseCase
@@ -27,6 +27,7 @@ import com.guideglasses.core.domain.ocr.ReadingSession
 import com.guideglasses.core.domain.speech.SpeechCapability
 import com.guideglasses.core.domain.speech.SpeechEvent
 import com.guideglasses.core.domain.speech.SpeechRecognitionGateway
+import com.guideglasses.core.domain.speech.WakeWordDetector
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -58,6 +59,7 @@ class AssistantViewModel @Inject constructor(
     private val readinessCheck: ReadinessCheckUseCase,
     private val prepareLanguages: PrepareLanguagesUseCase,
     private val detectObstacles: DetectObstaclesUseCase,
+    private val wakeWordDetector: WakeWordDetector,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(AssistantUiState())
@@ -149,85 +151,61 @@ class AssistantViewModel @Inject constructor(
     }
 
     /**
-     * 開始監聽喚醒詞。
+     * 開始監聽語音指令。
      *
-     * 使用者不必先按按鈕 —— 喊一聲「[WakeWord.CANONICAL]」就開始聽指令。
-     * 對戴在頭上、看不到按鈕在哪的使用者，這是差別最大的互動改進。
+     * **沒有喚醒詞**：直接聽，聽到指令就做。
      *
-     * ### 為什麼是「一輪一輪」而不是一條長串流
+     * 原本是「喚醒詞 → 提示音 → 再講一次 → 辨識 2–3 秒 → 執行」，
+     * 實測每一段都在扣分，使用者的結論是「呼叫他好像沒有什麼用」。
+     * 但導盲的指令是封閉集合，關鍵詞偵測可以直接把指令本身當成要偵測的詞 ——
+     * 中間那些步驟一個都不需要。見 [VoiceCommand]。
      *
-     * `listen()` 沒聽到人聲時會在數秒後結束，這裡就再開一輪。
-     * 換來的空窗只有建立 `AudioRecord` 的幾十毫秒，
-     * 但好處是逾時、資源釋放這些邏輯完全沿用指令聆聽那一套，
-     * 不必為喚醒詞維護第二份。
-     *
-     * ### 為什麼逾時不播報
-     *
-     * 指令聆聽逾時會說「我沒有聽到聲音，請再說一次」——
-     * 喚醒監聽是**常駐**的，照著做的話會變成每隔幾秒自言自語一次。
-     * 所以這裡只看 [SpeechEvent.FinalResult]，其餘一律忽略。
+     * 開放式輸入（要翻譯的整段內容、「帶我去哪裡」）仍然走
+     * [onAssistantTriggered] 那條完整的辨識流程。
      */
     fun startWakeWordListening() {
         // 這幾行看似囉嗦，但「沒啟動」在眼鏡上完全沒有徵兆 ——
-        // 使用者只會看到喊了沒反應，log 裡一片安靜。
+        // 使用者只會看到講了沒反應，log 裡一片安靜。
         if (wakeWordJob?.isActive == true) {
-            Log.d(TAG, "喚醒監聽：已經在跑了")
+            Log.d(TAG, "語音指令監聽：已經在跑了")
             return
         }
-        if (listeningJob?.isActive == true) {
-            Log.d(TAG, "喚醒監聽：指令聆聽進行中，等它結束")
-            return
-        }
-        if (!speechGateway.isAvailable) {
-            Log.w(TAG, "喚醒監聽：語音辨識不可用（缺麥克風權限或模型載入失敗）")
+        if (!wakeWordDetector.isAvailable) {
+            Log.w(TAG, "語音指令監聽：偵測器不可用（缺麥克風權限或模型載入失敗）")
             return
         }
 
-        Log.i(TAG, "喚醒監聽已啟動，等你說「${WakeWord.CANONICAL}」")
+        Log.i(TAG, "語音指令監聽已啟動，可以直接說指令")
         wakeWordJob = viewModelScope.launch {
-            while (isActive) {
-                var woken = false
-
-                speechGateway.listen().collect { event ->
-                    if (event !is SpeechEvent.FinalResult) return@collect
-
-                    // 喚醒模式下聽到的每一句都記下來 —— 「盲狗」不是常見詞，
-                    // 模型實際會聽成什麼只能靠這個累積，WakeWord 的變體清單
-                    // 才有依據可以長大。
-                    Log.i(TAG, "喚醒監聽聽到：「${event.text}」")
-
-                    // 不必在這裡中斷收集 —— gateway 給出 FinalResult 之後
-                    // 那一輪就結束了，collect 會自然收尾。
-                    val matched = WakeWord.match(event.text)
-                    if (matched != null) {
-                        Log.i(TAG, "喚醒詞命中（$matched）")
-                        woken = true
-                    }
-                }
-
-                if (woken) {
-                    onWakeWordDetected()
-                    return@launch
-                }
-            }
+            wakeWordDetector.detections().collect { keyword -> onVoiceCommand(keyword) }
         }
     }
 
     /**
-     * 被叫醒了。
+     * 直接聽到指令了。
      *
-     * 用**提示音**而不是唸「我在」：合成一句話要一秒以上，而那一秒
-     * 全部算在使用者感受到的延遲裡；提示音是立即的，而且更明確地
-     * 表示「換你講了」。真正需要用到語音的是有內容要傳達的時候。
+     * 提示音先響，讓使用者知道被聽到了 —— 有些功能（相機、人臉）要跑幾秒，
+     * 沒有立即回饋的話使用者會以為沒反應而重講一次。
      */
-    private fun onWakeWordDetected() {
-        wakeWordJob = null
+    private fun onVoiceCommand(keyword: String) {
+        val intent = VoiceCommand.intentFor(keyword)
+        if (intent == null) {
+            // keywords.txt 加了詞卻忘了加對照時會走到這裡。
+            Log.w(TAG, "偵測到「$keyword」但沒有對應的功能")
+            return
+        }
+
+        Log.i(TAG, "語音指令：「$keyword」→ $intent")
         ackTone.play()
-        onAssistantTriggered()
+
+        // 指令執行期間不要再收自己播報的聲音 —— 播報內容裡就有指令詞。
+        _state.update { it.copy(transcript = keyword, phase = Phase.THINKING) }
+        dispatch(RoutedIntent(intent, source = RoutedIntent.Source.LOCAL_FAST_PATH))
+        _state.update { it.copy(phase = Phase.IDLE) }
     }
 
     /**
-     * 開發用：不經語音直接分派一個 intent。
+     * 開發用入口：直接執行某個 intent。
      *
      * **存在的理由：Rokid Glasses 上沒有任何語音辨識服務**
      * （見 `docs/DEVICE_FINDINGS.md` §3），所以無法用說話觸發任何功能。
@@ -734,6 +712,7 @@ class AssistantViewModel @Inject constructor(
         wakeWordJob?.cancel()
         listeningJob?.cancel()
         ackTone.release()
+        wakeWordDetector.shutdown()
         speechGateway.shutdown()
     }
 

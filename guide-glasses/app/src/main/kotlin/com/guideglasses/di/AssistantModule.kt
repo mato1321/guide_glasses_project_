@@ -8,6 +8,7 @@ import com.guideglasses.ai.agent.RemoteLlmIntentGateway
 import com.guideglasses.ai.speech.AndroidSpeechRecognitionGateway
 import com.guideglasses.ai.speech.AndroidTtsAnnouncer
 import com.guideglasses.ai.asr.SherpaSpeechRecognitionGateway
+import com.guideglasses.ai.asr.SherpaWakeWordDetector
 import com.guideglasses.ai.tts.SherpaOfflineTtsAnnouncer
 import com.guideglasses.ai.face.MlKitFaceDetector
 import com.guideglasses.ai.face.RemoteFaceIdentification
@@ -53,6 +54,7 @@ import com.guideglasses.core.domain.ocr.ReadTextUseCase
 import com.guideglasses.core.domain.ocr.SpeechSegmenter
 import com.guideglasses.core.domain.ocr.TextRecognizer
 import com.guideglasses.core.domain.speech.SpeechRecognitionGateway
+import com.guideglasses.core.domain.speech.WakeWordDetector
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -150,6 +152,19 @@ object AssistantModule {
         // 不擋掉播報期間的音訊，助理會聽到自己講的指令詞而自問自答。
         return SherpaSpeechRecognitionGateway(context) { announcer.isSpeaking }
     }
+
+    /**
+     * 喚醒詞偵測。
+     *
+     * 與語音辨識分開是刻意的：兩者用不同的模型解決不同的問題 ——
+     * 辨識要把任意句子轉成文字，喚醒只要判斷「有沒有出現這個詞」。
+     * 後者的模型小得多（4.6MB vs 26MB），才能一直開著而不跟語音合成搶 CPU。
+     */
+    @Provides
+    @Singleton
+    fun provideWakeWordDetector(
+        @ApplicationContext context: Context,
+    ): WakeWordDetector = SherpaWakeWordDetector(context)
 
     /**
      * 未設定 BFF 位址時退回離線閘道。
