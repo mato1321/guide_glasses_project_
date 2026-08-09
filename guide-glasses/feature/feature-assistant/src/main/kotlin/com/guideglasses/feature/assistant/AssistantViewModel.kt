@@ -276,7 +276,7 @@ class AssistantViewModel @Inject constructor(
                 } else {
                     // 重播不更新 lastSpoken，也不套用去抖動 ——
                     // 使用者是刻意要求再聽一次的。
-                    announcementManager.announce(
+                    speak(
                         Announcement(previous, AnnouncementPriority.USER_RESPONSE),
                     )
                 }
@@ -428,7 +428,7 @@ class AssistantViewModel @Inject constructor(
         }
         lastSpoken = segment
         _state.update { it.copy(lastReply = segment) }
-        announcementManager.announce(
+        speak(
             Announcement(segment, AnnouncementPriority.AMBIENT, resumable = true),
         )
     }
@@ -548,7 +548,7 @@ class AssistantViewModel @Inject constructor(
                     _state.update { it.copy(lastReply = outcome.spoken) }
                     // languageTag 是關鍵 —— 沒有它，TTS 會用中文語音唸英文，
                     // 結果幾乎聽不懂。
-                    announcementManager.announce(
+                    speak(
                         Announcement(
                             text = outcome.spoken,
                             priority = AnnouncementPriority.USER_RESPONSE,
@@ -587,7 +587,7 @@ class AssistantViewModel @Inject constructor(
                     lastSpoken = outcome.spoken
                     _state.update { it.copy(lastReply = outcome.spoken) }
                     // 用 dedupeKey 讓同一個人連續被辨識到時不會一直重複播報。
-                    announcementManager.announce(
+                    speak(
                         Announcement(
                             text = outcome.spoken,
                             priority = AnnouncementPriority.USER_RESPONSE,
@@ -681,11 +681,23 @@ class AssistantViewModel @Inject constructor(
         }
     }
 
+    /**
+     * 所有播報的唯一入口。
+     *
+     * 原本有四處直接呼叫 `announcementManager` 繞過這裡，結果那些內容
+     * （人臉、翻譯、障礙物）**不會出現在畫面的對話記錄上** ——
+     * 使用者看到的是一片空白，以為記錄壞了。
+     * 統一入口之後，新增功能不必記得「也要寫一筆記錄」。
+     */
+    private fun speak(announcement: Announcement) {
+        appendLog("🔊 ${announcement.text}")
+        announcementManager.announce(announcement)
+    }
+
     private fun announce(text: String, priority: AnnouncementPriority) {
-        appendLog("🔊 $text")
         lastSpoken = text
         _state.update { it.copy(lastReply = text) }
-        announcementManager.announce(Announcement(text, priority))
+        speak(Announcement(text, priority))
     }
 
     /**

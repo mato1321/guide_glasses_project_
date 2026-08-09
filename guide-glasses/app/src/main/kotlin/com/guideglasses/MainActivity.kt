@@ -11,7 +11,6 @@ import androidx.core.content.ContextCompat
 import android.os.Bundle
 import android.view.View
 import android.view.WindowManager
-import android.widget.Button
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
@@ -40,8 +39,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvStatus: TextView
     private lateinit var tvLog: TextView
     private lateinit var scrollLog: ScrollView
-    private lateinit var btnTalk: Button
-    private lateinit var btnStop: Button
 
     /** 開發用廣播接收器，只在 debug build 存在。 */
     private var debugReceiver: BroadcastReceiver? = null
@@ -59,7 +56,7 @@ class MainActivity : AppCompatActivity() {
 
         // 沒有相機只是視覺功能不能用，語音助理仍可運作，所以不擋。
         if (micGranted) {
-            viewModel.onAssistantTriggered()
+            viewModel.startWakeWordListening()
         } else {
             tvStatus.text = getString(R.string.status_need_mic)
             tvStatus.announceForAccessibility(getString(R.string.status_need_mic))
@@ -86,12 +83,6 @@ class MainActivity : AppCompatActivity() {
         tvStatus = findViewById(R.id.tvStatus)
         tvLog = findViewById(R.id.tvLog)
         scrollLog = findViewById(R.id.scrollLog)
-        btnTalk = findViewById(R.id.btnTalk)
-        btnStop = findViewById(R.id.btnStop)
-
-        btnTalk.setOnClickListener { triggerAssistant() }
-        btnStop.setOnClickListener { viewModel.onStopRequested() }
-
         observeState()
         registerDebugTrigger()
 
@@ -222,13 +213,6 @@ class MainActivity : AppCompatActivity() {
             AssistantViewModel.Phase.THINKING -> getString(R.string.status_thinking)
         }
         tvStatus.text = statusText
-
-        // 按鈕文字隨狀態改變，TalkBack 才會唸出「停止聆聽」而不是永遠唸「說話」。
-        btnTalk.text = when (state.phase) {
-            AssistantViewModel.Phase.LISTENING -> getString(R.string.action_cancel_listening)
-            else -> getString(R.string.action_talk)
-        }
-        btnTalk.contentDescription = btnTalk.text
 
         // 對話記錄。新內容在最下面，所以自動捲到底 ——
         // 使用者要看的永遠是「剛剛發生了什麼」。

@@ -37,6 +37,10 @@ object VoiceCommand {
      * 鍵必須與 `keywords.txt` 裡 `@` 後面的漢字**完全一致**。
      */
     private val MAPPING: Map<String, AssistantIntent> = mapOf(
+        // 停止排在最前面：安全相關，任何情況下都要能叫停。
+        // 「停」只有一個音節，關鍵詞偵測認不出來，所以用四音節的說法。
+        "停止播報" to AssistantIntent.STOP,
+        "不要說了" to AssistantIntent.STOP,
         "前面有沒有人" to AssistantIntent.IDENTIFY_PERSON,
         "前面有什麼" to AssistantIntent.DETECT_OBSTACLES,
         "這個人是誰" to AssistantIntent.IDENTIFY_PERSON,

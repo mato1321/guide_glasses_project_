@@ -1,17 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    無障礙優先，但**開發時也要看得懂**。
+    整片畫面就是對話記錄。
 
-    第一版把「說話」做成佔滿整片畫面的大按鈕，理由是看不見的人不必找按鈕。
-    那個理由現在不成立了 —— 語音指令是常駐監聽的，根本不需要按按鈕。
-    而使用者實際的抱怨是「我根本不知道他聽到了什麼文字」。
+    原本有「說話」與「停止播報」兩個按鈕。語音指令改成常駐監聽之後，
+    按鈕就沒有存在的理由了 —— 使用者戴著眼鏡，本來就不會去點螢幕；
+    停止也改用語音（「停止播報」「不要說了」）。
 
-    所以改成對話記錄佔主要空間：聽到什麼、正在做什麼、回應是什麼，
-    一路往下累積。看得見的人（開發者、陪同者）能立刻判斷是沒聽到、
-    聽錯了、還是聽對了但功能慢。
-
-    按鈕縮到底部：「說話」留給開放式輸入（翻譯內容、導航目的地），
-    「停止」在慌張時要能盲摸到，所以固定在最下面且夠大。
+    畫面留給唯一有用的東西：**它聽到了什麼、回了什麼**。
+    真正的使用者靠聽覺，這塊是給開發者與陪同者判斷
+    「沒聽到 / 聽錯了 / 聽對了但慢」用的。
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
@@ -19,7 +16,6 @@
     android:orientation="vertical"
     android:padding="8dp">
 
-    <!-- 狀態列：聆聽中／處理中／待命，一眼就知道它現在在做什麼 -->
     <TextView
         android:id="@+id/tvStatus"
         android:layout_width="match_parent"
@@ -33,9 +29,8 @@
         android:textStyle="bold" />
 
     <!--
-        對話記錄。眼鏡螢幕只有 480×398，字太大就看不到幾行，
-        所以這裡用 15sp —— 這塊是給看得見的人除錯用的，
-        真正的使用者靠聽覺。
+        眼鏡螢幕只有 480×398，字級是在「看得到幾行」與「看得清楚」
+        之間取的折衷。
     -->
     <ScrollView
         android:id="@+id/scrollLog"
@@ -51,32 +46,7 @@
             android:layout_height="wrap_content"
             android:contentDescription="@string/desc_transcript"
             android:lineSpacingExtra="2dp"
-            android:textIsSelectable="false"
-            android:textSize="15sp" />
+            android:textSize="16sp" />
     </ScrollView>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:orientation="horizontal">
-
-        <Button
-            android:id="@+id/btnTalk"
-            android:layout_width="0dp"
-            android:layout_height="56dp"
-            android:layout_weight="1"
-            android:text="@string/action_talk"
-            android:textSize="18sp" />
-
-        <Button
-            android:id="@+id/btnStop"
-            android:layout_width="0dp"
-            android:layout_height="56dp"
-            android:layout_weight="1"
-            android:layout_marginStart="4dp"
-            android:text="@string/action_stop"
-            android:textSize="18sp" />
-    </LinearLayout>
 
 </LinearLayout>

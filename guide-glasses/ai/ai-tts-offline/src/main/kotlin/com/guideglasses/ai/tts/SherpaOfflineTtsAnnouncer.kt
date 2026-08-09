@@ -488,6 +488,16 @@ class SherpaOfflineTtsAnnouncer(
         while (!cancelled.get() && track.playbackHeadPosition < samplesWritten) {
             Thread.sleep(DRAIN_POLL_MILLIS)
         }
+
+        /*
+         * `playbackHeadPosition` 追上寫入量只代表**混音器讀完了**，
+         * 不代表聲音已經從喇叭出來 —— 音訊路徑本身還有緩衝。
+         * 立刻 stop/release 會把最後一小段切掉，症狀是每句話的尾音消失
+         * （使用者回報「辨識人名時最後講話會消音」）。
+         *
+         * 這對每一句都會發生，只是名字剛好在句尾才特別明顯。
+         */
+        if (!cancelled.get()) Thread.sleep(TAIL_PADDING_MILLIS)
     }
 
     private companion object {
@@ -500,6 +510,15 @@ class SherpaOfflineTtsAnnouncer(
         const val BUFFER_MULTIPLIER = 4
         const val MIN_BUFFER_BYTES = 16 * 1024
         const val DRAIN_POLL_MILLIS = 20L
+
+        /**
+         * 播完之後多等一下再關掉音軌。
+         *
+         * 音訊路徑的緩衝（實測 HAL 延遲約 33ms，加上混音與喇叭端）
+         * 讓「混音器讀完」早於「聲音真的放完」。250ms 有足夠餘裕，
+         * 代價只是每句話之後多等四分之一秒。
+         */
+        const val TAIL_PADDING_MILLIS = 250L
 
         /** 快取是裸的 float32 PCM，沒有檔頭 —— 取樣率由模型決定，不會變。 */
         const val BYTES_PER_SAMPLE = 4L
