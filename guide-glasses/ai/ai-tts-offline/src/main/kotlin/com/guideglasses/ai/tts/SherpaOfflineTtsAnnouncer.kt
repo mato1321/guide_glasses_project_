@@ -92,6 +92,16 @@ class SherpaOfflineTtsAnnouncer(
             chineseLoadFinished = true
             onReady(engine != null)
         }
+        /*
+         * 中文載完就接著載英文。
+         *
+         * 原本是「第一次要唸英文才載」，理由是不用翻譯的人不必付那 19MB。
+         * 但實測英文模型要 11.9 秒 —— 使用者第一次說「翻成英文」時，
+         * 那 12 秒完整地加在他感受到的延遲上，而他不知道發生什麼事。
+         *
+         * 排在中文後面（同一條 worker），所以不會拖慢開機後最重要的中文播報。
+         */
+        worker.execute { loadVoice(OfflineVoice.ENGLISH) }
     }
 
     /**

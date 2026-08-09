@@ -38,6 +38,7 @@
         android:layout_height="0dp"
         android:layout_weight="1"
         android:layout_marginTop="4dp"
+        android:background="#111111"
         android:fillViewport="true">
 
         <TextView
@@ -46,6 +47,7 @@
             android:layout_height="wrap_content"
             android:contentDescription="@string/desc_transcript"
             android:lineSpacingExtra="2dp"
+            android:textColor="#FFFFFF"
             android:textSize="16sp" />
     </ScrollView>
 

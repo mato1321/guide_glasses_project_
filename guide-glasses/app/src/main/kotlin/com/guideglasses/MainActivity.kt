@@ -216,6 +216,11 @@ class MainActivity : AppCompatActivity() {
 
         // 對話記錄。新內容在最下面，所以自動捲到底 ——
         // 使用者要看的永遠是「剛剛發生了什麼」。
+        // 「畫面沒有文字」有兩種完全不同的原因：狀態沒傳到這裡，
+        // 或是傳到了但看不見。沒有這行就只能靠猜 —— 這台裝置的
+        // uiautomator 抓不到畫面內容，猜是很貴的。
+        Log.d(TAG, "render：${state.log.size} 行記錄，phase=${state.phase}")
+
         val text = state.log.joinToString(separator = System.lineSeparator())
         if (tvLog.text.toString() != text) {
             tvLog.text = text
@@ -224,6 +229,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private companion object {
+        const val TAG = "MainActivity"
         const val DEBUG_ACTION = "com.guideglasses.DEBUG"
         const val DEBUG_TAG = "DebugTrigger"
 
