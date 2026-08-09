@@ -76,6 +76,10 @@ class SherpaOfflineTtsAnnouncer(
 
     private val speaking = AtomicBoolean(false)
 
+    /** 中文模型的載入是否已經結束（不論成功與否）。 */
+    @Volatile
+    private var chineseLoadFinished = false
+
     /** 使用者說了「停」。合成回呼看到它就中止，不必等整句合成完。 */
     private val cancelled = AtomicBoolean(false)
 
@@ -85,13 +89,36 @@ class SherpaOfflineTtsAnnouncer(
     init {
         worker.execute {
             val engine = loadVoice(OfflineVoice.CHINESE)
+            chineseLoadFinished = true
             onReady(engine != null)
         }
     }
 
-    /** 中文可用就算可用 —— 那是絕大多數播報。 */
+    /**
+     * 中文可用、**或還在載入中**，都算可用。
+     *
+     * ### 為什麼載入中也要算
+     *
+     * 中文模型要 12.8 秒才載得完。原本這段期間 `isAvailable` 是 false，
+     * [com.guideglasses.core.domain.announce.FallbackAnnouncer] 於是跳過這裡、
+     * 落到只寫 log 的最後一順位 —— **開機後十幾秒內所有播報都被默默丟掉**。
+     *
+     * 實機 log：
+     *
+     * ```
+     * 19:02:57 無可用語音，本來要唸：正在辨識文字
+     * 19:03:00 無可用語音，本來要唸：沒有看到文字⋯
+     * 19:03:08 CHINESE 語音就緒，耗時 12831ms
+     * ```
+     *
+     * 使用者的感受是「OCR 很慢、沒反應」，實際上 OCR 三秒就做完了，
+     * 只是**沒有人告訴他**。「還在載入」與「不可用」是完全不同的兩件事，
+     * 混為一談會讓功能看起來壞掉。
+     *
+     * 載入中時 [speak] 會等模型好了再唸，而不是把話丟掉。
+     */
     override val isAvailable: Boolean
-        get() = engines.containsKey(OfflineVoice.CHINESE)
+        get() = engines.containsKey(OfflineVoice.CHINESE) || !chineseLoadFinished
 
     override val isSpeaking: Boolean
         get() = speaking.get()
@@ -109,6 +136,12 @@ class SherpaOfflineTtsAnnouncer(
 
         cancelled.set(false)
         speaking.set(true)
+        /*
+         * worker 是單執行緒，而模型載入也排在同一條上 ——
+         * 所以載入還沒完成時，這個工作會自然排在它後面等，
+         * 不需要額外的等待邏輯。開機後前十幾秒說的話會晚一點唸出來，
+         * 但不會像原本那樣直接消失。
+         */
         worker.execute { synthesizeAndPlay(voice, announcement.text, onDone) }
     }
 

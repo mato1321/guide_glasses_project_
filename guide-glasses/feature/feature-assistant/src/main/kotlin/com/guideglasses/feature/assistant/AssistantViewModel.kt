@@ -187,16 +187,33 @@ class AssistantViewModel @Inject constructor(
      * 提示音先響，讓使用者知道被聽到了 —— 有些功能（相機、人臉）要跑幾秒，
      * 沒有立即回饋的話使用者會以為沒反應而重講一次。
      */
+    /**
+     * 累積對話記錄。
+     *
+     * 使用者的原話：「我根本不知道他聽到了什麼文字」。眼鏡上沒有畫面回饋時，
+     * 「沒聽到」「聽錯了」「聽對了但功能慢」三種情況的外在表現一模一樣，
+     * 開發時完全無從判斷。
+     *
+     * 有界，因為這是常駐 App —— 不限制的話跑一整天會把記憶體吃光。
+     */
+    private fun appendLog(line: String) {
+        _state.update { current ->
+            current.copy(log = (current.log + line).takeLast(MAX_LOG_LINES))
+        }
+    }
+
     private fun onVoiceCommand(keyword: String) {
         val intent = VoiceCommand.intentFor(keyword)
         if (intent == null) {
             // keywords.txt 加了詞卻忘了加對照時會走到這裡。
             Log.w(TAG, "偵測到「$keyword」但沒有對應的功能")
+            appendLog("🎤 $keyword（沒有對應的功能）")
             return
         }
 
         Log.i(TAG, "語音指令：「$keyword」→ $intent")
         ackTone.play()
+        appendLog("🎤 $keyword")
 
         // 指令執行期間不要再收自己播報的聲音 —— 播報內容裡就有指令詞。
         _state.update { it.copy(transcript = keyword, phase = Phase.THINKING) }
@@ -665,6 +682,7 @@ class AssistantViewModel @Inject constructor(
     }
 
     private fun announce(text: String, priority: AnnouncementPriority) {
+        appendLog("🔊 $text")
         lastSpoken = text
         _state.update { it.copy(lastReply = text) }
         announcementManager.announce(Announcement(text, priority))
@@ -723,10 +741,20 @@ class AssistantViewModel @Inject constructor(
         val transcript: String = "",
         val lastReply: String = "",
         val routedFrom: RoutedIntent.Source? = null,
+        /**
+         * 對話記錄：聽到什麼、回應什麼，一路往下累積。
+         *
+         * 眼鏡上沒有這個的話，「沒聽到」「聽錯了」「聽對了但功能慢」
+         * 三種情況的外在表現完全一樣，開發時無從判斷。
+         */
+        val log: List<String> = emptyList(),
     )
 
     private companion object {
         const val TAG = "Assistant"
+
+        /** 這是常駐 App，記錄不設上限的話跑一整天會把記憶體吃光。 */
+        const val MAX_LOG_LINES = 60
 
         const val MESSAGE_NOT_HEARD = "我沒有聽到，請再說一次"
         const val MESSAGE_NO_NETWORK = "目前沒有網路"

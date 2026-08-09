@@ -145,6 +145,24 @@ adb shell am broadcast -a com.guideglasses.DEBUG --es cmd MIC_TEST
 
 音量基準：來源沒接 = 乾淨的 0.0000｜環境底噪 ≈ 0.005｜正常說話 ≈ 0.039。
 
+#### 🔴 `adb install` 回報 Success 但裝的是舊版
+
+追「完全沒有反應」追了很久，最後發現裝置上的 APK 是 **106 MB**，
+而本機建置是 288 MB —— 那是這次對話最開始、還沒有任何語音模型的版本。
+中間每一次 `adb install -r` 都回報 `Success`。
+
+**所以「新功能好像都不存在」是字面上的真相。**
+
+之後每次安裝都要核對：
+
+```bash
+adb shell stat -c '%s' $(adb shell pm path com.guideglasses | sed 's/package://')
+```
+
+這是這台裝置上第六次「回報成功但沒生效」（前五次：`bindSecurityService`
+不回呼、`startForeground` 被靜默拒絕、`VOICE_RECOGNITION` 回傳靜音、
+`pm list features` 假宣告、以及程式裡自己的早退檢查）。
+
 #### 🔴 喇叭與麥克風只隔幾公分：助理會聽到自己
 
 實機 log：

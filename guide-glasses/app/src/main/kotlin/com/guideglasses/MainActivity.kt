@@ -12,6 +12,7 @@ import android.os.Bundle
 import android.view.View
 import android.view.WindowManager
 import android.widget.Button
+import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
@@ -37,8 +38,8 @@ class MainActivity : AppCompatActivity() {
     private val viewModel: AssistantViewModel by viewModels()
 
     private lateinit var tvStatus: TextView
-    private lateinit var tvTranscript: TextView
-    private lateinit var tvReply: TextView
+    private lateinit var tvLog: TextView
+    private lateinit var scrollLog: ScrollView
     private lateinit var btnTalk: Button
     private lateinit var btnStop: Button
 
@@ -83,8 +84,8 @@ class MainActivity : AppCompatActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         tvStatus = findViewById(R.id.tvStatus)
-        tvTranscript = findViewById(R.id.tvTranscript)
-        tvReply = findViewById(R.id.tvReply)
+        tvLog = findViewById(R.id.tvLog)
+        scrollLog = findViewById(R.id.scrollLog)
         btnTalk = findViewById(R.id.btnTalk)
         btnStop = findViewById(R.id.btnStop)
 
@@ -229,11 +230,13 @@ class MainActivity : AppCompatActivity() {
         }
         btnTalk.contentDescription = btnTalk.text
 
-        tvTranscript.text = state.transcript
-        tvTranscript.visibility = if (state.transcript.isBlank()) View.GONE else View.VISIBLE
-
-        tvReply.text = state.lastReply
-        tvReply.visibility = if (state.lastReply.isBlank()) View.GONE else View.VISIBLE
+        // 對話記錄。新內容在最下面，所以自動捲到底 ——
+        // 使用者要看的永遠是「剛剛發生了什麼」。
+        val text = state.log.joinToString(separator = System.lineSeparator())
+        if (tvLog.text.toString() != text) {
+            tvLog.text = text
+            scrollLog.post { scrollLog.fullScroll(View.FOCUS_DOWN) }
+        }
     }
 
     private companion object {
