@@ -5,10 +5,14 @@
 
 | | |
 |---|---|
-| 最後更新 | 2026-08-08 |
-| 完成度 | 約 80% |
-| 單元測試 | 306 個，全過（純 JVM） |
-| 實機狀態 | 🟡 相機／OCR／障礙物／翻譯／感測器**已在眼鏡驗證**；🔴 **語音不可用** |
+| 最後更新 | 2026-08-09 |
+| 完成度 | 約 94% |
+| 單元測試 | **333 個，全過**（純 JVM，秒級） |
+| APK | debug 288 MB |
+| 實機狀態 | ✅ **語音指令、TTS、OCR、人臉、翻譯、障礙物、前景服務全部在眼鏡上實測可用** |
+
+**使用者直接對眼鏡講話就會執行**，不需要喚醒詞也不需要按鈕 ——
+「前面有什麼」「這是誰」「唸給我聽」「翻成英文」等 14 句。
 
 ---
 
@@ -18,10 +22,24 @@
 |---|---|
 | **第一次接手** | [`docs/DEVELOPER_GUIDE.md`](docs/DEVELOPER_GUIDE.md) —— 從零建置到接手開發 |
 | **眼鏡上跑不起來 / 沒聲音** | [`docs/DEVICE_FINDINGS.md`](docs/DEVICE_FINDINGS.md) —— 實機診斷，全部指令可重跑 |
+| **拿到一台新眼鏡** | [`docs/PROVISIONING.md`](docs/PROVISIONING.md) —— 一次性佈建，不做的話什麼都不會動 |
 | 現況與交接 | [`docs/STATUS.md`](docs/STATUS.md) |
 | 待辦清單 | [`docs/TASKS.md`](docs/TASKS.md) |
 | 分層架構決策 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
-| 文件總導覽 | [`docs/README.md`](docs/README.md) |
+| 做簡報 | [`docs/PRESENTATION.md`](docs/PRESENTATION.md) |
+
+---
+
+## 🔴 這台裝置的核心教訓
+
+**任何 API 呼叫「沒有拋例外」都不等於成功。**
+
+開發過程中中過**七次**「回報成功但實際沒生效」：Rokid 的 `bindSecurityService`
+不回呼、`startForeground` 被靜默拒絕、`VOICE_RECOGNITION` 音訊來源回傳純靜音、
+`pm list features` 假宣告、`adb install` 回報 Success 但裝的是舊版⋯
+
+所以這個專案的預設寫法是**主動查證**：量麥克風音量、查 `isForeground` 旗標、
+核對 APK 大小、加逾時檢查。詳見 [`docs/DEVICE_FINDINGS.md`](docs/DEVICE_FINDINGS.md)。
 
 ---
 
@@ -84,27 +102,19 @@ cd guide-glasses && ./gradlew build
 
 | 功能 | 狀態 |
 |---|---|
-| AI 語音助理（雙層意圖路由） | ✅ 邏輯完成，但語音輸入不可用 |
-| OCR 朗讀（文件／招牌／分段） | ✅ 眼鏡實測通過 |
-| 翻譯（ML Kit + OCR 串接） | ✅ 眼鏡實測通過 |
-| 人臉辨識（ONNX 端側） | ✅ 已完成，待眼鏡實測 |
-| 障礙物偵測（YOLOv8 八類） | ✅ 眼鏡實測通過 |
-| 播報優先級仲裁 | ✅ |
-| 導航 | 🔴 難度上修（無 GPS 且無羅盤） |
+| 語音指令（關鍵詞偵測，14 句） | ✅ 眼鏡實測可用，直接講直接做 |
+| 語音合成（中文＋英文，22050Hz） | ✅ 眼鏡實測可用 |
+| 語音辨識（開放式輸入） | ✅ 可用，2–3.5 秒 |
+| OCR 朗讀 | ✅ 使用者實測可用（約 3 秒） |
+| 人臉辨識 | ✅ 使用者實測可用 |
+| 翻譯（中↔英） | ✅ 使用者實測可用 |
+| 障礙物偵測（YOLOv8 八類） | 🟡 推論可跑，偵測率未測 |
+| 前景服務（背景存活） | ✅ 眼鏡實測可用 |
+| 導航 | 🔴 無 GPS 且無電子羅盤 |
+
+⚠️ **每台眼鏡要先做一次性佈建**，見 [`docs/PROVISIONING.md`](docs/PROVISIONING.md)。
 
 ---
-
----
-
-# 附錄：Rokid 眼鏡 Android 開發框架（通用教學）
-
-> 以下是專案初期寫的**通用 Android 開發參考**，與 `guide-glasses` 的實際
-> 架構無關。`guide-glasses` 用的是多模組 + Hilt + 純 Kotlin domain 層，
-> 詳見 [`docs/DEVELOPER_GUIDE.md`](docs/DEVELOPER_GUIDE.md) §5。
->
-> ⚠️ 下方「語音識別 SDK」一節的 `com.rokid.speech:speech-sdk` 是**佔位範例，
-> 不是真實可用的 artifact**。眼鏡端語音的實際狀況見
-> [`DEVICE_FINDINGS.md`](docs/DEVICE_FINDINGS.md)。
 
 ## Rokid 眼鏡 Android 開發框架
 

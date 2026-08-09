@@ -11,7 +11,9 @@
 | **第一次接手這個專案** | [`DEVELOPER_GUIDE.md`](DEVELOPER_GUIDE.md) ← 從零建置到接手開發，新手看這份 |
 | 🔴 **眼鏡上跑不起來 / 沒聲音** | [`DEVICE_FINDINGS.md`](DEVICE_FINDINGS.md) ← 實機診斷，含可重跑的指令 |
 | **知道做到哪裡了 / 交接給新對話** | [`STATUS.md`](STATUS.md) ← 現況快照，隨時更新 |
-| **知道還有什麼沒做 / 勾待辦** | [`TASKS.md`](TASKS.md) ← 可勾選的清單 |
+| **知道還有什麼沒做 / 勾待辦** | [`PROVISIONING.md`](PROVISIONING.md) | 每台眼鏡的一次性佈建。不做的話前景服務會被靜默擋掉 |
+| [`PRESENTATION.md`](PRESENTATION.md) | 簡報素材：手機 → 眼鏡的移植實錄，含七次靜默失敗 |
+| [`TASKS.md`](TASKS.md) ← 可勾選的清單 |
 | **哪個功能放眼鏡／手機／雲端、為什麼** | [`ARCHITECTURE.md`](ARCHITECTURE.md) ← 分層決策，含 7 張 Mermaid 圖 |
 | **執行 / 測試 App** | [`../guide-glasses/DOCUMENTATION.md`](../guide-glasses/DOCUMENTATION.md) |
 | **實作某個功能 / 了解它怎麼運作** | [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) ← 含 Mermaid 圖與整合步驟 |

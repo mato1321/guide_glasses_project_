@@ -5,14 +5,14 @@
 
 | | |
 |---|---|
-| 最後更新 | 2026-08-08 |
-| `main` HEAD | `1c7066c` |
-| 整體完成度 | **約 90%** |
-| 單元測試 | **325 個，全過**（36 個測試類，純 JVM） |
+| 最後更新 | 2026-08-09 |
+| `main` HEAD | `ffe1b57` |
+| 整體完成度 | **約 94%** |
+| 單元測試 | **333 個，全過**（36 個測試類，純 JVM） |
 | 模組數 | 15 |
-| Kotlin 行數 | 8,535（主程式）+ 3,799（測試） |
+| Kotlin 行數 | 11,209（主程式）+ 4,298（測試） |
 | 建置狀態 | ✅ `./gradlew build` 通過，lint 無錯誤（AGP 9.3.1 / Gradle 9.5.0） |
-| APK | debug **288 MB**（中文 TTS 92 ＋ 英文 TTS 19 ＋ 中文 ASR 26 ＋ 引擎 .so 23 ＋ 人臉 13 ＋ 障礙物 13 ＋ ORT 17） |
+| APK | debug **288 MB**（中文 TTS 92 ＋ 英文 TTS 19 ＋ ASR 26 ＋ KWS 4.6 ＋ 引擎 .so 23 ＋ 人臉 13 ＋ 障礙物 13 ＋ ORT 17） |
 | clone 後可直接建置 | ✅ 模型已進版控，只需自補 `local.properties` |
 | 實機驗證 | ✅ **相機／OCR／障礙物／翻譯／感測器／TTS 全部在眼鏡上實測通過**（TTS 起播 0.48s、RTF 1.00）；🔴 **STT 仍不可用**；🔴 **App 退到背景 2.4 秒就被系統殺掉**。見 [`DEVICE_FINDINGS.md`](DEVICE_FINDINGS.md) |
 
@@ -87,18 +87,17 @@ guide-glasses/
 |---|---:|---|
 | 專案地基（多模組、Hilt、version catalog） | 95% | ✅ 缺 CI |
 | 播報優先級仲裁 | 100% | ✅ |
-| AI 助理中樞（雙層意圖路由） | 85% | ✅ 缺 BFF、眼鏡 AI 鍵 |
-| 語音**合成**（TTS） | 90% | ✅ **眼鏡實測會出聲**。起播 0.48s、RTF 1.00、快取命中 +73ms。只有中文、8kHz |
-| 語音**辨識**（STT） | 85% | ✅ **眼鏡實測可用**：「前面有什麼」正確辨識、5.5 秒。踩過兩個坑：`VOICE_RECOGNITION` 音訊來源是啞的、模型輸出簡體 |
-| 相機（CameraX） | 85% | ✅ **眼鏡實測通過**（修掉假前鏡頭旗標）。⚠️ 擷取 **930ms**，比估計慢 6 倍 |
-| OCR 朗讀 | 85% | ✅ **眼鏡實測管線完整** |
-| 人臉辨識 | 95% | ✅ 端側可用，瀏覽器註冊＋語音同步 |
-| IMU 動作感測 | 75% | ✅ 眼鏡實測。⚠️ **沒有電子羅盤**，導航拿不到絕對方位 |
-| 翻譯 | 90% | ✅ **眼鏡實測：語言包下載成功**（無 Play Services 也能用） |
-| 障礙物偵測 | 80% | ✅ **眼鏡實測：YOLO ONNX 載入並推論成功**，2GB RAM 沒 OOM |
-| 導航 | 15% | 🔴 **難度上修**：無 GPS **且無電子羅盤**，連「往哪轉」都算不出來 |
-
----
+| **語音指令（關鍵詞偵測）** | 90% | ✅ **眼鏡實測可用**。14 句直接講直接做，不需喚醒詞 |
+| **語音合成（TTS）** | 90% | ✅ 中文＋英文，皆 22050Hz。RTF 約 1.5，快取命中 +73ms |
+| 語音辨識（開放式輸入） | 80% | ✅ 可用。串流 zipformer，辨識 2–3.5 秒 |
+| 相機（CameraX） | 85% | ✅ 眼鏡實測。⚠️ 擷取 930ms |
+| OCR 朗讀 | 90% | ✅ **使用者實測可用**（OCR 本身約 3 秒） |
+| 人臉辨識 | 95% | ✅ **使用者實測可用**。同步 2 人 6 張照片成功 |
+| 翻譯 | 90% | ✅ **使用者實測可用**。長文較慢是工作量問題 |
+| IMU 動作感測 | 75% | ✅ 眼鏡實測。⚠️ 沒有電子羅盤 |
+| 障礙物偵測 | 80% | ✅ 眼鏡實測 YOLO 可推論。⚠️ 未測偵測率 |
+| 前景服務 | 100% | ✅ 背景存活、背景開相機都通 |
+| 導航 | 15% | 🔴 無 GPS **且**無電子羅盤 |
 
 ## 3. 目前可用的語音指令
 
@@ -271,53 +270,54 @@ guideglasses.faceEndpoint=http://<你的IP>:8000/recognize   # 遠端人臉備�
 
 ```text
 接手 Rokid AI 導盲眼鏡專案（guide-glasses）。
+Repo: https://github.com/mato1321/guide_glasses_project_
+本機: D:\Github_Project\guide_glasses_project_
 
 ## 先讀這五份
 1. docs/DEVICE_FINDINGS.md   ← 🔴 最重要：眼鏡實測發現，很多「規格」是假的
 2. docs/STATUS.md            ← 現況快照
-3. docs/TASKS.md             ← 待辦清單
-4. docs/DEVELOPER_GUIDE.md   ← 新手總覽：建置、架構、所有功能、Debug、FAQ
-5. docs/ARCHITECTURE.md      ← 分層決策
+3. docs/PROVISIONING.md      ← 每台眼鏡的一次性佈建（不做的話什麼都不會動）
+4. docs/TASKS.md             ← 待辦清單
+5. docs/DEVELOPER_GUIDE.md   ← 新手總覽
 
 ## 環境
-- 建置需要 JDK 17+（JDK 11 不行）。若 Android Studio 更新過導致
-  jbr 壞掉，改用 "Android Studio1/jbr"：
-    export JAVA_HOME="/c/Program Files/Android/Android Studio/jbr"
-    cd guide-glasses && ./gradlew build
-- AGP 已升到 9.3.1，靠 gradle.properties 的 android.builtInKotlin=false
-  與 android.newDsl=false 兩個相容開關，**不要拿掉那兩行**。
-- adb 在 PATH：
-  /c/Users/mato/AppData/Local/Microsoft/WinGet/Packages/Google.PlatformTools_*/platform-tools
+- JDK 17+。這台的 "Android Studio/jbr" 已損壞，用：
+    export JAVA_HOME="/c/Program Files/Android/Android Studio1/jbr"
+- AGP 9.3.1，靠 gradle.properties 的 android.builtInKotlin=false
+  與 android.newDsl=false，**不要拿掉那兩行**
+- adb：/c/Users/mato/AppData/Local/Microsoft/WinGet/Packages/Google.PlatformTools_*/platform-tools
+- local.properties 需要 sdk.dir 與 guideglasses.photoEndpoint（人臉同步用）
 
-## 眼鏡上的硬事實（全部 adb 實測，別再假設）
-- ❌ 沒有 Google Play Services、沒有 Play Store
-- ❌ 沒有任何語音辨識服務 → STT 完全不可用
-- ❌ Android TTS 框架綁定失敗 → 已改走 APK 內建離線引擎（`ai-tts-offline`），**待上機驗證**
-- 💡 但**音訊輸出本身是好的** —— 綁不上 TTS ≠ 不能出聲，這個區別是解法的關鍵
-- ❌ 沒有 GPS provider、沒有電子羅盤（磁力計）
-- ⚠️ 相機擷取 930ms（文件原本估 145ms）
-- ⚠️ 螢幕逾時 5 秒，App idle 時 Android 會擋掉相機
-- 🔴 反覆出現的陷阱：pm list features 宣告有，實際上沒有。
-  GPS、前鏡頭、TTS 都中過。**任何硬體能力都要實測，不能看 API 宣告。**
+## 🔴 這台裝置的核心教訓：失敗都是靜默的
+已經中過七次「回報成功但實際沒生效」：
+  bindSecurityService 不回呼／startForeground 被靜默拒絕／
+  VOICE_RECOGNITION 音訊來源回傳純靜音／pm list features 假宣告／
+  adb install 回報 Success 但裝的是舊版／TTS「載入中」被當成「不可用」／
+  程式裡自己的防重入早退
+
+**任何 API 呼叫「沒有拋例外」都不等於成功。** 一律主動查證：
+量音量、查 isForeground、核對 APK 大小、加逾時檢查。
+
+## 每次安裝後必做
+  adb shell stat -c '%s' $(adb shell pm path com.guideglasses | sed 's/package://')
+  # 要等於本機 app-debug.apk 的大小，否則裝的是舊版
+  adb shell cmd appops set com.guideglasses RUN_ANY_IN_BACKGROUND allow
+  # YodaOS 預設把每個 App 都背景限制，不解除前景服務會被靜默擋掉
 
 ## 眼鏡上怎麼測
-  # 🔴 每台眼鏡第一次要跑這行，否則前景服務會被系統「靜默」擋掉
-  adb shell cmd appops set com.guideglasses RUN_ANY_IN_BACKGROUND allow
-  adb shell am set-inactive com.guideglasses false
-  adb shell svc power stayon true
-  adb shell am start -n com.guideglasses/.MainActivity
+  adb shell am start -n com.guideglasses/.MainActivity   # 每次觸發前拉回前景
   adb shell am broadcast -a com.guideglasses.DEBUG --es cmd CAMERA_TEST
-  adb logcat -d | grep TtsAnnouncer
-TTS 失敗時會把「本來要唸的話」印進 log —— 聽不到但看得到。
-cmd 可用任何 AssistantIntent 名稱，可帶 --es target_language / text / name。
+  adb shell am broadcast -a com.guideglasses.DEBUG --es cmd MIC_TEST   # 音訊來源探針
+  adb logcat -d | grep -E "OfflineTts|WakeWord|Assistant"
+語音指令直接講就會做（不需喚醒詞），支援的 14 句見 VoiceCommand.kt。
 
 ## 工作規則
 - 只在 guide-glasses/ 開發。AI_Assistant/、Face_Recognition/、
-  Obstacle_Recognition/、Audio_Navigation/、Text_Recognition/ 是五位組員
-  各自的工作區，不得修改。需要引用時複製過來重構。
-- Git 只保留 main，直接 git push origin HEAD:main，不開 PR。
-- 每完成一項就重新編譯、跑測試、更新 docs/STATUS.md 與 docs/TASKS.md。
-- 一律用繁體中文回覆。
+  Obstacle_Recognition/、Audio_Navigation/、Text_Recognition/ 是組員的工作區，
+  不得修改
+- Git 只保留 main，直接 git push origin HEAD:main，不開 PR
+- 每完成一項就重新編譯、跑測試、更新 docs/STATUS.md 與 docs/TASKS.md
+- 一律用繁體中文回覆
 
 接下來要做：<寫你要的>
 ```
@@ -326,14 +326,11 @@ cmd 可用任何 AssistantIntent 名稱，可帶 --es target_language / text / n
 
 | 你的狀況 | 填什麼 |
 |---|---|
-| **想讓翻譯有聲音** | 「加英文 TTS 模型 —— 翻譯結果目前落到 LogOnly，完全沒聲音」 |
-| **想解決產品化** | 「研究 Device Owner，讓背景限制不必靠 adb 解除」 |
-| 想解決語音**輸入** | 「用 sherpa-onnx 的 ASR 接 STT —— .so 已經在 APK 裡了，只差模型」 |
-| 想繼續做功能 | 「接上 CameraModeController」—— 走路才開相機，眼鏡續航很吃這個 |
-| 想驗證人臉 | 「跑註冊工具建幾個人，在眼鏡上測同步與辨識」 |
-| 想推進導航 | 「實作 FollowHeadingUseCase」—— 純 IMU，但注意沒有羅盤 |
-
----
+| **想讓功能變快**（最有感） | 「評估把 OCR／翻譯／人臉的運算卸載到手機」——見 §4 的分析 |
+| 想提高指令辨識率 | 「跑 tools/test_commands.ps1，依結果補 keywords.txt 的說法」 |
+| 想推進導航 | 「實作 FollowHeadingUseCase」——純 IMU，但沒有羅盤 |
+| 想產品化 | 「研究 Device Owner，讓背景限制不必靠 adb 解除」——見 PROVISIONING.md |
+| 想補測試 | 「加 CI（GitHub Actions：build + lint + test）」 |
 
 ## 7. 變更歷史
 
