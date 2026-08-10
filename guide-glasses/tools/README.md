@@ -118,23 +118,46 @@ python face_enroll_server.py --dir D:\my_photos --port 9000
 
 ---
 
-## 語音指令辨識率測試
+## 語音指令偵測率測試
 
 眼鏡上沒有畫面也沒有鍵盤，測語音只能「人對著它講、看 logcat」。
 `test_commands.ps1` 把那件事變成照著唸就好：
 
 ```powershell
-cd guide-glasses	ools
-.	est_commands.ps1
+cd guide-glasses\tools
+pwsh .\test_commands.ps1
 ```
 
-它會逐條提示要說什麼、觸發聆聽、收集結果，最後列出「該說的 / 聽到的」對照表。
+它會逐條提示要說什麼、收集偵測結果，最後列出**每一句的命中率**、
+誤判成什麼、以及誤觸次數，並把逐輪明細寫成 CSV。
 
-只測某幾條：
+只測某幾條、每條多說幾次：
 
 ```powershell
-.	est_commands.ps1 -Only "這是誰","唸給我聽"
+pwsh .\test_commands.ps1 -Only "這是誰","唸給我聽" -Reps 5
 ```
 
-> 「聽到的」是簡體字是**正常的** —— 模型是 zh-CN 訓練的，
-> 比對前會做繁簡摺疊（`SpokenText.forMatching`）。
+全部跑完約 13 分鐘（14 句 × 3 次）。趕時間就 `-Reps 2`。
+
+### 它量的是什麼
+
+量的是**關鍵詞偵測**（常駐監聽，聽到指令直接做），不是語音辨識。
+兩者是不同的路徑，log 也不同：
+
+| | 關鍵詞偵測 | 語音辨識 |
+|---|---|---|
+| 什麼時候用 | 14 句固定指令 | 開放式輸入（要翻譯的整段話） |
+| log | `WakeWord: 偵測到語音指令：「⋯」` | `OfflineAsr: 辨識完成：「⋯」` |
+
+指令清單**直接從 `ai/ai-asr-offline/src/main/assets/kws/keywords.txt` 讀**，
+不寫死在腳本裡 —— 寫死的清單一定會跟程式碼脫節。
+
+> ⚠️ 要用 **pwsh 7**。Windows PowerShell 5.1 會把中文提示顯示成亂碼。
+>
+> ⚠️ 跑之前背景限制要先解除，否則測到一半 App 會被系統回收
+> （腳本會先檢查，沒解除會直接擋下來）。見 [`../../docs/PROVISIONING.md`](../../docs/PROVISIONING.md)。
+
+### 結果怎麼用
+
+命中率低的句子，在 `keywords.txt` 補一行同義說法（拼音 ＋ `@漢字`），
+**並且**在 `VoiceCommand.MAPPING` 加上對照 —— 只改一邊會安靜地沒反應。
