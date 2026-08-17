@@ -826,7 +826,8 @@ class AssistantViewModel @Inject constructor(
          * 講「沒有網路」會讓使用者去檢查一個沒壞的東西 ——
          * 實測過網路 ping 0% 掉包卻聽到「目前沒有網路」。
          */
-        const val MESSAGE_SYNC_UNREACHABLE = "連得到網路，但找不到註冊工具。請確認電腦上的註冊工具有啟動"
+        const val MESSAGE_SYNC_UNREACHABLE =
+            "連不到註冊工具。請確認電腦上的註冊工具有啟動，而且防火牆沒有擋住"
         const val MESSAGE_SYNC_NO_MODEL = "缺少人臉模型檔，無法同步"
         const val MESSAGE_SYNC_EMPTY = "註冊工具上還沒有任何人"
         const val MESSAGE_PREPARING_TRANSLATION = "正在下載語言包，需要網路，請稍等"

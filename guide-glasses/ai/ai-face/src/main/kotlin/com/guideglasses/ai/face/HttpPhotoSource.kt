@@ -16,8 +16,6 @@ import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
-import java.net.ConnectException
-import java.net.SocketTimeoutException
 import java.net.URLEncoder
 import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
@@ -119,21 +117,23 @@ class HttpPhotoSource(
             }
         }
     } catch (e: UnknownHostException) {
+        // 位址是 IP 時幾乎不會走到這裡；用主機名時代表 DNS 或網路真的不通。
         Log.w(TAG, "找不到主機 $url", e)
         AppResult.Failure(AppError.NoNetwork(e.message ?: "unknown host"))
-    } catch (e: SocketTimeoutException) {
-        AppResult.Failure(AppError.NoNetwork(e.message ?: "timeout"))
-    } catch (e: ConnectException) {
-        // 連線被拒 ≠ 沒有網路。這台機器連得到，只是那個埠上沒有人在聽 ——
-        // 幾乎一定是 tools/face_enroll_server.py 忘了啟動。
-        //
-        // 兩者混為一談的代價實測過：使用者在 Wi-Fi 完全正常（ping 0% 掉包）
-        // 的情況下聽到「目前沒有網路」，然後跑去檢查一個根本沒有問題的東西。
-        // 同樣的教訓 RemoteLlmIntentGateway 已經記過一次。
-        Log.w(TAG, "連線被拒（註冊工具沒啟動？）$url", e)
-        AppResult.Failure(AppError.Remote(debugMessage = "連線被拒：$url"))
     } catch (e: IOException) {
-        AppResult.Failure(AppError.NoNetwork(e.message ?: "io failure"))
+        // 「連不到註冊工具」≠「沒有網路」。混為一談的代價實測過：眼鏡 ping
+        // 電腦 0% 掉包、位址也正確，使用者卻聽到「目前沒有網路」，然後跑去
+        // 檢查一個根本沒壞的東西。同樣的教訓 RemoteLlmIntentGateway 記過一次。
+        //
+        // ⚠️ 不要只接 ConnectException。直覺上「埠沒開 = 連線被拒」，
+        // 但實測 Windows 防火牆對沒開的埠是**丟包**而不是回 RST，眼鏡上
+        // 拿到的是 SocketTimeoutException（`nc` 也是回 Timeout 而非 refused）。
+        // 兩種都要涵蓋，所以接在 IOException 這一層 ——
+        // 對使用者而言「連不到」就是連不到，原因由 debugMessage 留給 log。
+        Log.w(TAG, "連不到 $url（註冊工具沒啟動或防火牆擋住）", e)
+        AppResult.Failure(
+            AppError.Remote(debugMessage = "連不到 $url：${e.javaClass.simpleName}"),
+        )
     } catch (e: IllegalArgumentException) {
         AppResult.Failure(AppError.Remote(debugMessage = "位址格式錯誤：$url"))
     }
