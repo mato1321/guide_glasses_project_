@@ -16,6 +16,7 @@ import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
+import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.URLEncoder
 import java.net.UnknownHostException
@@ -122,6 +123,15 @@ class HttpPhotoSource(
         AppResult.Failure(AppError.NoNetwork(e.message ?: "unknown host"))
     } catch (e: SocketTimeoutException) {
         AppResult.Failure(AppError.NoNetwork(e.message ?: "timeout"))
+    } catch (e: ConnectException) {
+        // 連線被拒 ≠ 沒有網路。這台機器連得到，只是那個埠上沒有人在聽 ——
+        // 幾乎一定是 tools/face_enroll_server.py 忘了啟動。
+        //
+        // 兩者混為一談的代價實測過：使用者在 Wi-Fi 完全正常（ping 0% 掉包）
+        // 的情況下聽到「目前沒有網路」，然後跑去檢查一個根本沒有問題的東西。
+        // 同樣的教訓 RemoteLlmIntentGateway 已經記過一次。
+        Log.w(TAG, "連線被拒（註冊工具沒啟動？）$url", e)
+        AppResult.Failure(AppError.Remote(debugMessage = "連線被拒：$url"))
     } catch (e: IOException) {
         AppResult.Failure(AppError.NoNetwork(e.message ?: "io failure"))
     } catch (e: IllegalArgumentException) {

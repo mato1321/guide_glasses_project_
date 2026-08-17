@@ -637,8 +637,16 @@ class AssistantViewModel @Inject constructor(
                 SyncPeopleUseCase.Outcome.NothingToSync ->
                     announce(MESSAGE_SYNC_EMPTY, AnnouncementPriority.USER_RESPONSE)
 
-                is SyncPeopleUseCase.Outcome.Failed ->
-                    announce(messageFor(outcome.error), AnnouncementPriority.USER_RESPONSE)
+                is SyncPeopleUseCase.Outcome.Failed -> {
+                    // 「連得到但沒人在聽」要跟「沒有網路」分開講。前者是註冊工具
+                    // 沒啟動，後者是網路問題 —— 講錯會讓使用者去修一個沒壞的東西。
+                    val message = if (outcome.error is AppError.Remote) {
+                        MESSAGE_SYNC_UNREACHABLE
+                    } else {
+                        messageFor(outcome.error)
+                    }
+                    announce(message, AnnouncementPriority.USER_RESPONSE)
+                }
             }
         }
     }
@@ -811,6 +819,14 @@ class AssistantViewModel @Inject constructor(
         const val MESSAGE_TRANSLATE_TRUNCATED = "內容較長，只翻譯前面的部分"
         const val MESSAGE_SYNC_STARTED = "正在同步人臉，請稍等"
         const val MESSAGE_SYNC_NO_SOURCE = "還沒設定註冊工具的位址"
+
+        /**
+         * 位址有設定、網路也通，只是那個埠上沒有人在聽。
+         *
+         * 講「沒有網路」會讓使用者去檢查一個沒壞的東西 ——
+         * 實測過網路 ping 0% 掉包卻聽到「目前沒有網路」。
+         */
+        const val MESSAGE_SYNC_UNREACHABLE = "連得到網路，但找不到註冊工具。請確認電腦上的註冊工具有啟動"
         const val MESSAGE_SYNC_NO_MODEL = "缺少人臉模型檔，無法同步"
         const val MESSAGE_SYNC_EMPTY = "註冊工具上還沒有任何人"
         const val MESSAGE_PREPARING_TRANSLATION = "正在下載語言包，需要網路，請稍等"

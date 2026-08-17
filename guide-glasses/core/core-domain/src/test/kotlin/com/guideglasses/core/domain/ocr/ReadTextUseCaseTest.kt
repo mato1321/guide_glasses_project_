@@ -165,6 +165,24 @@ class ReadTextUseCaseTest {
         assertThat(spoken).doesNotContain("營業時間")
     }
 
+    /**
+     * 招牌整段就是標題，沒有內文可以對比。使用者問「這是哪裡」，
+     * 要的答案是店名，不是「標題，店名」。
+     */
+    @Test
+    fun `招牌模式不會冠上標題`() = runTest {
+        val blocks = listOf(TextBlock("全家便利商店", 0.4f))
+        val local = FakeRecognizer(onDevice("全家便利商店", blocks))
+        val useCase = ReadTextUseCase(FakeFrameSource(), local)
+
+        val outcome = useCase.execute(OcrMode.SIGN) as ReadTextUseCase.Outcome.Success
+
+        val spoken = buildList { while (true) { add(outcome.session.next() ?: break) } }
+            .joinToString("")
+        assertThat(spoken).contains("全家便利商店")
+        assertThat(spoken).doesNotContain("標題")
+    }
+
     @Test
     fun `文件模式唸出完整內容`() = runTest {
         val blocks = listOf(TextBlock("標題", 0.3f), TextBlock("內文", 0.05f))
