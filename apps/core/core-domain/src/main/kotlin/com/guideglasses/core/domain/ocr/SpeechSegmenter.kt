@@ -37,7 +37,15 @@ class SpeechSegmenter(
         require(headingLengthThreshold >= 0) { "headingLengthThreshold 不可為負" }
     }
 
-    fun segment(rawText: String?): List<String> {
+    /**
+     * @param markHeadings 短行要不要冠上「標題，」。
+     *   **招牌模式必須傳 false** —— 使用者問「這是哪裡」，要的答案是
+     *   「全家便利商店」，而招牌文字幾乎必然又短又沒有句號，
+     *   一律會命中標題判斷，結果每次都聽到「標題，全家便利商店」。
+     *   那個「標題」在文件裡是用來區分結構的，但招牌**整段就是標題**，
+     *   沒有內文可以對比，講出來只是噪音。
+     */
+    fun segment(rawText: String?, markHeadings: Boolean = true): List<String> {
         val text = rawText?.trim().orEmpty()
         if (text.isEmpty()) return emptyList()
 
@@ -52,10 +60,10 @@ class SpeechSegmenter(
             // 讓後面的斷句邏輯能跨行把句子組回來。見類別註解。
             .map { it.replace('\n', ' ').replace(HORIZONTAL_WHITESPACE, " ").trim() }
             .filter { it.isNotEmpty() }
-            .flatMap { segmentParagraph(it) }
+            .flatMap { segmentParagraph(it, markHeadings) }
     }
 
-    private fun segmentParagraph(rawParagraph: String): List<String> {
+    private fun segmentParagraph(rawParagraph: String, markHeadings: Boolean): List<String> {
         // 短行通常是標題、招牌、欄位名稱。明確講出「標題」讓聽的人知道
         // 這不是內文 —— 看得見的人靠字級和排版判斷，看不見的人只能靠這個。
         //
@@ -63,7 +71,9 @@ class SpeechSegmenter(
         // 「請按鈴。」補完變成「請按鈴。 」（尾端有空白），endsWith("。")
         // 於是為 false，一句正常的句子被誤標成標題。
         var paragraph = if (
-            rawParagraph.length <= headingLengthThreshold && !rawParagraph.endsWith("。")
+            markHeadings &&
+            rawParagraph.length <= headingLengthThreshold &&
+            !rawParagraph.endsWith("。")
         ) {
             "標題，$rawParagraph。"
         } else {

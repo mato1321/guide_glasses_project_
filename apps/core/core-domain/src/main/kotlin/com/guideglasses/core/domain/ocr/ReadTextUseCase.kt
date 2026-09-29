@@ -40,7 +40,8 @@ class ReadTextUseCase(
             OcrMode.SIGN -> recognized.largestText() ?: recognized.text
         }
 
-        val segments = segmenter.segment(text)
+        // 招牌整段就是標題，不需要再被冠上「標題，」。見 SpeechSegmenter.segment。
+        val segments = segmenter.segment(text, markHeadings = mode == OcrMode.DOCUMENT)
         if (segments.isEmpty()) return Outcome.NoTextFound
 
         return Outcome.Success(

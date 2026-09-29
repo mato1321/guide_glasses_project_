@@ -38,6 +38,19 @@ class SpeechSegmenterTest {
         assertThat(result[0].startsWith("標題，")).isFalse()
     }
 
+    /**
+     * 招牌文字幾乎必然又短又沒有句號，一律會命中標題判斷。
+     * 使用者問「這是哪裡」卻聽到「標題，全家便利商店」是實機上的實際問題。
+     */
+    @Test
+    fun `不標記標題時短行不會被冠上標題`() {
+        val result = segmenter.segment("金好吃自助餐", markHeadings = false)
+
+        assertThat(result).hasSize(1)
+        assertThat(result[0].startsWith("標題，")).isFalse()
+        assertThat(result[0]).contains("金好吃自助餐")
+    }
+
     @Test
     fun `標點後會補空白讓 TTS 有停頓`() {
         val result = segmenter.segment("每日三次，飯後服用。請勿空腹。")
