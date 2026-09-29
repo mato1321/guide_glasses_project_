@@ -1,0 +1,20 @@
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+websockets==13.1
+python-dotenv==1.0.1
+python-multipart==0.0.20
+
+# LLM 意圖解析（/route，對應 RemoteLlmIntentGateway 協定）
+openai==1.58.1
+
+# 公車路線規劃／到站時間（api/GPS_app.py 整併）
+requests==2.32.3
+
+# 公車車頭／LED OCR（api/BUS_app.py 整併）
+opencv-python-headless==4.10.0.84
+numpy==1.26.4
+ultralytics==8.3.40
+google-cloud-vision==3.8.1
+
+# 英→繁中翻譯（api/translate_api.py 整併）
+deep-translator==1.11.4

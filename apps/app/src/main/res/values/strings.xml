@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">導盲眼鏡_0924</string>
+
+    <string name="status_idle">點畫面任何地方開始說話</string>
+    <string name="status_listening">聆聽中</string>
+    <string name="status_thinking">處理中</string>
+    <string name="status_need_mic">需要麥克風權限才能使用語音助理</string>
+
+    <string name="action_talk">說話</string>
+    <string name="action_cancel_listening">停止聆聽</string>
+    <string name="action_stop">停止播報</string>
+
+    <string name="desc_transcript">你說的話</string>
+    <string name="desc_reply">助理的回應</string>
+
+    <!-- 前景服務通知。使用者多半看不到這塊螢幕，但 Android 強制要有。 -->
+    <string name="foreground_service_channel">導盲服務運作中</string>
+    <string name="foreground_service_title">導盲眼鏡運作中</string>
+    <string name="foreground_service_text">持續偵測障礙物並提供語音提示</string>
+</resources>

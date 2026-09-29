@@ -1,0 +1,28 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# 環境變數與金鑰 —— 絕對不進版控
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+# Google Cloud 服務帳戶金鑰通常是 .json，上面那三條擋不到，另外擋整個資料夾
+credentials/
+
+# 模型權重 —— 太大不該進 git，且換機器要重下
+*.onnx
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.gguf
+models/
+weights/
+
+# 本地測試留下的東西
+*.log
+/tmp/
