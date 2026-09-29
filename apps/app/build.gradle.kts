@@ -45,6 +45,52 @@ fun configValue(name: String): String =
 fun stringLiteral(value: String): String =
     "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
 
+/**
+ * 各 flavor 專屬的後端設定：`guideglasses.<flavor>.<name>`，例如
+ * `guideglasses.cloudflare.busApiEndpoint`。
+ *
+ * **刻意不退回共用的 `guideglasses.<name>`**：Cloudflare 版與 AWS 版指向
+ * 不同的後端，退回共用值的話，AWS 版會安靜地連到 Cloudflare 的後端，
+ * 而且完全看不出來。舊的共用 key 由 [LEGACY_BACKEND_KEYS] 偵測並警告。
+ */
+fun flavorConfigValue(flavor: String, name: String): String =
+    configValue("guideglasses.$flavor.$name")
+
+/** 拆 flavor 之前使用的共用 key。還設著的話建置時警告，避免以為有生效。 */
+val LEGACY_BACKEND_KEYS = listOf("llmEndpoint", "faceEndpoint", "photoEndpoint", "busApiEndpoint")
+    .map { "guideglasses.$it" }
+
+/** 後端相關的 BuildConfig 欄位，每個 flavor 各自一組。 */
+fun com.android.build.api.dsl.ApplicationProductFlavor.backendEndpoints(flavor: String) {
+    // LLM 意圖解析（/route）。留空時退回離線閘道，App 仍可用本地快捷指令。
+    buildConfigField("String", "LLM_ENDPOINT", stringLiteral(flavorConfigValue(flavor, "llmEndpoint")))
+    // 人臉辨識後端（選用）。留空時只走端側，需要模型檔。
+    buildConfigField("String", "FACE_ENDPOINT", stringLiteral(flavorConfigValue(flavor, "faceEndpoint")))
+    // 人臉註冊照片來源。說「同步人臉」時從這裡抓照片。
+    buildConfigField("String", "PHOTO_ENDPOINT", stringLiteral(flavorConfigValue(flavor, "photoEndpoint")))
+    // 公車／步行路線與定位轉傳。留空時「查公車路線」會播報功能不可用。
+    // 手機 companion 的同名 flavor 讀同一個 key，兩邊本該指到同一個後端。
+    buildConfigField("String", "BUS_API_ENDPOINT", stringLiteral(flavorConfigValue(flavor, "busApiEndpoint")))
+}
+
+/**
+ * 三版共用的簽章（`keystore.properties`，不進版控，範本見 `keystore.properties.example`）。
+ *
+ * 同一個 applicationId 只能用同一把簽章更新。各自用自己電腦的 debug key，
+ * 換一台電腦建置就裝不上去，只能解除安裝重裝 —— 眼鏡上用 Keystore 加密的
+ * 人臉資料會一起消失（v1 的 com.guideglasses 就是這樣被卡住的）。
+ */
+val sharedKeystore: Map<String, String> = providers
+    .fileContents(rootProject.layout.projectDirectory.file("keystore.properties"))
+    .asText
+    .map { text ->
+        Properties()
+            .apply { load(StringReader(text)) }
+            .entries
+            .associate { it.key.toString() to it.value.toString().trim() }
+    }
+    .getOrElse(emptyMap())
+
 android {
     namespace = "com.guideglasses"
     compileSdk = libs.versions.compileSdk.get().toInt()
@@ -56,40 +102,8 @@ android {
         versionCode = 1
         versionName = "0.1.0"
 
-        // BFF 位址。留空時退回離線閘道，App 仍可用本地快捷指令。
-        // 設定方式：在 local.properties 或 ~/.gradle/gradle.properties 加入
-        //   guideglasses.llmEndpoint=https://your-bff.run.app/route
-        buildConfigField(
-            "String",
-            "LLM_ENDPOINT",
-            stringLiteral(configValue("guideglasses.llmEndpoint")),
-        )
-
-        // 人臉辨識後端（選用）。留空時只走端側，需要模型檔。
-        //   guideglasses.faceEndpoint=http://192.168.1.100:8000/recognize
-        buildConfigField(
-            "String",
-            "FACE_ENDPOINT",
-            stringLiteral(configValue("guideglasses.faceEndpoint")),
-        )
-
-        // 人臉註冊工具的位址（選用）。說「同步人臉」時從這裡抓照片。
-        // 啟動 tools/face_enroll_server.py 時它會把這一行印出來。
-        //   guideglasses.photoEndpoint=http://192.168.1.100:8100
-        buildConfigField(
-            "String",
-            "PHOTO_ENDPOINT",
-            stringLiteral(configValue("guideglasses.photoEndpoint")),
-        )
-
-        // 公車查詢後端（選用）。留空時「查公車路線」會播報功能不可用。
-        // 與手機 companion（companion-app）共用同一個 key，兩邊本該指到同一個後端。
-        //   guideglasses.busApiEndpoint=http://192.168.1.100:5000
-        buildConfigField(
-            "String",
-            "BUS_API_ENDPOINT",
-            stringLiteral(configValue("guideglasses.busApiEndpoint")),
-        )
+        // 後端位址（LLM_ENDPOINT、FACE_ENDPOINT、PHOTO_ENDPOINT、BUS_API_ENDPOINT）
+        // 依 flavor 而不同，定義在下方 productFlavors。
 
         // 公車路線的固定目的地（選用，短指令沒有畫面可選，先用設定檔固定一個）。
         // 預設值是團隊測試用的台北市座標，正式使用前務必換成真正的目的地。
@@ -124,6 +138,44 @@ android {
         buildConfig = true
     }
 
+    signingConfigs {
+        if (!sharedKeystore["storeFile"].isNullOrBlank()) {
+            create("shared") {
+                storeFile = file(sharedKeystore.getValue("storeFile"))
+                storePassword = sharedKeystore["storePassword"]
+                keyAlias = sharedKeystore["keyAlias"]
+                keyPassword = sharedKeystore["keyPassword"]
+            }
+        }
+    }
+
+    /*
+     * 連網版分兩個 flavor，applicationId 不同，可以與端側版（edge/，
+     * com.guideglasses）三者同時裝在眼鏡上。
+     *
+     * 後端位址寫在 local.properties 或 ~/.gradle/gradle.properties：
+     *   guideglasses.cloudflare.llmEndpoint=https://api.<網域>/route
+     *   guideglasses.cloudflare.busApiEndpoint=https://api.<網域>
+     *   guideglasses.cloudflare.photoEndpoint=http://127.0.0.1:8100   # 走 USB：adb reverse tcp:8100 tcp:8100
+     *   guideglasses.aws.llmEndpoint=https://<id>.lambda-url.us-west-2.on.aws/route
+     *   guideglasses.aws.busApiEndpoint=https://<id>.lambda-url.us-west-2.on.aws
+     */
+    flavorDimensions += "backend"
+    productFlavors {
+        create("cloudflare") {
+            dimension = "backend"
+            applicationIdSuffix = ".cloudflare"
+            resValue("string", "app_name", "導盲眼鏡 CF")
+            backendEndpoints("cloudflare")
+        }
+        create("aws") {
+            dimension = "backend"
+            applicationIdSuffix = ".aws"
+            resValue("string", "app_name", "導盲眼鏡 AWS")
+            backendEndpoints("aws")
+        }
+    }
+
     packaging {
         jniLibs {
             /*
@@ -144,6 +196,7 @@ android {
             isMinifyEnabled = false
             // 開發工具跑在區網 HTTP 上，見 AndroidManifest。
             manifestPlaceholders["cleartextTraffic"] = true
+            signingConfig = signingConfigs.findByName("shared") ?: signingConfigs.getByName("debug")
         }
         release {
             isMinifyEnabled = true
@@ -165,6 +218,19 @@ kotlin {
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
+}
+
+if (sharedKeystore["storeFile"].isNullOrBlank()) {
+    logger.warn(
+        "⚠️ 找不到 keystore.properties，debug 版改用這台電腦的 debug key 簽章。" +
+            "裝不上已用共用簽章安裝過的眼鏡，見 keystore.properties.example。",
+    )
+}
+LEGACY_BACKEND_KEYS.filter { configValue(it).isNotBlank() }.takeIf { it.isNotEmpty() }?.let { keys ->
+    logger.warn(
+        "⚠️ 這些舊的共用設定已不再生效，請改成 flavor 專屬的 key" +
+            "（例如 guideglasses.cloudflare.busApiEndpoint）：${keys.joinToString()}",
+    )
 }
 
 dependencies {

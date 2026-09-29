@@ -188,7 +188,7 @@ object AssistantModule {
      * 本地快捷指令（停 / 前面有什麼 / 這是誰 / 唸給我聽）不需要網路。
      *
      * 設定方式：在 local.properties 或 ~/.gradle/gradle.properties 加入
-     *   guideglasses.llmEndpoint=https://your-bff.run.app/route
+     *   guideglasses.cloudflare.llmEndpoint=https://your-bff.run.app/route
      */
     @Provides
     @Singleton
@@ -371,7 +371,7 @@ object AssistantModule {
      *
      * 遠端位址設定方式（與 LLM 相同）：在 local.properties 或
      * ~/.gradle/gradle.properties 加入
-     *   guideglasses.faceEndpoint=http://192.168.1.100:8000/recognize
+     *   guideglasses.cloudflare.faceEndpoint=http://192.168.1.100:8000/recognize
      */
     @Provides
     @Singleton

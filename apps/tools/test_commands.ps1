@@ -5,8 +5,9 @@
 # 最後列出每一句的命中率、誤判成什麼、以及誤觸次數。
 #
 # 用法（要用 pwsh 7，Windows PowerShell 5.1 會把中文顯示成亂碼）：
-#   cd guide-glasses\tools
-#   pwsh .\test_commands.ps1
+#   cd apps\tools
+#   pwsh .\test_commands.ps1                                   # 預設測 Cloudflare 版
+#   pwsh .\test_commands.ps1 -Package com.guideglasses.aws     # 測 AWS 版
 #
 # 只測某幾條、每條多說幾次：
 #   pwsh .\test_commands.ps1 -Only "這是誰","唸給我聽" -Reps 5
@@ -18,6 +19,10 @@
 
 param(
     [string[]]$Only = @(),
+
+    # 要測哪個版本。三版同時裝在眼鏡上時 applicationId 各不相同：
+    # com.guideglasses.cloudflare／com.guideglasses.aws（端側版 com.guideglasses 用 edge/tools 那份）。
+    [string]$Package = "com.guideglasses.cloudflare",
 
     # 每句說幾次。偵測率要有意義就不能只說一次；3 次是速度與可信度的折衷。
     [int]$Reps = 3,
@@ -49,10 +54,10 @@ if (-not (adb devices | Select-String '\sdevice$')) {
 
 # 背景限制沒解除的話 App 退到背景 2.4 秒就被殺，測到一半會整個消失。
 # 這是靜默失敗——不查就只會看到「後面幾句都沒反應」。
-$appop = (adb shell cmd appops get com.guideglasses RUN_ANY_IN_BACKGROUND) -join ''
+$appop = (adb shell cmd appops get $Package RUN_ANY_IN_BACKGROUND) -join ''
 if ($appop -notmatch 'allow') {
     Write-Host "🔴 背景限制沒解除，先跑：" -ForegroundColor Red
-    Write-Host "   adb shell cmd appops set com.guideglasses RUN_ANY_IN_BACKGROUND allow" -ForegroundColor Yellow
+    Write-Host "   adb shell cmd appops set $Package RUN_ANY_IN_BACKGROUND allow" -ForegroundColor Yellow
     exit 1
 }
 
@@ -159,7 +164,7 @@ foreach ($say in $Commands) {
         $round++
 
         # 每輪都把 Activity 拉回前景——launcher 會自動輪播別的 App 搶走焦點。
-        adb shell am start -n com.guideglasses/.MainActivity 2>&1 | Out-Null
+        adb shell am start -n "$Package/com.guideglasses.MainActivity" 2>&1 | Out-Null
         Start-Sleep -Milliseconds 600
         Wait-Idle | Out-Null
         adb logcat -c
@@ -220,7 +225,7 @@ $ambient = @()
 if ($SilenceSeconds -gt 0) {
     Write-Host ""
     Write-Host ("靜默對照組：接下來 {0} 秒請不要說話（量環境誤觸）" -f $SilenceSeconds) -ForegroundColor Cyan
-    adb shell am start -n com.guideglasses/.MainActivity 2>&1 | Out-Null
+    adb shell am start -n "$Package/com.guideglasses.MainActivity" 2>&1 | Out-Null
     Wait-Idle | Out-Null
     adb logcat -c
     Start-Sleep -Seconds $SilenceSeconds

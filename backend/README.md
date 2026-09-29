@@ -89,15 +89,15 @@ http://<電腦的區網IP>:8000/health
 在 `guide-glasses/local.properties` 加兩行（IP 換成你電腦的區網 IP）：
 
 ```
-guideglasses.llmEndpoint=http://192.168.1.5:8000/route
-guideglasses.busApiEndpoint=http://192.168.1.5:8000
+guideglasses.cloudflare.llmEndpoint=http://192.168.1.5:8000/route
+guideglasses.cloudflare.busApiEndpoint=http://192.168.1.5:8000
 ```
 
 `llmEndpoint` 對到既有的 `RemoteLlmIntentGateway`；`busApiEndpoint` 對到
 `ai-navigation` 的 `HttpBusPlanningGateway`／`HttpBusOcrGateway`／
 `PhoneCompanionLocationProvider`。**手機 companion-app** 的
 `local.properties`（在它自己的 module 目錄或共用同一份）也要設定同一個
-`guideglasses.busApiEndpoint`，兩邊本來就該指到同一台電腦。
+`guideglasses.cloudflare.busApiEndpoint`，兩邊本來就該指到同一台電腦。
 
 不裝 App 也能用 curl 確認格式對不對：
 

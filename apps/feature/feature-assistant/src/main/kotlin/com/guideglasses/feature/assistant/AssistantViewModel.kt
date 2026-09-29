@@ -272,8 +272,8 @@ class AssistantViewModel @Inject constructor(
      * 只由 debug build 的廣播接收器呼叫，release 不會有任何呼叫端。
      *
      * ```bash
-     * adb shell am broadcast -a com.guideglasses.DEBUG --es cmd READ_TEXT
-     * adb shell am broadcast -a com.guideglasses.DEBUG --es cmd TRANSLATE --es target_language ja
+     * adb shell am broadcast -a com.guideglasses.cloudflare.DEBUG --es cmd READ_TEXT
+     * adb shell am broadcast -a com.guideglasses.cloudflare.DEBUG --es cmd TRANSLATE --es target_language ja
      * ```
      */
     fun debugDispatch(intentName: String, arguments: Map<String, String> = emptyMap()) {

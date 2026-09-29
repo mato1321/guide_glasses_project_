@@ -10,7 +10,7 @@
 
     <application
         android:allowBackup="true"
-        android:label="導盲眼鏡定位"
+        android:label="@string/app_name"
         android:supportsRtl="true"
         android:usesCleartextTraffic="${cleartextTraffic}"
         android:theme="@android:style/Theme.Material.Light">

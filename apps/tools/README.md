@@ -24,7 +24,7 @@ cd guide-glasses/tools && python face_enroll_server.py
   手機／眼鏡  http://192.168.1.23:8100      <-- 用這個
 
 眼鏡設定（寫進 guide-glasses/local.properties）：
-  guideglasses.photoEndpoint=http://192.168.1.23:8100
+  guideglasses.cloudflare.photoEndpoint=http://192.168.1.23:8100
 ```
 
 ### 2. 用瀏覽器上傳照片
@@ -43,7 +43,7 @@ cd guide-glasses/tools && python face_enroll_server.py
 
 ### 3. 讓眼鏡同步
 
-把上面那行 `guideglasses.photoEndpoint=...` 貼進 `guide-glasses/local.properties`，
+把上面那行 `guideglasses.cloudflare.photoEndpoint=...` 貼進 `apps/local.properties`，
 重新建置安裝，然後對眼鏡說：
 
 > **「同步人臉」**

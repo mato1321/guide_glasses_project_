@@ -59,7 +59,7 @@ class MainActivity : ComponentActivity() {
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
 
         if (BuildConfig.BUS_API_ENDPOINT.isBlank()) {
-            statusView.text = "尚未設定後端位址\n請在 local.properties 加入\nguideglasses.busApiEndpoint"
+            statusView.text = "尚未設定後端位址\n請在 local.properties 加入\nguideglasses.${BuildConfig.FLAVOR}.busApiEndpoint"
             return
         }
 

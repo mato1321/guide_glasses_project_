@@ -354,8 +354,8 @@ def main() -> int:
     print(f"  本機開      http://127.0.0.1:{args.port}")
     print(f"  手機／眼鏡  http://{ip}:{args.port}      <-- 用這個")
     print()
-    print(f"眼鏡設定（寫進 guide-glasses/local.properties）：")
-    print(f"  guideglasses.photoEndpoint=http://{ip}:{args.port}")
+    print(f"眼鏡設定（寫進 apps/local.properties，重新建置後生效）：")
+    print(f"  guideglasses.cloudflare.photoEndpoint=http://{ip}:{args.port}")
     print()
     print("Ctrl+C 結束")
 

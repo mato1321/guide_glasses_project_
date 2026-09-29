@@ -116,7 +116,7 @@ OCR 朗讀（含分段控制）、人臉辨識（端側）、IMU 動作感測、
 `~/.gradle/gradle.properties` 加入：
 
 ```
-guideglasses.llmEndpoint=https://your-bff.run.app/route
+guideglasses.cloudflare.llmEndpoint=https://your-bff.run.app/route
 ```
 
 BFF 需實作的協定見 `ai/ai-agent/src/main/kotlin/.../AgentProtocol.kt`。

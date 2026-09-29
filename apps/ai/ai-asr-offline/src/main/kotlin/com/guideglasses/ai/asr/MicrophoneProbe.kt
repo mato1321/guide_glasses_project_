@@ -22,7 +22,7 @@ import kotlin.math.abs
  *
  * 用法：
  * ```bash
- * adb shell am broadcast -a com.guideglasses.DEBUG --es cmd MIC_TEST
+ * adb shell am broadcast -a com.guideglasses.cloudflare.DEBUG --es cmd MIC_TEST
  * adb logcat -d | grep MicProbe
  * ```
  *

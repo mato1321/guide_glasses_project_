@@ -20,8 +20,8 @@ docs/LATENCY_PLAN.md 裡「一條長連線，不要每次重連」的落地版�
     curl http://127.0.0.1:8000/health
 
 手機 App 要連這台電腦時，把 local.properties 的位址換成你電腦的區網 IP：
-    guideglasses.llmEndpoint=http://<你電腦的區網IP>:8000/route
-    guideglasses.busApiEndpoint=http://<你電腦的區網IP>:8000
+    guideglasses.cloudflare.llmEndpoint=http://<你電腦的區網IP>:8000/route
+    guideglasses.cloudflare.busApiEndpoint=http://<你電腦的區網IP>:8000
 （用 `ipconfig` 查區網 IP；手機和電腦要在同一個 Wi-Fi 下才連得到。）
 
 ## 公車查詢／定位轉傳／翻譯

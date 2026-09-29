@@ -155,7 +155,7 @@ class OfflineLlmIntentGateway : LlmIntentGateway {
     ): AppResult<RoutedIntent> = AppResult.Failure(
         AppError.CapabilityUnavailable(
             LlmIntentGateway.CAPABILITY_LLM_BACKEND,
-            "尚未設定 LLM 後端位址（guideglasses.llmEndpoint）",
+            "尚未設定 LLM 後端位址（guideglasses.<cloudflare 或 aws>.llmEndpoint）",
         ),
     )
 }

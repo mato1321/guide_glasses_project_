@@ -605,14 +605,14 @@ App 端**不放任何 API 金鑰** —— 金鑰只在 BFF 後端。App 只需�
 在 `guide-glasses/local.properties` 或 `~/.gradle/gradle.properties` 加入：
 
 ```
-guideglasses.llmEndpoint=https://your-bff.run.app/route
+guideglasses.cloudflare.llmEndpoint=https://your-bff.run.app/route
 ```
 
 三個來源都可以，優先序由高到低：
 
 | 來源 | 用途 |
 |---|---|
-| `-Pguideglasses.llmEndpoint=...` | 單次建置臨時覆寫（CI 常用） |
+| `-Pguideglasses.cloudflare.llmEndpoint=...` | 單次建置臨時覆寫（CI 常用） |
 | `~/.gradle/gradle.properties` 或 `guide-glasses/gradle.properties` | 跨專案／進版控的預設值 |
 | `guide-glasses/local.properties` | 機器本地設定（不進版控，最常用） |
 
@@ -840,7 +840,7 @@ adb logcat -s CameraXFrameSource:* TtsAnnouncer:*
 **前置：二選一**
 
 - **遠端**（最快上手）：啟動 `Face_Recognition/Python` 後端，
-  在 `local.properties` 設 `guideglasses.faceEndpoint=http://<IP>:8000/recognize`
+  在 `local.properties` 設 `guideglasses.cloudflare.faceEndpoint=http://<IP>:8000/recognize`
 - **端側**：放入 `.tflite`，見
   [`ai/ai-face/src/main/assets/README.md`](ai/ai-face/src/main/assets/README.md)
 
@@ -1100,7 +1100,7 @@ DI 會自動挑可用的那個。兩條都沒有時才播報「人臉辨識不�
 **遠端設定**：在 `local.properties` 或 `~/.gradle/gradle.properties` 加入
 
 ```
-guideglasses.faceEndpoint=http://<你的後端IP>:8000/recognize
+guideglasses.cloudflare.faceEndpoint=http://<你的後端IP>:8000/recognize
 ```
 
 遠端路徑實作的是「**端側偵測 + 遠端辨識**」：先用 ML Kit 在眼鏡上找到臉，

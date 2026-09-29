@@ -8,7 +8,7 @@ plugins {
 
 /**
  * 與眼鏡端 `app/build.gradle.kts` 共用同一把設定檔讀法 ——
- * 兩邊本來就該指到同一個後端，設定 key 也刻意共用（`guideglasses.busApiEndpoint`）。
+ * 兩邊本來就該指到同一個後端，設定 key 也刻意共用（`guideglasses.<flavor>.busApiEndpoint`）。
  */
 val localProperties: Map<String, String> = providers
     .fileContents(rootProject.layout.projectDirectory.file("local.properties"))
@@ -28,6 +28,22 @@ fun configValue(name: String): String =
 fun stringLiteral(value: String): String =
     "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
 
+/** 與眼鏡端相同：`guideglasses.<flavor>.busApiEndpoint`，刻意不退回共用 key。 */
+fun flavorConfigValue(flavor: String, name: String): String =
+    configValue("guideglasses.$flavor.$name")
+
+/** 與眼鏡端共用同一把簽章，見 app/build.gradle.kts 與 keystore.properties.example。 */
+val sharedKeystore: Map<String, String> = providers
+    .fileContents(rootProject.layout.projectDirectory.file("keystore.properties"))
+    .asText
+    .map { text ->
+        Properties()
+            .apply { load(StringReader(text)) }
+            .entries
+            .associate { it.key.toString() to it.value.toString().trim() }
+    }
+    .getOrElse(emptyMap())
+
 android {
     namespace = "com.guideglasses.companion"
     compileSdk = libs.versions.compileSdk.get().toInt()
@@ -39,14 +55,6 @@ android {
         versionCode = 1
         versionName = "0.1.0"
 
-        // 與眼鏡端相同的後端位址 —— 這支 App 只負責把手機 GPS 座標
-        // POST 給它，見 docs/ARCHITECTURE.md §5.2「手機只該當 GPS 感測器」。
-        buildConfigField(
-            "String",
-            "BUS_API_ENDPOINT",
-            stringLiteral(configValue("guideglasses.busApiEndpoint")),
-        )
-
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -54,11 +62,42 @@ android {
         buildConfig = true
     }
 
+    signingConfigs {
+        if (!sharedKeystore["storeFile"].isNullOrBlank()) {
+            create("shared") {
+                storeFile = file(sharedKeystore.getValue("storeFile"))
+                storePassword = sharedKeystore["storePassword"]
+                keyAlias = sharedKeystore["keyAlias"]
+                keyPassword = sharedKeystore["keyPassword"]
+            }
+        }
+    }
+
+    // 與眼鏡端的 flavor 一一對應，兩版可同時裝在同一支手機上。
+    // BUS_API_ENDPOINT 是眼鏡端同名 flavor 的後端 —— 這支 App 只負責把手機 GPS
+    // 座標 POST 給它，見 docs/ARCHITECTURE.md §5.2「手機只該當 GPS 感測器」。
+    flavorDimensions += "backend"
+    productFlavors {
+        create("cloudflare") {
+            dimension = "backend"
+            applicationIdSuffix = ".cloudflare"
+            resValue("string", "app_name", "導盲定位 CF")
+            buildConfigField("String", "BUS_API_ENDPOINT", stringLiteral(flavorConfigValue("cloudflare", "busApiEndpoint")))
+        }
+        create("aws") {
+            dimension = "backend"
+            applicationIdSuffix = ".aws"
+            resValue("string", "app_name", "導盲定位 AWS")
+            buildConfigField("String", "BUS_API_ENDPOINT", stringLiteral(flavorConfigValue("aws", "busApiEndpoint")))
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
             // 開發時後端多半是區網上的 HTTP（見 AndroidManifest），非 HTTPS。
             manifestPlaceholders["cleartextTraffic"] = true
+            signingConfig = signingConfigs.findByName("shared") ?: signingConfigs.getByName("debug")
         }
         release {
             isMinifyEnabled = true

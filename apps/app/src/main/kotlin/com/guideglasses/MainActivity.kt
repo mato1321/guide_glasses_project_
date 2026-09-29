@@ -100,16 +100,20 @@ class MainActivity : AppCompatActivity() {
      * （`docs/DEVICE_FINDINGS.md` §3）。沒有這個入口，眼鏡上除了「看 log」
      * 之外沒有任何辦法驗證功能是否正確。
      *
+     * action 是 `<applicationId>.DEBUG`，每個版本只收自己的廣播。
+     * 以前寫死 `com.guideglasses.DEBUG`，三版同時裝在眼鏡上時，一次廣播會讓
+     * 三個 App 同時動作（而且都想搶相機與麥克風）。AWS 版把 `.cloudflare` 換成 `.aws`：
+     *
      * ```bash
-     * adb shell am broadcast -a com.guideglasses.DEBUG --es cmd READ_TEXT
-     * adb shell am broadcast -a com.guideglasses.DEBUG --es cmd TRANSLATE --es target_language ja
+     * adb shell am broadcast -a com.guideglasses.cloudflare.DEBUG --es cmd READ_TEXT
+     * adb shell am broadcast -a com.guideglasses.cloudflare.DEBUG --es cmd TRANSLATE --es target_language ja
      * ```
      *
      * ⚠️ **相機相關的指令要先讓 App 離開 idle**，否則 Android 會擋：
      * `Access Denial: can't use the camera from an idle UID`
      *
      * ```bash
-     * adb shell am set-inactive com.guideglasses false
+     * adb shell am set-inactive com.guideglasses.cloudflare false
      * adb shell svc power stayon true
      * ```
      */
@@ -232,7 +236,8 @@ class MainActivity : AppCompatActivity() {
 
     private companion object {
         const val TAG = "MainActivity"
-        const val DEBUG_ACTION = "com.guideglasses.DEBUG"
+        // 跟著 applicationId 走（com.guideglasses.cloudflare.DEBUG ⋯），見 registerDebugTrigger。
+        const val DEBUG_ACTION = BuildConfig.APPLICATION_ID + ".DEBUG"
         const val DEBUG_TAG = "DebugTrigger"
 
         val REQUIRED_PERMISSIONS = listOf(

@@ -322,7 +322,7 @@ class SherpaSpeechRecognitionGateway(
      * 又是這台裝置的招牌失敗方式。改用 `MIC`。
      *
      * 哪天換裝置或韌體更新後又聽不到，先跑：
-     * `adb shell am broadcast -a com.guideglasses.DEBUG --es cmd MIC_TEST`
+     * `adb shell am broadcast -a com.guideglasses.cloudflare.DEBUG --es cmd MIC_TEST`
      *
      * ### ⚠️ 為什麼是 16-bit 而不是 float
      *

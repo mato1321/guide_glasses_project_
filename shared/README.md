@@ -16,6 +16,6 @@ python edge/tools/face_enroll_server.py --dir shared/faces   # 預設 port 8100
 adb reverse tcp:8100 tcp:8100                                   # 走 USB 時
 ```
 
-App 的 `local.properties` 設 `guideglasses.photoEndpoint=http://127.0.0.1:8100`，
+App 的 `local.properties` 設 `guideglasses.cloudflare.photoEndpoint=http://127.0.0.1:8100`，
 重新建置安裝後，對眼鏡說「同步人臉」。AWS 版改由 S3 + Lambda 提供同一組
 `GET /manifest`、`GET /photos/{ref}` 契約。
