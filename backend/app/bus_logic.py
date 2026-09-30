@@ -70,6 +70,11 @@ def normalize_route_name(route_name: str) -> str:
     s = re.sub(r"(直)(行|達)(車|班次)?[^0-9A-Za-z一-鿿]*.*$", r"\1", s).strip()
     s = re.sub(r"(直)\s*(行|達)(車|班次)?.*$", r"\1", s).strip()
 
+    # Google 叫「88區間車」，TDX 的路線名是「88區」（2026-09-30 以 TDX Route API
+    # 查證：「88區間車」「88區間」查無、「88區」查得到）。不轉的話 /eta 找不到站牌，
+    # 眼鏡只能唸出「最近一班 未知 到站」。
+    s = re.sub(r"區間車?$", "區", s)
+
     return s
 
 

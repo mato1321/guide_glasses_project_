@@ -80,6 +80,7 @@ def walking_steps_from_response(data: dict) -> dict:
         for step in leg.get("steps", []):
             instruction = (step.get("navigationInstruction") or {}).get("instructions", "")
             start = (step.get("startLocation") or {}).get("latLng") or {}
+            end = (step.get("endLocation") or {}).get("latLng") or {}
 
             if not instruction or "latitude" not in start:
                 continue  # 缺這兩樣資料的步驟沒辦法播報也沒辦法判斷時機，跳過比塞假資料安全
@@ -88,6 +89,10 @@ def walking_steps_from_response(data: dict) -> dict:
                 "instruction": instruction,
                 "lat": start["latitude"],
                 "lng": start["longitude"],
+                # 終點座標：眼鏡用最後一步的終點判斷「真的走到了」才說已抵達。
+                # 以前沒有它，只有一步的路線會在第一句講完就立刻說「已經抵達」。
+                "end_lat": end.get("latitude"),
+                "end_lng": end.get("longitude"),
                 "distance_m": step.get("distanceMeters", 0),
             })
 
