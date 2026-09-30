@@ -4,7 +4,9 @@ import android.app.Application
 import androidx.camera.camera2.Camera2Config
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.CameraXConfig
+import com.guideglasses.core.domain.announce.AnnouncementManager
 import dagger.hilt.android.HiltAndroidApp
+import javax.inject.Inject
 
 /**
  * @param CameraXConfig.Provider 讓 CameraX 只驗證後鏡頭。
@@ -37,6 +39,20 @@ import dagger.hilt.android.HiltAndroidApp
  */
 @HiltAndroidApp
 class GuideGlassesApplication : Application(), CameraXConfig.Provider {
+
+    @Inject
+    lateinit var announcementManager: AnnouncementManager
+
+    override fun onCreate() {
+        super.onCreate()
+
+        // 別的版本接管相機與麥克風時，這一版讓出來。畫面的關閉由 MainActivity
+        // 收 SensorHandoff.releaseRequests 處理，這裡只管不依賴畫面的部分。
+        SensorHandoff.register(this) {
+            announcementManager.stopAll()
+            GuideGlassesForegroundService.stop(this)
+        }
+    }
 
     override fun getCameraXConfig(): CameraXConfig =
         CameraXConfig.Builder.fromConfig(Camera2Config.defaultConfig())

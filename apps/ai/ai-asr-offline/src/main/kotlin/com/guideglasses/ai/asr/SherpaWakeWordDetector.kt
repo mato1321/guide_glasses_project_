@@ -7,8 +7,10 @@ import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.content.ContextCompat
+import java.util.concurrent.atomic.AtomicBoolean
 import com.guideglasses.core.domain.speech.WakeWordDetector
 import com.k2fsa.sherpa.onnx.FeatureConfig
 import com.k2fsa.sherpa.onnx.KeywordSpotter
@@ -21,6 +23,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.onSubscription
@@ -54,6 +57,11 @@ import kotlinx.coroutines.launch
  */
 class SherpaWakeWordDetector(
     context: Context,
+    /**
+     * 麥克風持續被佔用（重建錄音後仍被系統靜音，`true`）或恢復（`false`）時呼叫，
+     * 只在狀態改變時呼叫一次，見 [listenLoop]。在主執行緒呼叫。
+     */
+    private val onMicrophoneSilenced: (Boolean) -> Unit = {},
 ) : WakeWordDetector {
 
     private val appContext = context.applicationContext
@@ -63,6 +71,9 @@ class SherpaWakeWordDetector(
 
     @Volatile
     private var modelFailed = false
+
+    /** 已經通知上層「麥克風被佔用」了，恢復時要再通知一次。 */
+    private val reportedSilenced = AtomicBoolean(false)
 
     override val isAvailable: Boolean
         get() = !modelFailed && hasMicPermission()
@@ -91,6 +102,21 @@ class SherpaWakeWordDetector(
         loopJob = scope.launch { listenLoop() }
     }
 
+    /**
+     * 常駐監聽。錄音收到的全是 0（被系統靜音）時重建 [AudioRecord]，見 [recordOnce]。
+     *
+     * ### 為什麼看資料，不看 `AudioRecordingConfiguration.isClientSilenced()`
+     *
+     * 麥克風被別的 App 佔走時，Android **不會讓 `read()` 失敗**，而是把資料填成 0 ——
+     * 監聽照跑、永遠聽不到指令，log 也一片安靜。系統另外有 `isClientSilenced()`
+     * 旗標可查，但 **Rokid 眼鏡上這個旗標不可信**（2026-09-29 實測）：
+     * MicrophoneProbe 開的每一條錄音都被標成 `silenced:true`，讀到的卻是真實聲音
+     * （MIC 峰值 0.0092、DEFAULT 0.0060，不是 0）。照旗標重建的話，每 1.5 秒就把
+     * 一條正常的錄音拆掉，關鍵詞偵測永遠聽不完一句話。
+     *
+     * 真的麥克風就算在安靜的房間也有底噪（實測峰值 0.0017 ≈ 55 LSB），
+     * 不會連續 1.5 秒每個樣本都剛好是 0 —— 所以看資料不會誤判。
+     */
     private suspend fun listenLoop() {
         if (!hasMicPermission()) {
             Log.w(TAG, "沒有麥克風權限，語音指令監聽無法啟動")
@@ -98,9 +124,35 @@ class SherpaWakeWordDetector(
         }
 
         val engine = ensureSpotter() ?: return
-        val record = createAudioRecord() ?: return
+
+        // 連續幾輪錄音從頭到尾都被靜音。拿到過乾淨的麥克風就重新算起。
+        var silencedRounds = 0
+        while (currentCoroutineContext().isActive) {
+            val round = recordOnce(engine) ?: return
+            silencedRounds = if (round.everClean) 1 else silencedRounds + 1
+
+            // 重建過還是被靜音，才當成真的被佔用而說出來 —— 正常的版本交接時，
+            // 對方約 160ms 就放掉麥克風，第一次重建通常就拿得到，不必驚動使用者。
+            if (silencedRounds >= 2) reportSilenced(true)
+
+            val wait = SILENCED_RETRY_MILLIS[minOf(silencedRounds, SILENCED_RETRY_MILLIS.size) - 1]
+            Log.w(TAG, "錄音被靜音，${wait}ms 後重建（連續第 $silencedRounds 輪）")
+            delay(wait)
+        }
+    }
+
+    /**
+     * 開一條錄音聽指令，直到被取消、失敗，或連續 [SILENCED_RESTART_MILLIS] 收到的全是 0。
+     *
+     * @return 因為全是 0 而結束時回傳這一輪的狀況，讓 [listenLoop] 重建；
+     *   被取消、失敗或開不了錄音時回傳 null，不再重試。
+     */
+    private suspend fun recordOnce(engine: KeywordSpotter): SilencedRound? {
+        val record = createAudioRecord() ?: return null
         val stream = engine.createStream("")
         val buffer = ShortArray(CHUNK_SAMPLES)
+        var lastSoundMillis = SystemClock.elapsedRealtime()
+        var everHeard = false
 
         try {
             record.startRecording()
@@ -109,6 +161,19 @@ class SherpaWakeWordDetector(
             while (currentCoroutineContext().isActive) {
                 val read = record.read(buffer, 0, buffer.size, AudioRecord.READ_BLOCKING)
                 if (read <= 0) continue
+
+                val now = SystemClock.elapsedRealtime()
+                if (hasSound(buffer, read)) {
+                    lastSoundMillis = now
+                    if (!everHeard) {
+                        everHeard = true
+                        Log.i(TAG, "錄音有收到聲音（非 0 樣本）")
+                        reportSilenced(false)
+                    }
+                } else if (now - lastSoundMillis >= SILENCED_RESTART_MILLIS) {
+                    Log.w(TAG, "錄音連續 ${SILENCED_RESTART_MILLIS}ms 全是 0 —— 被系統靜音")
+                    return SilencedRound(everClean = everHeard)
+                }
 
                 stream.acceptWaveform(
                     FloatArray(read) { buffer[it] / SHORT_FULL_SCALE },
@@ -124,10 +189,12 @@ class SherpaWakeWordDetector(
                     events.emit(keyword)
                 }
             }
+            return null
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Log.e(TAG, "語音指令監聽失敗", e)
+            return null
         } finally {
             runCatching {
                 record.stop()
@@ -136,6 +203,36 @@ class SherpaWakeWordDetector(
             runCatching { stream.release() }
         }
     }
+
+    /** 這段資料裡有沒有任何一個非 0 的樣本。被系統靜音的錄音每個樣本都是 0。 */
+    private fun hasSound(buffer: ShortArray, length: Int): Boolean {
+        for (i in 0 until length) {
+            if (buffer[i].toInt() != 0) return true
+        }
+        return false
+    }
+
+    /**
+     * 通知上層「麥克風被佔用／恢復」。只在狀態改變時通知 ——
+     * 重建迴圈每幾秒就重開一次錄音，不擋的話會一直重複播報。
+     */
+    private fun reportSilenced(silenced: Boolean) {
+        if (reportedSilenced.getAndSet(silenced) == silenced) return
+        if (silenced) {
+            Log.w(
+                TAG,
+                "🔴 麥克風持續收到全 0，重建錄音也沒用 —— 聽不到語音指令。" +
+                    "原因通常是其他 App 佔用，或背景限制讓前景服務被降級、失去麥克風能力" +
+                    "（adb shell cmd appops get <套件名> RUN_ANY_IN_BACKGROUND）",
+            )
+        } else {
+            Log.i(TAG, "麥克風有收到聲音")
+        }
+        ContextCompat.getMainExecutor(appContext).execute { onMicrophoneSilenced(silenced) }
+    }
+
+    /** 一輪因為被靜音而結束的錄音。 */
+    private class SilencedRound(val everClean: Boolean)
 
     override fun shutdown() {
         loopJob?.cancel()
@@ -226,5 +323,14 @@ class SherpaWakeWordDetector(
         const val CHUNK_SAMPLES = SAMPLE_RATE / 10
         const val BUFFER_MULTIPLIER = 2
         const val SHORT_FULL_SCALE = 32768f
+
+        /**
+         * 被靜音多久就放掉重開。版本交接時對方約 160ms 就釋放麥克風（眼鏡實測），
+         * 1.5 秒足以避開交接當下的短暫靜音，又不會讓使用者等太久。
+         */
+        const val SILENCED_RESTART_MILLIS = 1_500L
+
+        /** 連續被靜音時，第 1、2、3、4 輪以後重建前各等多久。 */
+        val SILENCED_RETRY_MILLIS = longArrayOf(500L, 2_000L, 5_000L, 10_000L)
     }
 }

@@ -68,6 +68,11 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        // 眼鏡上可能同時裝著其他版本（Cloudflare／AWS）。使用者叫出的是這一版，
+        // 就由這一版接管相機與麥克風 —— 要在 onStart 開始聽喚醒詞之前先通知對方讓出來。
+        SensorHandoff.claim(this)
+        watchForHandoff()
+
         /*
          * 眼鏡的螢幕逾時只有 5 秒，一暗掉 Activity 就不再是前景，
          * 連帶影響觸控、除錯廣播與麥克風的 appop（RECORD_AUDIO 是
@@ -78,8 +83,13 @@ class MainActivity : AppCompatActivity() {
          *
          * 耗電是刻意接受的：使用者明確表示會外接行動電源，而螢幕一直暗掉
          * 造成的操作中斷比續航更痛。
+         *
+         * portable 曾把這行註解掉，眼鏡實測的後果（2026-09-29）：每 5 秒螢幕一暗，
+         * App 瞬間掉到背景（procState 10、capability `----`），錄音在那一瞬間被
+         * 靜音，而且之後不會自動解除 —— 語音指令從此聽不到。背景限制
+         * （RUN_ANY_IN_BACKGROUND）沒解除時前景服務也撐不住，只剩這一道防線。
          */
-        //window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         tvStatus = findViewById(R.id.tvStatus)
         tvLog = findViewById(R.id.tvLog)
@@ -90,7 +100,30 @@ class MainActivity : AppCompatActivity() {
 
         // 眼鏡上 App 退到背景 2.4 秒就會被系統回收，而導盲的使用情境
         // 本來就是螢幕關著的。沒有這一行，整套系統在真實情境下等於不存在。
-        //GuideGlassesForegroundService.start(this)
+        //
+        // portable 曾把這行註解掉：當時缺 ASR/KWS 模型檔，sherpa-onnx 在原生層崩潰，
+        // 被誤判成裝置不相容。模型補回後恢復。多版本同時安裝時，被接管的一方會
+        // 在 SensorHandoff 的回呼裡停掉服務，START_STICKY 不會讓它回來搶。
+        GuideGlassesForegroundService.start(this)
+    }
+
+    /**
+     * 別的版本接管時關閉畫面。
+     *
+     * 用 `finishAndRemoveTask` 而不是只退到背景：Activity 銷毀 → ViewModel 清掉 →
+     * 喚醒監聽、持續偵測、導航的 job 全部取消，麥克風與相機在各自的清理流程釋放。
+     * 只退到背景的話那些 job 還活著，會繼續拿著麥克風（被靜音）與相機。
+     *
+     * 不用 `repeatOnLifecycle`：被接管時這一版多半已經不在前景（STOPPED），
+     * 那樣會收不到。
+     */
+    private fun watchForHandoff() {
+        lifecycleScope.launch {
+            SensorHandoff.releaseRequests.collect { claimant ->
+                Log.i(TAG, "$claimant 接管了，關閉畫面")
+                finishAndRemoveTask()
+            }
+        }
     }
 
     /**

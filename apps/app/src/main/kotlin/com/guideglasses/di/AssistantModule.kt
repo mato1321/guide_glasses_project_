@@ -1,5 +1,6 @@
 package com.guideglasses.di
 
+import android.app.ActivityManager
 import android.content.Context
 import android.util.Log
 import com.guideglasses.BuildConfig
@@ -17,7 +18,9 @@ import com.guideglasses.ai.ocr.MlKitTextRecognizer
 import com.guideglasses.glasses.camerax.CameraXFrameSource
 import com.guideglasses.glasses.sensors.AndroidMotionSensorGateway
 import com.guideglasses.core.common.DispatcherProvider
+import com.guideglasses.core.domain.announce.Announcement
 import com.guideglasses.core.domain.announce.AnnouncementManager
+import com.guideglasses.core.domain.announce.AnnouncementPriority
 import com.guideglasses.core.domain.announce.Announcer
 import com.guideglasses.core.domain.announce.FallbackAnnouncer
 import com.guideglasses.core.domain.announce.LogOnlyAnnouncer
@@ -179,7 +182,43 @@ object AssistantModule {
     @Singleton
     fun provideWakeWordDetector(
         @ApplicationContext context: Context,
-    ): WakeWordDetector = SherpaWakeWordDetector(context)
+        announcementManager: AnnouncementManager,
+    ): WakeWordDetector = SherpaWakeWordDetector(
+        context,
+        // 麥克風被靜音時系統不報錯，不說出來使用者只會覺得「講了沒反應」。
+        onMicrophoneSilenced = { silenced ->
+            if (silenced) {
+                announcementManager.announce(
+                    Announcement(
+                        text = micSilencedMessage(context),
+                        priority = AnnouncementPriority.USER_RESPONSE,
+                        dedupeKey = "microphone-silenced",
+                        dedupeWindowMillis = 60_000L,
+                    ),
+                )
+            }
+        },
+    )
+
+    /**
+     * 麥克風被靜音的兩種原因，要講對，使用者才知道該處理哪一個。
+     *
+     * 眼鏡實測：背景限制沒解除時（YodaOS 預設每個第三方 App 都是
+     * `RUN_ANY_IN_BACKGROUND: ignore`），螢幕一暗前景服務就被降級、
+     * 行程失去麥克風能力（procState 10、capability `----`），錄音全被靜音 ——
+     * 這時說「其他程式占用」會讓人去找一個不存在的程式。
+     */
+    private fun micSilencedMessage(context: Context): String {
+        val restricted = context.getSystemService(ActivityManager::class.java)
+            ?.isBackgroundRestricted ?: false
+        return if (restricted) MESSAGE_MIC_BACKGROUND_RESTRICTED else MESSAGE_MIC_SILENCED
+    }
+
+    private const val MESSAGE_MIC_SILENCED =
+        "麥克風被其他程式占用，現在聽不到語音指令。請關掉其他版本的導盲眼鏡"
+
+    private const val MESSAGE_MIC_BACKGROUND_RESTRICTED =
+        "這個版本被系統限制在背景執行，螢幕關閉後聽不到語音指令。請在電腦上解除背景限制"
 
     /**
      * 未設定 BFF 位址時退回離線閘道。

@@ -33,6 +33,18 @@
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" />
 
+    <!--
+        多版本（Cloudflare／AWS）之間的相機與麥克風交接，見 SensorHandoff。
+
+        signature：只有用同一把共用簽章簽的版本能發送與接收。收到交接通知就會
+        關掉導盲功能，不能讓眼鏡上任意 App 都能觸發。每個版本都宣告同一個權限 ——
+        Android 允許同一把簽章的多個 App 宣告同名權限，任一版本被移除也不影響其他版本。
+    -->
+    <permission
+        android:name="com.guideglasses.permission.SENSOR_HANDOFF"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="com.guideglasses.permission.SENSOR_HANDOFF" />
+
     <uses-feature
         android:name="android.hardware.camera"
         android:required="false" />

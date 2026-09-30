@@ -201,10 +201,11 @@ class AssistantViewModel @Inject constructor(
      * [onAssistantTriggered] 那條完整的辨識流程。
      */
     fun startWakeWordListening() {
-
-        Log.w(TAG, "喚醒詞監聽暫時停用：這台裝置跑這個模型會讓原生引擎當機")
-        return
-        // ↑ 暫時整個關掉喚醒詞功能，等排除掉裝置相容性問題再拿掉這兩行。
+        // portable 曾在這裡直接 return（「這台裝置跑這個模型會讓原生引擎當機」）。
+        // 真正原因是 kws/ 下的三個 .onnx 從未進版控，portable 裡根本沒有 ——
+        // sherpa-onnx 找不到模型檔會在原生層 abort，runCatching 攔不住。
+        // 模型補回後恢復；同一份程式碼在端側版（edge/）的眼鏡上一直正常運作。
+        //
         // 這幾行看似囉嗦，但「沒啟動」在眼鏡上完全沒有徵兆 ——
         // 使用者只會看到講了沒反應，log 裡一片安靜。
         if (wakeWordJob?.isActive == true) {
