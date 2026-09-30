@@ -33,7 +33,16 @@ docs/LATENCY_PLAN.md 裡「一條長連線，不要每次重連」的落地版�
 """
 from __future__ import annotations
 
+import sys
 import time
+
+# Windows 上 stdout 被導向（Windows 服務、管線、IDE）時，Python 用系統編碼 cp950，
+# print 表情符號（📍 ❌ ⚠️）會丟 UnicodeEncodeError。實測 /update-location
+# 因此回 500 —— 座標其實已經存下，手機卻每 5 秒顯示「後端回傳錯誤」；
+# 例外處理裡的 print("❌ ...") 也會自己炸掉、蓋掉原本的錯誤。統一改成 UTF-8。
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from starlette.concurrency import run_in_threadpool
