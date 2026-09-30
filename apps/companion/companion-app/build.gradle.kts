@@ -124,6 +124,9 @@ kotlin {
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity)
+    // 畫面觀察 LocationReportService 的狀態（StateFlow + repeatOnLifecycle）。
+    implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.kotlinx.coroutines.android)
     implementation(libs.play.services.location)
     implementation(libs.okhttp)
 

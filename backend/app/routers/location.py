@@ -2,8 +2,11 @@
 手機 GPS 座標中繼。
 
 對應 Kotlin 端 `PhoneCompanionLocationProvider`（GET /current-location 輪詢）
-與手機 `companion-app`（POST /update-location 每 5 秒回報一次），
+與手機 `companion-app`（POST /update-location，前景服務每秒回報一次），
 見 `docs/ARCHITECTURE.md` §5.2/§5.3。
+
+手機另外會送 `accuracy_m` 與 `fix_time_ms`，目前只讀 lat／lng；
+那兩個欄位是給之後「眼鏡丟棄過舊座標」用的（企畫書 P1）。
 
 `/navigation-target` 這組端點是舊原型 `GPS_phone`/`GPS_glasses` 用來讓
 眼鏡把目的地推給手機、手機自己開 Google Maps 的機制 —— 新架構刻意不採用
