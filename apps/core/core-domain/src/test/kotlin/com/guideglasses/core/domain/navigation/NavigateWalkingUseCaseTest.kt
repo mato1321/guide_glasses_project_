@@ -4,8 +4,11 @@ import com.google.common.truth.Truth.assertThat
 import com.guideglasses.core.domain.AppError
 import com.guideglasses.core.domain.AppResult
 import com.guideglasses.core.domain.announce.AnnouncementPriority
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
@@ -160,6 +163,82 @@ class NavigateWalkingUseCaseTest {
         assertThat(announcements.map { it.text }).doesNotContain("方向好像相反了，請轉身往回走")
     }
 
+    // ===== 太久收不到新座標 =====
+
+    /**
+     * 給出起點之後就再也沒有新座標 —— 手機 App 被關、後端停了，或座標都太舊被丟掉。
+     * 真的 provider 是永不結束的輪詢，所以這裡也是停住而不是結束。
+     */
+    private class StalledLocationProvider(private val origin: Coordinate) : LocationProvider {
+        override val isAvailable = true
+        override val accuracyMeters: Float? = null
+        private var served = false
+
+        override fun locations(): Flow<Coordinate> = flow {
+            if (!served) {
+                served = true
+                emit(origin)
+            }
+            awaitCancellation()
+        }
+    }
+
+    /** 每隔 [intervalMillis] 給一筆座標，模擬持續在走、定位也正常。 */
+    private class SteadyLocationProvider(points: List<Coordinate>, private val intervalMillis: Long) : LocationProvider {
+        override val isAvailable = true
+        override val accuracyMeters: Float? = null
+        private val remaining = points.toMutableList()
+
+        override fun locations(): Flow<Coordinate> = flow {
+            while (remaining.isNotEmpty()) {
+                emit(remaining.removeAt(0))
+                if (remaining.isNotEmpty()) delay(intervalMillis)
+            }
+        }
+    }
+
+    @Test
+    fun `15 秒收不到新座標就提醒，而不是安靜地等`() = runTest {
+        val announcements = NavigateWalkingUseCase(
+            StalledLocationProvider(start),
+            FakeWalkingRouteGateway(result = AppResult.Success(singleStep)),
+        )
+            .navigate(destination = stop90mWest)
+            .take(2)
+            .toList()
+
+        assertThat(announcements.map { it.text }).containsExactly(
+            "沿著信義路五段走，約 90 公尺",
+            "暫時收不到手機定位，請確認手機的導盲定位還開著",
+        ).inOrder()
+        // 一直收不到時最多一分鐘講一次，交給 AnnouncementManager 的去重。
+        assertThat(announcements[1].dedupeWindowMillis).isEqualTo(NavigateWalkingUseCase.LOCATION_STALE_REPEAT_MILLIS)
+    }
+
+    @Test
+    fun `一直在走、只是還沒走到，超過 15 秒也不會被說成收不到定位`() = runTest {
+        // 每 5 秒一筆，總共走 20 秒才到站 —— 等待時間超過 15 秒，但每一筆都在 15 秒內。
+        val walking = listOf(
+            start,
+            coordinate(25.0330, 121.56518),
+            coordinate(25.0330, 121.56495),
+            coordinate(25.0330, 121.56472),
+            stop90mWest,
+        )
+
+        val announcements = NavigateWalkingUseCase(
+            SteadyLocationProvider(walking, intervalMillis = 5_000L),
+            FakeWalkingRouteGateway(result = AppResult.Success(singleStep)),
+        )
+            .navigate(destination = stop90mWest)
+            .toList()
+
+        assertThat(announcements.map { it.text }).containsExactly(
+            "沿著信義路五段走，約 90 公尺",
+            "已經抵達目的地附近",
+        ).inOrder()
+    }
+
     // ===== 方位詞改寫 =====
 
     @Test
@@ -170,6 +249,10 @@ class NavigateWalkingUseCaseTest {
         assertThat(spoken("往西走信義路五段", 90)).isEqualTo("沿著信義路五段走，約 90 公尺")
         // 眼鏡實測 Google 回傳的原文，第二行要原樣保留。
         assertThat(spoken("往西走信義路五段\n目的地在右邊", 90)).isEqualTo("沿著信義路五段走，約 90 公尺。目的地在右邊")
+        // 眼鏡實測（小南門附近）：曾被唸成「沿著朝延平南路前進走」。
+        assertThat(spoken("往北朝延平南路前進", 39)).isEqualTo("往延平南路的方向走，約 39 公尺")
+        assertThat(spoken("往西走向信義路", 60)).isEqualTo("往信義路的方向走，約 60 公尺")
+        assertThat(spoken("往東沿著忠孝東路走", 50)).isEqualTo("沿著忠孝東路走，約 50 公尺")
         assertThat(spoken("往東南方走", 30)).isEqualTo("直走，約 30 公尺")
         assertThat(spoken("向北走上中山北路二段", 120)).isEqualTo("沿著中山北路二段走，約 120 公尺")
         assertThat(spoken("往北走，然後右轉進入中山北路")).isEqualTo("直走，然後右轉進入中山北路")

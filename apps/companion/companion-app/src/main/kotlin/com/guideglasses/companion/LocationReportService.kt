@@ -14,6 +14,7 @@ import android.location.Location
 import android.os.Build
 import android.os.IBinder
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
@@ -160,8 +161,11 @@ class LocationReportService : Service() {
         val payload = JSONObject().apply {
             put("lat", location.latitude)
             put("lng", location.longitude)
-            // 後端目前只讀 lat／lng；多送的欄位給之後「眼鏡丟棄過舊座標」用（企畫書 P1）。
             put("accuracy_m", location.accuracy.toDouble())
+            // 這筆定位「現在」多舊。用開機時間（elapsedRealtime）算，不用牆上時鐘 ——
+            // 眼鏡的時鐘實測快了 4 小時多，跨裝置比對時間一定會錯。後端再加上
+            // 自己持有的時間，眼鏡據此丟掉超過 5 秒的舊座標（企畫書 P1）。
+            put("fix_age_ms", fixAgeMillis(location))
             put("fix_time_ms", location.time)
         }
         val request = Request.Builder()
@@ -189,6 +193,9 @@ class LocationReportService : Service() {
             }
         })
     }
+
+    private fun fixAgeMillis(location: Location): Long =
+        ((SystemClock.elapsedRealtimeNanos() - location.elapsedRealtimeNanos) / 1_000_000).coerceAtLeast(0)
 
     private fun buildNotification() = NotificationCompat.Builder(this, CHANNEL_ID)
         .setSmallIcon(android.R.drawable.ic_menu_mylocation)
