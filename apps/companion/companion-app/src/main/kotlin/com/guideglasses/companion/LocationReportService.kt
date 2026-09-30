@@ -170,6 +170,8 @@ class LocationReportService : Service() {
         }
         val request = Request.Builder()
             .url("${BuildConfig.BUS_API_ENDPOINT}/update-location")
+            // 後端除了 /health 一律驗證共用金鑰，沒帶會回 401（見 backend/app/main.py）。
+            .apply { if (BuildConfig.API_KEY.isNotBlank()) header("X-Api-Key", BuildConfig.API_KEY) }
             .post(payload.toString().toRequestBody(JSON_MEDIA_TYPE))
             .build()
 
@@ -187,8 +189,10 @@ class LocationReportService : Service() {
                 statusText.value = if (ok) {
                     "已送出 $sentCount 筆位置\n" +
                         "最近一筆 ${TIME_FORMAT.format(Date())}，精度約 ${location.accuracy.toInt()} 公尺"
-                } else {
-                    "後端回傳錯誤：HTTP ${response.code}"
+                } else when (response.code) {
+                    401 -> "後端拒絕：金鑰錯誤\n請確認 guideglasses.${BuildConfig.FLAVOR}.apiKey 與後端的 GUIDEGLASSES_API_KEY 相同"
+                    503 -> "後端還沒設定金鑰（GUIDEGLASSES_API_KEY）"
+                    else -> "後端回傳錯誤：HTTP ${response.code}"
                 }
             }
         })

@@ -76,6 +76,7 @@ android {
     // 與眼鏡端的 flavor 一一對應，兩版可同時裝在同一支手機上。
     // BUS_API_ENDPOINT 是眼鏡端同名 flavor 的後端 —— 這支 App 只負責把手機 GPS
     // 座標 POST 給它，見 docs/ARCHITECTURE.md §5.2「手機只該當 GPS 感測器」。
+    // API_KEY 是同一個後端的共用金鑰（X-Api-Key），與眼鏡端讀同一個 key。
     flavorDimensions += "backend"
     productFlavors {
         create("cloudflare") {
@@ -83,12 +84,14 @@ android {
             applicationIdSuffix = ".cloudflare"
             resValue("string", "app_name", "導盲定位 CF")
             buildConfigField("String", "BUS_API_ENDPOINT", stringLiteral(flavorConfigValue("cloudflare", "busApiEndpoint")))
+            buildConfigField("String", "API_KEY", stringLiteral(flavorConfigValue("cloudflare", "apiKey")))
         }
         create("aws") {
             dimension = "backend"
             applicationIdSuffix = ".aws"
             resValue("string", "app_name", "導盲定位 AWS")
             buildConfigField("String", "BUS_API_ENDPOINT", stringLiteral(flavorConfigValue("aws", "busApiEndpoint")))
+            buildConfigField("String", "API_KEY", stringLiteral(flavorConfigValue("aws", "apiKey")))
         }
     }
 

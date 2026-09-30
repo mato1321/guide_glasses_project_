@@ -44,13 +44,53 @@ for _stream in (sys.stdout, sys.stderr):
     if hasattr(_stream, "reconfigure"):
         _stream.reconfigure(encoding="utf-8", errors="replace")
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+import hmac
+
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
-from . import llm
+from . import config, llm
 from .routers import bus, location, navigation, translate
 
 app = FastAPI(title="guide-glasses backend")
+
+# ===== 共用金鑰驗證（企畫書 P0：公開端點加上驗證，缺少即回 401）=====
+#
+# 後端一旦經由 Cloudflare 通道公開，網址就是公開的。沒有這一層，
+# 任何人掃到網址就能無限呼叫 /route（OpenAI）、/bus-plans（Google Routes）。
+
+API_KEY_HEADER = "x-api-key"
+
+# 不需要金鑰的路徑：App 用 /health 判斷「網路通不通」，要能在設定金鑰之前就測。
+PUBLIC_PATHS = frozenset({"/health"})
+
+
+def _key_problem(provided: str | None) -> tuple[int, str] | None:
+    """金鑰有問題時回傳 (HTTP 狀態碼, 說明)；沒問題回 None。"""
+    if not config.API_KEY:
+        # 沒設定就全部拒絕而不是全部放行：忘了設比設錯更常發生，
+        # 而全部放行的後端一公開就是讓人刷額度。
+        return 503, "後端尚未設定 GUIDEGLASSES_API_KEY，拒絕所有請求（見 .env.example）"
+    # 固定時間比較，避免從回應時間逐字元猜出金鑰。
+    if not provided or not hmac.compare_digest(provided.encode(), config.API_KEY.encode()):
+        return 401, "缺少或錯誤的 X-Api-Key"
+    return None
+
+
+@app.middleware("http")
+async def require_api_key(request: Request, call_next):
+    if request.url.path in PUBLIC_PATHS:
+        return await call_next(request)
+    problem = _key_problem(request.headers.get(API_KEY_HEADER))
+    if problem:
+        status, message = problem
+        return JSONResponse(status_code=status, content={"success": False, "message": message})
+    return await call_next(request)
+
+
+if not config.API_KEY:
+    print("⚠️ 沒有設定 GUIDEGLASSES_API_KEY：除了 /health 之外所有請求都會回 503")
 
 app.include_router(location.router)
 app.include_router(bus.router)
@@ -94,6 +134,11 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     之後每個功能上線時，會在這裡依訊息內容分派到對應的處理函式，
     例如 `{"type": "recognize_face", "image": "<base64>"}`。
     """
+    # HTTP middleware 管不到 WebSocket，這裡另外驗證。1008 = policy violation。
+    if _key_problem(websocket.headers.get(API_KEY_HEADER)):
+        await websocket.close(code=1008)
+        return
+
     await websocket.accept()
     try:
         while True:

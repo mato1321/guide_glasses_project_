@@ -19,6 +19,7 @@ import com.guideglasses.glasses.camerax.CameraXFrameSource
 import com.guideglasses.glasses.sensors.AndroidMotionSensorGateway
 import com.guideglasses.core.common.DispatcherProvider
 import com.guideglasses.core.domain.announce.Announcement
+import com.guideglasses.di.ApiKeyInterceptor.Companion.withApiKey
 import com.guideglasses.core.domain.announce.AnnouncementManager
 import com.guideglasses.core.domain.announce.AnnouncementPriority
 import com.guideglasses.core.domain.announce.Announcer
@@ -236,7 +237,7 @@ object AssistantModule {
         return if (endpoint.isBlank()) {
             OfflineLlmIntentGateway()
         } else {
-            RemoteLlmIntentGateway(endpoint)
+            RemoteLlmIntentGateway(endpoint, RemoteLlmIntentGateway.defaultClient().withApiKey(BuildConfig.API_KEY))
         }
     }
 
@@ -422,7 +423,7 @@ object AssistantModule {
             OnDeviceFaceIdentification(embedder, repository),
             BuildConfig.FACE_ENDPOINT
                 .takeIf { it.isNotBlank() }
-                ?.let { RemoteFaceIdentification(it) },
+                ?.let { RemoteFaceIdentification(it, RemoteFaceIdentification.defaultClient().withApiKey(BuildConfig.API_KEY)) },
         ),
     )
 
@@ -520,7 +521,10 @@ object AssistantModule {
     fun provideLocationProvider(@ApplicationContext context: Context): LocationProvider {
         val onDevice = GlassesGpsLocationProvider(context)
         if (onDevice.isAvailable) return onDevice
-        return PhoneCompanionLocationProvider(BuildConfig.BUS_API_ENDPOINT)
+        return PhoneCompanionLocationProvider(
+            BuildConfig.BUS_API_ENDPOINT,
+            PhoneCompanionLocationProvider.defaultClient().withApiKey(BuildConfig.API_KEY),
+        )
     }
 
     /**
@@ -530,13 +534,16 @@ object AssistantModule {
     @Provides
     @Singleton
     fun provideBusPlanningGateway(): BusPlanningGateway =
-        HttpBusPlanningGateway(BuildConfig.BUS_API_ENDPOINT)
+        HttpBusPlanningGateway(BuildConfig.BUS_API_ENDPOINT, HttpBusPlanningGateway.defaultClient().withApiKey(BuildConfig.API_KEY))
 
     /** 公車車頭 OCR 確認，走同一個後端的 `/bus-ocr`。 */
     @Provides
     @Singleton
     fun provideBusOcrGateway(): BusOcrGateway =
-        HttpBusOcrGateway("${BuildConfig.BUS_API_ENDPOINT}/bus-ocr")
+        HttpBusOcrGateway(
+            "${BuildConfig.BUS_API_ENDPOINT}/bus-ocr",
+            HttpBusOcrGateway.defaultClient().withApiKey(BuildConfig.API_KEY),
+        )
 
     @Provides
     @Singleton
@@ -570,7 +577,7 @@ object AssistantModule {
     @Provides
     @Singleton
     fun provideWalkingRouteGateway(): WalkingRouteGateway =
-        HttpWalkingRouteGateway(BuildConfig.BUS_API_ENDPOINT)
+        HttpWalkingRouteGateway(BuildConfig.BUS_API_ENDPOINT, HttpWalkingRouteGateway.defaultClient().withApiKey(BuildConfig.API_KEY))
 
     @Provides
     @Singleton

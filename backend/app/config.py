@@ -48,3 +48,8 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 # 選小模型優先：導盲場景下「快速回覆」比「回答得更聰明」重要，
 # 見 `RemoteLlmIntentGateway.kt` 的逾時設計（讀取逾時只給 8 秒）。
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+
+# 眼鏡與手機呼叫這個後端時帶的共用金鑰（HTTP header `X-Api-Key`），見 main.py 的驗證。
+# 後端一旦經由 Cloudflare 通道公開，沒有它任何人拿到網址就能用光 OpenAI／Google 額度。
+# **沒設定時後端拒絕所有請求**（/health 除外），不是全部放行 —— 忘了設比設錯更常發生。
+API_KEY = os.getenv("GUIDEGLASSES_API_KEY", "")

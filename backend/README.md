@@ -52,6 +52,17 @@ cp .env.example .env   # 填入真正的金鑰，.env 不會進版控（見下�
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
+⚠️ **`.env` 一定要設 `GUIDEGLASSES_API_KEY`**，否則除了 `/health` 之外所有請求都回 503。
+眼鏡與手機呼叫時要帶同一把金鑰（header `X-Api-Key`），見下方「接到 guide-glasses App」。
+產生一把：`python -c "import secrets; print(secrets.token_urlsafe(32))"`
+
+跑測試：
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest
+```
+
 只想先跑 `/health`、`/route`、`/bus-plans`、`/eta`、定位轉傳、翻譯（不含
 `/bus-ocr`）？跳過 `opencv-python-headless`／`numpy`／`ultralytics`／
 `google-cloud-vision` 這幾個重依賴，只裝其他的：
@@ -86,12 +97,17 @@ http://<電腦的區網IP>:8000/health
 
 ## 接到 guide-glasses App
 
-在 `guide-glasses/local.properties` 加兩行（IP 換成你電腦的區網 IP）：
+在 `apps/local.properties` 加三行（IP 換成你電腦的區網 IP；出門要用的話改成
+Cloudflare 具名通道的 `https://api.<網域>`，見 `deploy/cloudflare/README.md`）：
 
 ```
 guideglasses.cloudflare.llmEndpoint=http://192.168.1.5:8000/route
 guideglasses.cloudflare.busApiEndpoint=http://192.168.1.5:8000
+guideglasses.cloudflare.apiKey=<與 .env 的 GUIDEGLASSES_API_KEY 相同>
 ```
+
+`apiKey` 會被帶在每個請求的 `X-Api-Key` header。沒帶或錯誤時後端回 401 ——
+手機 App 畫面會直接顯示「後端拒絕：金鑰錯誤」。
 
 `llmEndpoint` 對到既有的 `RemoteLlmIntentGateway`；`busApiEndpoint` 對到
 `ai-navigation` 的 `HttpBusPlanningGateway`／`HttpBusOcrGateway`／
@@ -102,13 +118,14 @@ guideglasses.cloudflare.busApiEndpoint=http://192.168.1.5:8000
 不裝 App 也能用 curl 確認格式對不對：
 
 ```bash
+# 除了 /health 都要帶金鑰
 curl -X POST http://127.0.0.1:8000/route \
-  -H "Content-Type: application/json" \
+  -H "X-Api-Key: <金鑰>" -H "Content-Type: application/json" \
   -d "{\"utterance\":\"你好\",\"history\":[],\"tools\":[]}"
 
-curl "http://127.0.0.1:8000/bus-plans?origin=25.03,121.51&dest=25.05,121.55"
-curl "http://127.0.0.1:8000/eta?lat=25.03&lng=121.51&bus=307&walk_sec=180"
-curl "http://127.0.0.1:8000/current-location"
+curl -H "X-Api-Key: <金鑰>" "http://127.0.0.1:8000/bus-plans?origin=25.03,121.51&dest=25.05,121.55"
+curl -H "X-Api-Key: <金鑰>" "http://127.0.0.1:8000/eta?lat=25.03&lng=121.51&bus=307&walk_sec=180"
+curl -H "X-Api-Key: <金鑰>" "http://127.0.0.1:8000/current-location"
 ```
 
 ## 設定金鑰與模型路徑

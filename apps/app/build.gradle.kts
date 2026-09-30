@@ -62,6 +62,9 @@ val LEGACY_BACKEND_KEYS = listOf("llmEndpoint", "faceEndpoint", "photoEndpoint",
 
 /** 後端相關的 BuildConfig 欄位，每個 flavor 各自一組。 */
 fun com.android.build.api.dsl.ApplicationProductFlavor.backendEndpoints(flavor: String) {
+    // 後端的共用金鑰（X-Api-Key，見 backend/.env 的 GUIDEGLASSES_API_KEY 與 di/ApiKeyInterceptor）。
+    // 沒填時後端會對所有請求回 401／503。
+    buildConfigField("String", "API_KEY", stringLiteral(flavorConfigValue(flavor, "apiKey")))
     // LLM 意圖解析（/route）。留空時退回離線閘道，App 仍可用本地快捷指令。
     buildConfigField("String", "LLM_ENDPOINT", stringLiteral(flavorConfigValue(flavor, "llmEndpoint")))
     // 人臉辨識後端（選用）。留空時只走端側，需要模型檔。
@@ -253,6 +256,9 @@ dependencies {
     implementation(project(":ai:ai-navigation"))
     implementation(project(":core:core-database"))
     implementation(project(":feature:feature-assistant"))
+
+    // 後端閘道共用的 X-Api-Key 攔截器（di/ApiKeyInterceptor）。
+    implementation(libs.okhttp)
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
