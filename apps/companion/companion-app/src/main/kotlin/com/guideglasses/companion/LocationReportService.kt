@@ -80,9 +80,31 @@ class LocationReportService : Service() {
     private var updatesRequested = false
     private var sentCount = 0
 
+    /** 最近一筆定位，眼鏡直連時由 [localServer] 回給眼鏡。 */
+    @Volatile
+    private var latestFix: LocationHttpResponder.Fix? = null
+
+    /**
+     * 眼鏡直連用的區網伺服器，見 [LocalLocationServer]。埠依 flavor 不同
+     * （Cloudflare 8765、AWS 8766），兩版同時開在同一支手機上也不會搶。
+     */
+    private val localServer = LocalLocationServer(BuildConfig.GLASSES_DIRECT_PORT, BuildConfig.API_KEY) { latestFix }
+    private var localServerStarted = false
+
     private val callback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
-            result.lastLocation?.let(::send)
+            val location = result.lastLocation ?: return
+            latestFix = LocationHttpResponder.Fix(
+                lat = location.latitude,
+                lng = location.longitude,
+                accuracyM = location.accuracy,
+                elapsedRealtimeNanos = location.elapsedRealtimeNanos,
+            )
+            if (BuildConfig.BUS_API_ENDPOINT.isBlank()) {
+                statusText.value = "未設定後端，只提供眼鏡直連\n${directStatus()}"
+            } else {
+                send(location)
+            }
         }
     }
 
@@ -101,6 +123,7 @@ class LocationReportService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
+        if (!localServerStarted) localServerStarted = localServer.start()
         startLocationUpdates()
         return START_NOT_STICKY
     }
@@ -108,6 +131,8 @@ class LocationReportService : Service() {
     override fun onDestroy() {
         if (updatesRequested) fusedLocation.removeLocationUpdates(callback)
         updatesRequested = false
+        localServer.stop()
+        localServerStarted = false
         running.value = false
         statusText.value = "已停止回報位置"
         super.onDestroy()
@@ -154,8 +179,14 @@ class LocationReportService : Service() {
         statusText.value = "正在取得 GPS⋯（在室內可能要等一下）"
     }
 
+    private fun directStatus(): String =
+        if (localServerStarted) {
+            "眼鏡直連（port ${BuildConfig.GLASSES_DIRECT_PORT}）已提供 ${localServer.servedCount.get()} 次"
+        } else {
+            "眼鏡直連未啟動（port ${BuildConfig.GLASSES_DIRECT_PORT} 可能被占用），眼鏡只能經由後端取得位置"
+        }
+
     private fun send(location: Location) {
-        if (BuildConfig.BUS_API_ENDPOINT.isBlank()) return
         if (!sending.compareAndSet(false, true)) return
 
         val payload = JSONObject().apply {
@@ -164,7 +195,7 @@ class LocationReportService : Service() {
             put("accuracy_m", location.accuracy.toDouble())
             // 這筆定位「現在」多舊。用開機時間（elapsedRealtime）算，不用牆上時鐘 ——
             // 眼鏡的時鐘實測快了 4 小時多，跨裝置比對時間一定會錯。後端再加上
-            // 自己持有的時間，眼鏡據此丟掉超過 5 秒的舊座標（企畫書 P1）。
+            // 自己持有的時間，眼鏡據此丟掉過舊的座標（PhoneCompanionLocationProvider）。
             put("fix_age_ms", fixAgeMillis(location))
             put("fix_time_ms", location.time)
         }
@@ -178,7 +209,7 @@ class LocationReportService : Service() {
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 sending.set(false)
-                statusText.value = "取得位置，但傳送失敗：${e.message}"
+                statusText.value = "取得位置，但傳送到後端失敗：${e.message}\n${directStatus()}"
             }
 
             override fun onResponse(call: Call, response: Response) {
@@ -186,14 +217,15 @@ class LocationReportService : Service() {
                 response.close()
                 sending.set(false)
                 if (ok) sentCount++
-                statusText.value = if (ok) {
-                    "已送出 $sentCount 筆位置\n" +
+                val backend = if (ok) {
+                    "已送出 $sentCount 筆位置到後端\n" +
                         "最近一筆 ${TIME_FORMAT.format(Date())}，精度約 ${location.accuracy.toInt()} 公尺"
                 } else when (response.code) {
                     401 -> "後端拒絕：金鑰錯誤\n請確認 guideglasses.${BuildConfig.FLAVOR}.apiKey 與後端的 GUIDEGLASSES_API_KEY 相同"
                     503 -> "後端還沒設定金鑰（GUIDEGLASSES_API_KEY）"
                     else -> "後端回傳錯誤：HTTP ${response.code}"
                 }
+                statusText.value = "$backend\n${directStatus()}"
             }
         })
     }

@@ -25,9 +25,19 @@ import java.util.concurrent.TimeUnit
  * 只需要換這個 DI 綁定，[com.guideglasses.core.domain.bus.PlanBusRouteUseCase]
  * 完全不用動。
  *
- * 傳輸走「同一個 Wi-Fi + HTTP」，與 `RemoteFaceIdentification` 同一個模式
- * （零開發、已在眼鏡上驗證過）：手機把座標 POST 給共用後端，
- * 這裡用輪詢的方式 GET 回來，而不是另外接一條連線層。
+ * ## 兩個來源，先問手機
+ *
+ * 1. **手機直連**（[directEndpoint]）：眼鏡連著手機熱點時，直接問手機上的
+ *    `LocalLocationServer`。只隔一層區網，而且 4G 或後端斷掉時照樣拿得到位置 ——
+ *    步行導航用已下載的路線還能繼續走
+ * 2. **經由後端**（[endpoint]）：手機把座標 POST 給後端，這裡 GET 回來。
+ *    眼鏡接的是一般路由器、或手機直連伺服器沒開時用這條
+ *
+ * 兩邊回應格式相同。直連**連續 [DIRECT_FAILURES_BEFORE_BACKOFF] 次連不上**時，
+ * [DIRECT_RETRY_MILLIS] 內不再試，免得每次輪詢都先卡在連線逾時。偶發一次慢回應
+ * 不算（實測經 USB 串接時 15 次裡有 2 次超過 1 秒；熱點 Wi-Fi 也會偶爾卡一下）——
+ * 以前一次逾時就停用直連 10 秒，後端又剛好斷線時，導航就說「收不到手機定位」。
+ * 連得上但座標太舊也不算失敗，下一輪照樣先問手機。
  *
  * ## 後端契約
  * ```
@@ -54,12 +64,27 @@ class PhoneCompanionLocationProvider(
     private val pollIntervalMillis: Long = 1_000L,
     private val maxAgeMillis: Long = DEFAULT_MAX_AGE_MILLIS,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    /** 手機直連的網址（`http://<手機IP>:<埠>`）；null 代表不用直連，每次輪詢都會重新問一次。 */
+    private val directEndpoint: (() -> String?)? = null,
+    private val directClient: OkHttpClient = directDefaultClient(),
+    /** 定位來源改變時通知（給 log 用），例如「手機直連」→「經由後端」。 */
+    private val onSourceChanged: (String) -> Unit = {},
+    private val monotonicMillis: () -> Long = { System.nanoTime() / 1_000_000 },
 ) : LocationProvider {
 
-    override val isAvailable: Boolean get() = endpoint.isNotBlank()
+    override val isAvailable: Boolean get() = endpoint.isNotBlank() || directEndpoint != null
 
     // 每一筆的精度隨座標帶在 Coordinate.accuracyMeters，這裡不預先假設一個固定值。
     override val accuracyMeters: Float? = null
+
+    @Volatile
+    private var directRetryAtMillis = 0L
+
+    @Volatile
+    private var directFailures = 0
+
+    @Volatile
+    private var lastSource: String? = null
 
     override fun locations(): Flow<Coordinate> = flow {
         while (true) {
@@ -69,18 +94,54 @@ class PhoneCompanionLocationProvider(
     }
 
     private suspend fun fetchOnce(): Coordinate? = withContext(ioDispatcher) {
-        if (!isAvailable) return@withContext null
+        fetchDirect()?.let { coordinate ->
+            reportSource(SOURCE_DIRECT)
+            return@withContext coordinate
+        }
+        if (endpoint.isBlank()) return@withContext null
+        (fetchFrom(endpoint, client) as? Fetch.Reached)?.coordinate?.also { reportSource(SOURCE_RELAY) }
+    }
 
+    private fun fetchDirect(): Coordinate? {
+        val base = directEndpoint?.invoke()?.takeIf { it.isNotBlank() } ?: return null
+        if (monotonicMillis() < directRetryAtMillis) return null
+        return when (val result = fetchFrom(base, directClient)) {
+            is Fetch.Reached -> {
+                directFailures = 0
+                result.coordinate
+            }
+            Fetch.Unreachable -> {
+                if (++directFailures >= DIRECT_FAILURES_BEFORE_BACKOFF) {
+                    directFailures = 0
+                    directRetryAtMillis = monotonicMillis() + DIRECT_RETRY_MILLIS
+                }
+                null
+            }
+        }
+    }
+
+    private fun fetchFrom(base: String, httpClient: OkHttpClient): Fetch =
         try {
-            val request = Request.Builder().url("$endpoint/current-location").get().build()
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return@withContext null
-                val payload = response.body?.string() ?: return@withContext null
-                parseLocation(payload, maxAgeMillis)
+            val request = Request.Builder().url("$base/current-location").get().build()
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return Fetch.Unreachable
+                val payload = response.body?.string() ?: return Fetch.Unreachable
+                Fetch.Reached(parseLocation(payload, maxAgeMillis))
             }
         } catch (e: IOException) {
-            null
+            Fetch.Unreachable
         }
+
+    private fun reportSource(source: String) {
+        if (lastSource == source) return
+        lastSource = source
+        onSourceChanged(source)
+    }
+
+    /** 一次查詢的結果：連得上（座標可能因為太舊而是 null），或連不上。 */
+    private sealed interface Fetch {
+        data class Reached(val coordinate: Coordinate?) : Fetch
+        data object Unreachable : Fetch
     }
 
     @Serializable
@@ -93,14 +154,44 @@ class PhoneCompanionLocationProvider(
     )
 
     companion object {
-        /** 超過這個年齡的座標就丟掉（企畫書 P1：眼鏡丟棄超過 5 秒的舊座標）。 */
-        const val DEFAULT_MAX_AGE_MILLIS = 5_000L
+        /**
+         * 超過這個年齡的座標就丟掉。
+         *
+         * 企畫書 P1 寫 5 秒，前提是戶外 GPS 每秒一筆。眼鏡實測（2026-09-30）：室內只有
+         * 網路定位，約 10 秒更新一次，而且**每一筆送到手機時就已經是 7.5 秒前的位置**
+         * （連續取樣 age_ms：8.0／12.3／7.5／12.5／7.8／12.8 秒）—— 5 秒會把室內的
+         * 每一筆都丟掉，查公車永遠「拿不到定位」。
+         *
+         * 這道門檻要擋的是手機凍結、斷線造成的舊座標，那種年齡會一路漲到幾分鐘，
+         * 15 秒一樣擋得住；戶外有 GPS 時年齡約 1 秒，不受影響。
+         */
+        const val DEFAULT_MAX_AGE_MILLIS = 15_000L
+
+        /** 直連連續失敗幾次才暫停，見類別說明。 */
+        const val DIRECT_FAILURES_BEFORE_BACKOFF = 3
+
+        /** 直連暫停之後，多久再試一次。 */
+        const val DIRECT_RETRY_MILLIS = 10_000L
+
+        const val SOURCE_DIRECT = "手機直連"
+        const val SOURCE_RELAY = "經由後端"
 
         private val json = Json { ignoreUnknownKeys = true }
 
         fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
             .connectTimeout(2, TimeUnit.SECONDS)
             .readTimeout(3, TimeUnit.SECONDS)
+            .build()
+
+        /**
+         * 直連只隔一層熱點區網，正常是毫秒級（實測中位數 16 ms）。
+         *
+         * 連線逾時設短：眼鏡接的是一般路由器時閘道不是手機，要盡快放棄改走後端。
+         * 讀取逾時留 2 秒：連得上就代表是手機，偶爾慢一下（實測最慢 1.9 秒）比放棄好。
+         */
+        fun directDefaultClient(): OkHttpClient = OkHttpClient.Builder()
+            .connectTimeout(500, TimeUnit.MILLISECONDS)
+            .readTimeout(2, TimeUnit.SECONDS)
             .build()
 
         /**

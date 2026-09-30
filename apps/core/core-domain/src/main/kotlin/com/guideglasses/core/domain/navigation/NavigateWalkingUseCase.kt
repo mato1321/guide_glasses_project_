@@ -158,7 +158,8 @@ class NavigateWalkingUseCase(
     }
 
     internal companion object {
-        const val LOCATION_TIMEOUT_MS = 8_000L
+        /** 等第一筆新鮮座標多久，理由見 `PlanBusRouteUseCase.LOCATION_TIMEOUT_MS`（實測 8 秒不夠）。 */
+        const val LOCATION_TIMEOUT_MS = 15_000L
 
         /** 走到轉彎點這個範圍內就播報——太小容易因 GPS 誤差永遠觸發不到。 */
         const val ARRIVAL_RADIUS_METERS = 20.0
@@ -173,7 +174,7 @@ class NavigateWalkingUseCase(
         const val WRONG_WAY_DEGREES = 120.0
 
         /**
-         * 多久收不到新座標就說出來。手機每秒回報、眼鏡丟掉超過 5 秒的舊座標
+         * 多久收不到新座標就說出來。手機每秒回報、眼鏡丟掉超過 15 秒的舊座標
          * （`PhoneCompanionLocationProvider`），15 秒都沒有新的，代表手機那端出事了
          * （App 被關、沒網路、後端停了）。不說的話，使用者只會覺得導航突然不講話了。
          */

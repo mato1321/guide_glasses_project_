@@ -108,8 +108,14 @@ class PlanBusRouteUseCase(
     }
 
     internal companion object {
-        /** 手機 companion 回報位置本來就是輪詢，逾時代表暫時連不上，不是永久失敗。 */
-        const val LOCATION_TIMEOUT_MS = 8_000L
+        /**
+         * 等第一筆「夠新」（見 `PhoneCompanionLocationProvider.DEFAULT_MAX_AGE_MILLIS`）座標多久。
+         *
+         * 以前是 8 秒。眼鏡實測（2026-09-30）：室內只有網路定位，約 10 秒才更新一次 ——
+         * 等 8 秒常常一筆都等不到，直接放棄變成「目前拿不到定位」。改成跟導航的
+         * LOCATION_STALE_MILLIS 一樣 15 秒；戶外有 GPS 時每秒一筆，幾乎不用等。
+         */
+        const val LOCATION_TIMEOUT_MS = 15_000L
 
         const val MESSAGE_NO_ETA = "目前查不到到站時間。"
         const val HINT_CONFIRM_BUS = "上車前可以說「確認公車」核對車號。"

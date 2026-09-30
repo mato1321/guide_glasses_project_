@@ -27,15 +27,22 @@ class PhoneCompanionLocationProviderTest {
     }
 
     @Test
-    fun `超過 5 秒的舊座標丟掉`() {
-        assertThat(parse("""{"success":true,"lat":25.03,"lng":121.56,"age_ms":5001}""")).isNull()
+    fun `超過 15 秒的舊座標丟掉`() {
+        assertThat(parse("""{"success":true,"lat":25.03,"lng":121.56,"age_ms":15001}""")).isNull()
         // 手機鎖螢幕被凍結後，後端還留著幾分鐘前的那一筆 —— 以前會被當成新座標。
         assertThat(parse("""{"success":true,"lat":25.03,"lng":121.56,"age_ms":180000}""")).isNull()
     }
 
     @Test
-    fun `剛好 5 秒還算新`() {
-        assertThat(parse("""{"success":true,"lat":25.03,"lng":121.56,"age_ms":5000}""")).isNotNull()
+    fun `剛好 15 秒還算新`() {
+        assertThat(parse("""{"success":true,"lat":25.03,"lng":121.56,"age_ms":15000}""")).isNotNull()
+    }
+
+    @Test
+    fun `室內網路定位的年齡（實測 7點5 到 12點8 秒）要能通過`() {
+        for (age in listOf(7_522, 12_813)) {
+            assertThat(parse("""{"success":true,"lat":25.03,"lng":121.56,"age_ms":$age}""")).isNotNull()
+        }
     }
 
     @Test

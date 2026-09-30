@@ -60,8 +60,18 @@ fun flavorConfigValue(flavor: String, name: String): String =
 val LEGACY_BACKEND_KEYS = listOf("llmEndpoint", "faceEndpoint", "photoEndpoint", "busApiEndpoint")
     .map { "guideglasses.$it" }
 
-/** 後端相關的 BuildConfig 欄位，每個 flavor 各自一組。 */
-fun com.android.build.api.dsl.ApplicationProductFlavor.backendEndpoints(flavor: String) {
+/**
+ * 後端相關的 BuildConfig 欄位，每個 flavor 各自一組。
+ *
+ * @param phoneDirectPort 手機直連的區網埠，必須與手機 companion 同名 flavor 的
+ *   GLASSES_DIRECT_PORT 相同。
+ */
+fun com.android.build.api.dsl.ApplicationProductFlavor.backendEndpoints(flavor: String, phoneDirectPort: Int) {
+    // 眼鏡連手機熱點時，直接跟手機拿位置（手機 IP 自動從預設閘道取得）。
+    buildConfigField("int", "PHONE_DIRECT_PORT", phoneDirectPort.toString())
+    // 手動指定手機直連的網址（選用）。留空＝自動用熱點閘道；USB 測試時設成
+    // http://127.0.0.1:<埠>，並做 adb forward（手機）＋ adb reverse（眼鏡）。
+    buildConfigField("String", "PHONE_LOCATION_ENDPOINT", stringLiteral(flavorConfigValue(flavor, "phoneLocationEndpoint")))
     // 後端的共用金鑰（X-Api-Key，見 backend/.env 的 GUIDEGLASSES_API_KEY 與 di/ApiKeyInterceptor）。
     // 沒填時後端會對所有請求回 401／503。
     buildConfigField("String", "API_KEY", stringLiteral(flavorConfigValue(flavor, "apiKey")))
@@ -169,13 +179,13 @@ android {
             dimension = "backend"
             applicationIdSuffix = ".cloudflare"
             resValue("string", "app_name", "導盲眼鏡 CF")
-            backendEndpoints("cloudflare")
+            backendEndpoints("cloudflare", phoneDirectPort = 8765)
         }
         create("aws") {
             dimension = "backend"
             applicationIdSuffix = ".aws"
             resValue("string", "app_name", "導盲眼鏡 AWS")
-            backendEndpoints("aws")
+            backendEndpoints("aws", phoneDirectPort = 8766)
         }
     }
 

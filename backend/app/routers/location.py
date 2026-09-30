@@ -6,7 +6,8 @@
 見 `docs/ARCHITECTURE.md` §5.2/§5.3。
 
 手機另外會送 `accuracy_m` 與 `fix_age_ms`；`/current-location` 回傳這筆座標
-到現在的 `age_ms`，眼鏡據此丟掉超過 5 秒的舊座標（企畫書 P1）。
+到現在的 `age_ms`，眼鏡據此丟掉過舊的座標（門檻見眼鏡端
+`PhoneCompanionLocationProvider.DEFAULT_MAX_AGE_MILLIS`）。
 `fix_time_ms`（手機的牆上時間）只是參考，不拿來算年齡，理由見 `_freshness`。
 
 `/navigation-target` 這組端點是舊原型 `GPS_phone`/`GPS_glasses` 用來讓

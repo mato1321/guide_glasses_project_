@@ -74,6 +74,7 @@ import com.guideglasses.ai.navigation.HttpBusOcrGateway
 import com.guideglasses.ai.navigation.HttpBusPlanningGateway
 import com.guideglasses.ai.navigation.HttpWalkingRouteGateway
 import com.guideglasses.ai.navigation.PhoneCompanionLocationProvider
+import com.guideglasses.ai.navigation.PhoneHotspotAddress
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -521,9 +522,20 @@ object AssistantModule {
     fun provideLocationProvider(@ApplicationContext context: Context): LocationProvider {
         val onDevice = GlassesGpsLocationProvider(context)
         if (onDevice.isAvailable) return onDevice
+
+        // 先直接問手機（眼鏡連著手機熱點時，預設閘道就是手機），失敗才經由後端。
+        val hotspot = PhoneHotspotAddress(context)
         return PhoneCompanionLocationProvider(
-            BuildConfig.BUS_API_ENDPOINT,
-            PhoneCompanionLocationProvider.defaultClient().withApiKey(BuildConfig.API_KEY),
+            endpoint = BuildConfig.BUS_API_ENDPOINT,
+            client = PhoneCompanionLocationProvider.defaultClient().withApiKey(BuildConfig.API_KEY),
+            directEndpoint = {
+                BuildConfig.PHONE_LOCATION_ENDPOINT.ifBlank {
+                    hotspot.gatewayHost()?.let { "http://$it:${BuildConfig.PHONE_DIRECT_PORT}" }.orEmpty()
+                }
+            },
+            // 手機的直連伺服器與後端用同一把金鑰。
+            directClient = PhoneCompanionLocationProvider.directDefaultClient().withApiKey(BuildConfig.API_KEY),
+            onSourceChanged = { source -> Log.i("PhoneLocation", "定位來源：$source") },
         )
     }
 

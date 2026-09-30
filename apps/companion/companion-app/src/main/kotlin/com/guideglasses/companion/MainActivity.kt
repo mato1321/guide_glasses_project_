@@ -55,10 +55,11 @@ class MainActivity : ComponentActivity() {
         statusView = findViewById(R.id.statusView)
         toggleButton = findViewById(R.id.toggleButton)
 
+        // 沒有後端位址也能用：眼鏡可以透過熱點直接跟手機拿位置（LocalLocationServer）。
+        // 只是公車、步行路線這些要後端的功能不能用，所以只提醒、不擋。
         if (BuildConfig.BUS_API_ENDPOINT.isBlank()) {
-            statusView.text = "尚未設定後端位址\n請在 local.properties 加入\nguideglasses.${BuildConfig.FLAVOR}.busApiEndpoint"
-            toggleButton.isEnabled = false
-            return
+            statusView.text = "尚未設定後端位址，只能提供眼鏡直連\n" +
+                "（要用公車與路線功能，請在 local.properties 加入 guideglasses.${BuildConfig.FLAVOR}.busApiEndpoint）"
         }
 
         toggleButton.setOnClickListener {
