@@ -568,6 +568,8 @@ class AssistantViewModel @Inject constructor(
                 is PlanBusRouteUseCase.Outcome.Planned -> {
                     lastBusPlan = outcome.plan
                     lastBusEta = outcome.eta
+                    // 後端的說明不唸給使用者（見 PlanBusRouteUseCase.spokenEta），但排查時要看得到。
+                    Log.i(TAG, "公車方案：${outcome.plan.busNumber}，到站資訊：${outcome.eta.message}")
                     announce(outcome.spoken, AnnouncementPriority.USER_RESPONSE)
                     startWalkingNavigation(outcome.plan.boardingStopCoordinate)
                 }

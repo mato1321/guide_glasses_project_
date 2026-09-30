@@ -59,22 +59,44 @@ class PlanBusRouteUseCase(
         val spoken = spokenPlan(best, origin)
 
         return when (val result = planningGateway.fetchEta(best)) {
-            is AppResult.Success -> Outcome.Planned(best, result.data, spoken + spokenEta(result.data))
-            is AppResult.Failure -> Outcome.PlannedWithoutEta(best, spoken)
+            is AppResult.Success -> Outcome.Planned(
+                best,
+                result.data,
+                spoken + spokenEta(result.data, best.walkToBoardingSeconds) + HINT_CONFIRM_BUS,
+            )
+            is AppResult.Failure -> Outcome.PlannedWithoutEta(best, spoken + MESSAGE_NO_ETA + HINT_CONFIRM_BUS)
         }
     }
 
     private fun spokenPlan(plan: BusPlan, origin: Coordinate): String {
         val distance = Geo.distanceMeters(origin, plan.boardingStopCoordinate).toInt()
-        return "建議搭乘 ${plan.busNumber} 路公車，上車站是 ${plan.boardingStop}，" +
+        return "建議搭乘 ${spokenBusName(plan.busNumber)}，上車站是 ${plan.boardingStop}，" +
             "距離您約 $distance 公尺，步行約 ${plan.walkToBoardingMinutes} 分鐘。"
     }
 
-    private fun spokenEta(eta: BusEta): String {
-        val extra = eta.message.takeIf { it.isNotBlank() }?.let { "。$it" }.orEmpty()
-        return "最近一班 ${eta.firstArrival} 到站，再下一班 ${eta.secondArrival}$extra" +
-            "。到站前可以說「確認公車」用相機核對車號。"
+    /**
+     * 到站時間只用結構化欄位組句，**不唸 [BusEta.message]**。
+     *
+     * `message` 是後端給人看的說明，失敗時是除錯資訊 —— 實機唸出過
+     * 「找不到資料：此路線在 1000 公尺內找不到對應站牌，bus=88區間車」；
+     * 成功時又跟前面的「最近一班⋯」重複，還可能是字面上的 `success`。
+     * 後端回「未知」時也不能照唸成「最近一班 未知 到站」。
+     */
+    private fun spokenEta(eta: BusEta, walkSeconds: Int): String {
+        val first = arrivalSeconds(eta.firstArrival) ?: return MESSAGE_NO_ETA
+        val second = arrivalSeconds(eta.secondArrival)
+
+        val sentence = StringBuilder("最近一班").append(spokenArrival(eta.firstArrival, first))
+        if (second != null) sentence.append("，下一班").append(spokenArrival(eta.secondArrival, second))
+        sentence.append("。")
+        if (first < walkSeconds) {
+            sentence.append(if (second != null) "走過去可能趕不上最近一班，建議搭下一班。" else "走過去可能趕不上。")
+        }
+        return sentence.toString()
     }
+
+    private fun spokenArrival(text: String, seconds: Int): String =
+        if (seconds == 0) "即將進站" else "約 ${text.trim()}後到站"
 
     sealed interface Outcome {
         data class Planned(val plan: BusPlan, val eta: BusEta, val spoken: String) : Outcome
@@ -85,8 +107,38 @@ class PlanBusRouteUseCase(
         data class Failed(val error: AppError) : Outcome
     }
 
-    private companion object {
+    internal companion object {
         /** 手機 companion 回報位置本來就是輪詢，逾時代表暫時連不上，不是永久失敗。 */
         const val LOCATION_TIMEOUT_MS = 8_000L
+
+        const val MESSAGE_NO_ETA = "目前查不到到站時間。"
+        const val HINT_CONFIRM_BUS = "上車前可以說「確認公車」核對車號。"
+
+        /**
+         * 路線名稱怎麼唸。
+         *
+         * 「307」「紅25」要加「路公車」；「88區間車」「敦化幹線」本身就是完整名稱，
+         * 再加會變成實機唸出的「88區間車 路公車」。
+         */
+        fun spokenBusName(busNumber: String): String {
+            val name = busNumber.trim()
+            return if (name.lastOrNull()?.isDigit() == true) "$name 路公車" else name
+        }
+
+        /**
+         * 後端的到站時間文字 → 秒數。
+         *
+         * 後端格式（`bus_logic.pretty_eta_seconds`）：「3分20秒」「45秒」「進站/到站」「未知」。
+         * 認不得（包括「未知」與空字串）回 null，讓呼叫端改說「查不到」，而不是照唸。
+         */
+        fun arrivalSeconds(text: String): Int? {
+            val t = text.trim()
+            if (t.isEmpty() || t == "未知") return null
+            if ("進站" in t || "到站" in t) return 0
+            val minutes = Regex("""(\d+)\s*分""").find(t)?.groupValues?.get(1)?.toInt()
+            val seconds = Regex("""(\d+)\s*秒""").find(t)?.groupValues?.get(1)?.toInt()
+            if (minutes == null && seconds == null) return null
+            return (minutes ?: 0) * 60 + (seconds ?: 0)
+        }
     }
 }

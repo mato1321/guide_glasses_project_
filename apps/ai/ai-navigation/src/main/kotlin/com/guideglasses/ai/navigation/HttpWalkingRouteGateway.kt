@@ -90,6 +90,7 @@ class HttpWalkingRouteGateway(
                     instruction = s.instruction,
                     location = Coordinate(s.lat, s.lng),
                     distanceMeters = s.distanceM,
+                    endLocation = if (s.endLat != null && s.endLng != null) Coordinate(s.endLat, s.endLng) else null,
                 )
             },
         )
@@ -115,6 +116,9 @@ class HttpWalkingRouteGateway(
         val lat: Double = 0.0,
         val lng: Double = 0.0,
         @SerialName("distance_m") val distanceM: Int = 0,
+        // 舊版後端沒有這兩個欄位，所以是 nullable。
+        @SerialName("end_lat") val endLat: Double? = null,
+        @SerialName("end_lng") val endLng: Double? = null,
     )
 
     companion object {

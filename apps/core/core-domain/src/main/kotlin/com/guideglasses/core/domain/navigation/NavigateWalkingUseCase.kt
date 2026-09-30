@@ -3,8 +3,10 @@ package com.guideglasses.core.domain.navigation
 import com.guideglasses.core.domain.AppResult
 import com.guideglasses.core.domain.announce.Announcement
 import com.guideglasses.core.domain.announce.AnnouncementPriority
+import kotlin.math.abs
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -17,8 +19,15 @@ import kotlinx.coroutines.withTimeoutOrNull
  * （街道、單行道、天橋）交給 [WalkingRouteGateway] 拿到的 Google 逐步指示，
  * 這個類別只負責「現在該講哪一句」。
  *
- * v1 只做「接近該轉彎點就講下一句」，不做偏離路線偵測／自動重新規劃——
- * 使用者走偏了目前只能自己說「停」取消，之後可以再加。
+ * ### 眼鏡沒有電子羅盤
+ *
+ * Google 的第一步常是「往西走信義路五段」，但使用者不知道哪邊是西。
+ * 所以方位詞一律改成沿路直走（[spokenInstruction]），走出 [HEADING_CHECK_METERS]
+ * 之後再用實際移動方向核對，走反了就提醒（[MESSAGE_WRONG_WAY]）——
+ * 企畫書 P1「首步需要朝向的指示改寫」。
+ *
+ * 目前只核對一次方向，還不做持續的偏離路線偵測／自動重新規劃，
+ * 使用者走偏了只能自己說「停」取消，之後可以再加。
  */
 class NavigateWalkingUseCase(
     private val locationProvider: LocationProvider,
@@ -65,28 +74,122 @@ class NavigateWalkingUseCase(
         }
 
         // 第一步就在起點附近（Google 路線規劃的第一段指示），不用等位置更新才講。
-        emit(Announcement(steps.first().instruction, AnnouncementPriority.NAVIGATION, dedupeKey = "nav-step-0"))
+        emit(Announcement(spokenInstruction(steps.first()), AnnouncementPriority.NAVIGATION, dedupeKey = "nav-step-0"))
 
-        for (index in 1 until steps.size) {
-            val step = steps[index]
-            locationProvider.locations().first { current ->
-                Geo.distanceMeters(current, step.location) <= ARRIVAL_RADIUS_METERS
+        // 真正的終點：優先用呼叫端給的座標，其次是最後一步的終點。
+        // 以前少了「走到終點」這一段：只有一步的路線，第一句講完就立刻說已抵達
+        // （實機：離上車站還有 90 公尺就說「已經抵達目的地附近」）。
+        val arrivalPoint = destination ?: steps.last().endLocation ?: steps.last().location
+        val firstLegTarget = steps.getOrNull(1)?.location ?: arrivalPoint
+
+        var lastKnown = origin
+        // 第一段短到走不出核對距離時，方向對不對已經無所謂。
+        var headingChecked = Geo.distanceMeters(origin, firstLegTarget) < HEADING_CHECK_METERS
+
+        /**
+         * 等到走進 [target] 的範圍內。途中順便做一次方向核對，走反了就提醒後繼續等。
+         *
+         * @return 走到了回傳 true；定位串流中斷回傳 false。
+         */
+        suspend fun reach(target: Coordinate): Boolean {
+            while (true) {
+                if (Geo.distanceMeters(lastKnown, target) <= ARRIVAL_RADIUS_METERS) return true
+
+                var wrongWay = false
+                locationProvider.locations().firstOrNull { current ->
+                    lastKnown = current
+                    if (!headingChecked && Geo.distanceMeters(origin, current) >= HEADING_CHECK_METERS) {
+                        headingChecked = true
+                        wrongWay = isWrongWay(origin, current, firstLegTarget)
+                    }
+                    wrongWay || Geo.distanceMeters(current, target) <= ARRIVAL_RADIUS_METERS
+                } ?: return false
+
+                if (!wrongWay) return true
+                emit(Announcement(MESSAGE_WRONG_WAY, AnnouncementPriority.NAVIGATION, dedupeKey = "nav-wrong-way"))
             }
-            emit(Announcement(step.instruction, AnnouncementPriority.NAVIGATION, dedupeKey = "nav-step-$index"))
         }
 
+        for (index in 1 until steps.size) {
+            if (!reach(steps[index].location)) {
+                emit(Announcement(MESSAGE_LOCATION_LOST, AnnouncementPriority.NAVIGATION))
+                return@flow
+            }
+            emit(Announcement(spokenInstruction(steps[index]), AnnouncementPriority.NAVIGATION, dedupeKey = "nav-step-$index"))
+        }
+
+        if (!reach(arrivalPoint)) {
+            emit(Announcement(MESSAGE_LOCATION_LOST, AnnouncementPriority.NAVIGATION))
+            return@flow
+        }
         emit(Announcement(MESSAGE_ARRIVED, AnnouncementPriority.NAVIGATION))
     }
 
-    private companion object {
+    /** 從 [origin] 走到 [current] 的方向，跟該走的方向差太多就是走反了。 */
+    private fun isWrongWay(origin: Coordinate, current: Coordinate, target: Coordinate): Boolean {
+        val walked = Geo.bearingDegrees(origin, current)
+        val expected = Geo.bearingDegrees(origin, target)
+        return abs(Geo.relativeTurn(walked, expected)) > WRONG_WAY_DEGREES
+    }
+
+    internal companion object {
         const val LOCATION_TIMEOUT_MS = 8_000L
 
         /** 走到轉彎點這個範圍內就播報——太小容易因 GPS 誤差永遠觸發不到。 */
         const val ARRIVAL_RADIUS_METERS = 20.0
 
+        /**
+         * 離開起點多遠才核對方向。GPS 在市區的誤差 5–15 公尺，
+         * 太近的話站著不動也會因為飄移被判成「走反了」。
+         */
+        const val HEADING_CHECK_METERS = 20.0
+
+        /** 實際走的方向跟該走的方向差超過這個角度，才算走反（容許斜走、繞過障礙物）。 */
+        const val WRONG_WAY_DEGREES = 120.0
+
         const val MESSAGE_UNAVAILABLE = "即時導航目前不可用，還沒設定後端位址"
         const val MESSAGE_NO_LOCATION = "目前拿不到定位，請確認手機同伴 App 已開啟並連上網路"
         const val MESSAGE_NO_ROUTE = "查不到步行路線"
         const val MESSAGE_ARRIVED = "已經抵達目的地附近"
+        const val MESSAGE_WRONG_WAY = "方向好像相反了，請轉身往回走"
+        const val MESSAGE_LOCATION_LOST = "定位中斷，導航暫停"
+
+        /** 「往西走信義路五段」「向北前進」「朝東南方走」這類需要知道東西南北的開頭。 */
+        private val CARDINAL = Regex("""^(往|向|朝)(東北|東南|西北|西南|東|西|南|北)方?(走|前進|行走)?(.*)$""")
+
+        /** 方位詞後面接的「上」「向」「到」只是介系詞，改寫成「沿著」時要拿掉。 */
+        private val ROAD_PREFIX = Regex("""^[上向到往]""")
+
+        /**
+         * 要唸出來的指示。Google 的說法原樣保留，只改掉需要方位感的開頭：
+         *
+         * | Google | 唸出來 |
+         * |---|---|
+         * | 往西走信義路五段（90 公尺）| 沿著信義路五段走，約 90 公尺 |
+         * | 往西走信義路五段⏎目的地在右邊 | 沿著信義路五段走，約 90 公尺。目的地在右邊 |
+         * | 往東南方走（30 公尺）| 直走，約 30 公尺 |
+         * | 往北走，然後右轉進入中山北路 | 直走，然後右轉進入中山北路 |
+         * | 向左轉進入基隆路一段 | （不變）|
+         *
+         * Google 的指示可能有好幾行（眼鏡實測：「往西走信義路五段\n目的地在右邊」），
+         * 方位詞只會出現在第一行，後面幾行原樣接上。
+         */
+        fun spokenInstruction(step: NavigationStep): String {
+            val lines = step.instruction.lines().map { it.trim() }.filter { it.isNotEmpty() }
+            val first = lines.firstOrNull()?.let { rewriteCardinal(it, step.distanceMeters) }
+                ?: return step.instruction
+            return (listOf(first) + lines.drop(1)).joinToString("。")
+        }
+
+        /** 單行的方位詞改寫；這行不是方位詞開頭就回 null。 */
+        private fun rewriteCardinal(line: String, distanceMeters: Int): String? {
+            val match = CARDINAL.find(line) ?: return null
+            val rest = match.groupValues[4].trim()
+            if (rest.startsWith("，") || rest.startsWith(",")) return "直走$rest"
+
+            val road = rest.replace(ROAD_PREFIX, "")
+            val base = if (road.isEmpty()) "直走" else "沿著${road}走"
+            return if (distanceMeters > 0) "$base，約 $distanceMeters 公尺" else base
+        }
     }
 }

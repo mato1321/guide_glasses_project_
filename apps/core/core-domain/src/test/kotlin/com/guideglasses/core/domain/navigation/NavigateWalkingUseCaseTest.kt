@@ -75,11 +75,106 @@ class NavigateWalkingUseCaseTest {
             .toList()
 
         assertThat(announcements.map { it.text }).containsExactly(
-            "往西走天橋",
+            // 眼鏡沒有羅盤，「往西」改成沿路走，見 spokenInstruction。
+            "沿著天橋走",
             "向左轉進入基隆路一段",
             "目的地在您的左邊",
             "已經抵達目的地附近",
         ).inOrder()
+    }
+
+    // ===== 只有一步的路線：走到終點才說已抵達 =====
+
+    // 台北 101 附近實機遇到的形狀：只有一步「往西走信義路五段」，上車站在 90 公尺外。
+    private val start = coordinate(25.0330, 121.5654)
+    private val stop90mWest = coordinate(25.0330, 121.5645)
+    private val halfway = coordinate(25.0330, 121.56495)
+    private val singleStep = listOf(NavigationStep("往西走信義路五段", start, 90, endLocation = stop90mWest))
+
+    @Test
+    fun `只有一步的路線，要真的走到站牌才說已抵達`() = runTest {
+        val locationProvider = FakeLocationProvider(points = listOf(start, halfway, stop90mWest))
+
+        val announcements = NavigateWalkingUseCase(locationProvider, FakeWalkingRouteGateway(result = AppResult.Success(singleStep)))
+            .navigate(destination = stop90mWest)
+            .toList()
+
+        assertThat(announcements.map { it.text }).containsExactly(
+            "沿著信義路五段走，約 90 公尺",
+            "已經抵達目的地附近",
+        ).inOrder()
+    }
+
+    @Test
+    fun `還沒走到站牌、定位就中斷時，說導航暫停而不是已抵達`() = runTest {
+        // 修正前：第一句講完立刻說「已經抵達目的地附近」，人其實還在 90 公尺外。
+        val locationProvider = FakeLocationProvider(points = listOf(start, halfway))
+
+        val announcements = NavigateWalkingUseCase(locationProvider, FakeWalkingRouteGateway(result = AppResult.Success(singleStep)))
+            .navigate(destination = stop90mWest)
+            .toList()
+
+        assertThat(announcements.map { it.text }).containsExactly(
+            "沿著信義路五段走，約 90 公尺",
+            "定位中斷，導航暫停",
+        ).inOrder()
+    }
+
+    @Test
+    fun `以地名導航時用最後一步的終點判斷抵達`() = runTest {
+        val locationProvider = FakeLocationProvider(points = listOf(start, halfway))
+
+        val announcements = NavigateWalkingUseCase(locationProvider, FakeWalkingRouteGateway(result = AppResult.Success(singleStep)))
+            .navigate(destinationName = "捷運台北101站")
+            .toList()
+
+        assertThat(announcements.map { it.text }).doesNotContain("已經抵達目的地附近")
+    }
+
+    // ===== 方向核對 =====
+
+    @Test
+    fun `往反方向走出一段距離，會提醒轉身`() = runTest {
+        val wrongWay30mEast = coordinate(25.0330, 121.5657)
+        val locationProvider = FakeLocationProvider(points = listOf(start, wrongWay30mEast, start, halfway, stop90mWest))
+
+        val announcements = NavigateWalkingUseCase(locationProvider, FakeWalkingRouteGateway(result = AppResult.Success(singleStep)))
+            .navigate(destination = stop90mWest)
+            .toList()
+
+        assertThat(announcements.map { it.text }).containsExactly(
+            "沿著信義路五段走，約 90 公尺",
+            "方向好像相反了，請轉身往回走",
+            "已經抵達目的地附近",
+        ).inOrder()
+    }
+
+    @Test
+    fun `方向正確時不會多講話`() = runTest {
+        val locationProvider = FakeLocationProvider(points = listOf(start, halfway, stop90mWest))
+
+        val announcements = NavigateWalkingUseCase(locationProvider, FakeWalkingRouteGateway(result = AppResult.Success(singleStep)))
+            .navigate(destination = stop90mWest)
+            .toList()
+
+        assertThat(announcements.map { it.text }).doesNotContain("方向好像相反了，請轉身往回走")
+    }
+
+    // ===== 方位詞改寫 =====
+
+    @Test
+    fun `需要東西南北的指示改成沿路走，其他指示原樣保留`() {
+        fun spoken(instruction: String, meters: Int = 0) =
+            NavigateWalkingUseCase.spokenInstruction(NavigationStep(instruction, start, meters))
+
+        assertThat(spoken("往西走信義路五段", 90)).isEqualTo("沿著信義路五段走，約 90 公尺")
+        // 眼鏡實測 Google 回傳的原文，第二行要原樣保留。
+        assertThat(spoken("往西走信義路五段\n目的地在右邊", 90)).isEqualTo("沿著信義路五段走，約 90 公尺。目的地在右邊")
+        assertThat(spoken("往東南方走", 30)).isEqualTo("直走，約 30 公尺")
+        assertThat(spoken("向北走上中山北路二段", 120)).isEqualTo("沿著中山北路二段走，約 120 公尺")
+        assertThat(spoken("往北走，然後右轉進入中山北路")).isEqualTo("直走，然後右轉進入中山北路")
+        assertThat(spoken("向左轉進入基隆路一段", 100)).isEqualTo("向左轉進入基隆路一段")
+        assertThat(spoken("目的地在您的左邊")).isEqualTo("目的地在您的左邊")
     }
 
     @Test

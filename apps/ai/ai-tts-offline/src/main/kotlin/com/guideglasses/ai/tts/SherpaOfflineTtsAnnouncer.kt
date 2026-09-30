@@ -68,6 +68,21 @@ class SherpaOfflineTtsAnnouncer(
         Thread(runnable, "offline-tts").apply { isDaemon = true }
     }
 
+    /**
+     * 只用來在背景預載英文模型，見 [init] 的說明。
+     *
+     * 最低優先權：載入期間跟中文合成搶 CPU 時讓中文先。
+     */
+    private val loader = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "offline-tts-loader").apply {
+            isDaemon = true
+            priority = Thread.MIN_PRIORITY
+        }
+    }
+
+    /** [loadVoice] 真正載入模型的那一段要互斥 —— 同一個語言不能被兩條執行緒各載一份。 */
+    private val loadLock = Any()
+
     /** 已載入的引擎。英文是用到才載，所以這裡是動態成長的。 */
     private val engines = ConcurrentHashMap<OfflineVoice, OfflineTts>()
 
@@ -91,17 +106,20 @@ class SherpaOfflineTtsAnnouncer(
             val engine = loadVoice(OfflineVoice.CHINESE)
             chineseLoadFinished = true
             onReady(engine != null)
+            /*
+             * 中文載完就在背景預載英文。
+             *
+             * 原本是「第一次要唸英文才載」，理由是不用翻譯的人不必付那 19MB。
+             * 但實測英文模型要 11.9 秒 —— 使用者第一次說「翻成英文」時，
+             * 那 12 秒完整地加在他感受到的延遲上，而他不知道發生什麼事。
+             *
+             * 預載曾經排在同一條 worker 上，以為「排在中文後面就不會拖慢中文」。
+             * 實機證明相反（2026-09-30）：開機後說「查公車路線」，那句
+             * 「正在查詢公車路線」排在英文載入**後面**，等了 12 秒才開始合成 ——
+             * 從下指令到出聲整整 23 秒。所以改到另一條執行緒，中文播報不再等它。
+             */
+            loader.execute { loadVoice(OfflineVoice.ENGLISH) }
         }
-        /*
-         * 中文載完就接著載英文。
-         *
-         * 原本是「第一次要唸英文才載」，理由是不用翻譯的人不必付那 19MB。
-         * 但實測英文模型要 11.9 秒 —— 使用者第一次說「翻成英文」時，
-         * 那 12 秒完整地加在他感受到的延遲上，而他不知道發生什麼事。
-         *
-         * 排在中文後面（同一條 worker），所以不會拖慢開機後最重要的中文播報。
-         */
-        worker.execute { loadVoice(OfflineVoice.ENGLISH) }
     }
 
     /**
@@ -168,6 +186,7 @@ class SherpaOfflineTtsAnnouncer(
 
     override fun shutdown() {
         stop()
+        loader.shutdownNow()
         worker.execute {
             engines.values.forEach { engine -> runCatching { engine.release() } }
             engines.clear()
@@ -178,12 +197,20 @@ class SherpaOfflineTtsAnnouncer(
     /**
      * 取得某個語言的引擎，需要的話當場載入。
      *
-     * 只在 [worker] 上呼叫，所以不需要額外同步。
+     * [worker]（播報）與 [loader]（背景預載英文）都會呼叫。已經載好的語言走不上鎖的
+     * 快速路徑 —— 這點很重要：loader 載英文的 12 秒裡持有 [loadLock]，
+     * 中文播報若也要搶鎖，就又回到「中文等英文」的老問題。
+     * 英文播報遇到 loader 正在載，則會在鎖上等它載完，而不是再載第二份。
      */
     private fun loadVoice(voice: OfflineVoice): OfflineTts? {
         engines[voice]?.let { return it }
         if (voice in failedVoices) return null
+        return synchronized(loadLock) {
+            engines[voice] ?: if (voice in failedVoices) null else createAndRegister(voice)
+        }
+    }
 
+    private fun createAndRegister(voice: OfflineVoice): OfflineTts? {
         val started = System.currentTimeMillis()
         val engine = voice.createEngine(appContext)
 
