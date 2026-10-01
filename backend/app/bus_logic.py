@@ -23,6 +23,7 @@ import math
 import random
 import re
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 from urllib.parse import quote
 
@@ -521,17 +522,35 @@ def get_station_and_eta_by_coord_and_route(
 
 # ===== 公車車頭／LED OCR =====
 
-def detect_led_roi(image_bgr: "np.ndarray") -> "Optional[np.ndarray]":
+_yolo_model = None
+
+
+def _load_yolo():
+    """
+    YOLO 模型只載入一次。以前每次 /bus-ocr 都重新 `YOLO(path)`，每次多花約半秒。
+
+    沒裝 ultralytics 或載入失敗回 None（呼叫端改用整張圖），下次呼叫會再試。
+    """
+    global _yolo_model
+    if _yolo_model is not None:
+        return _yolo_model
     try:
         from ultralytics import YOLO
     except Exception:
         print("⚠️ 未安裝 ultralytics")
         return None
-
     try:
-        model = YOLO(config.BUS_OCR_MODEL_PATH)
+        _yolo_model = YOLO(config.BUS_OCR_MODEL_PATH)
     except Exception as e:
         print("❌ YOLO 模型載入失敗：", e)
+        return None
+    return _yolo_model
+
+
+def detect_led_box(image_bgr: "np.ndarray") -> Optional[tuple]:
+    """車頭 LED 看板的位置 `(x1, y1, x2, y2, 信心)`；找不到回 None。"""
+    model = _load_yolo()
+    if model is None:
         return None
 
     best = None
@@ -549,14 +568,74 @@ def detect_led_roi(image_bgr: "np.ndarray") -> "Optional[np.ndarray]":
             score = conf + 0.000001 * area
             if score > best_score:
                 best_score = score
-                best = (x1, y1, x2, y2)
+                best = (x1, y1, x2, y2, conf)
 
     if best is None:
         return None
+    x1, y1, x2, y2, _ = best
+    return best if image_bgr[y1:y2, x1:x2].size else None
 
-    x1, y1, x2, y2 = best
-    roi = image_bgr[y1:y2, x1:x2]
-    return roi if roi.size else None
+
+def save_debug_images(image_bgr, box, bus_no: str, ocr_text: str, matched: bool, directory) -> Path:
+    """
+    存下這次辨識的原圖、畫上 YOLO 框的圖、結果 JSON（設定 BUS_OCR_DEBUG_DIR 時才存）。
+
+    給專題影片剪輯用：畫面上的框必須是系統真正找到的位置，不是後製自己畫的。
+    框的標籤只寫英文數字 —— OpenCV 內建字型畫不出中文，OCR 原文放在 JSON。
+    用 imencode 再寫檔而不是 cv2.imwrite：後者在 Windows 上遇到非 ASCII 路徑會靜靜地失敗。
+    """
+    import json
+
+    import cv2
+
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    safe_bus = re.sub(r"[^0-9A-Za-z一-鿿]", "", bus_no) or "bus"
+    # 加毫秒：連續兩次辨識在同一秒內結束時，後一次會蓋掉前一次（實測發生過）。
+    now = time.time()
+    stamp = f"{time.strftime('%Y%m%d-%H%M%S', time.localtime(now))}-{int(now * 1000) % 1000:03d}"
+    base = f"{stamp}_{safe_bus}_{'match' if matched else 'nomatch'}"
+    stem, n = base, 1
+    while (directory / f"{stem}.json").exists():
+        n += 1
+        stem = f"{base}-{n}"
+
+    height, width = image_bgr.shape[:2]
+    thickness = max(2, width // 300)
+    scale = max(0.6, width / 1000)
+    color = (0, 200, 0) if matched else (0, 0, 255)
+
+    annotated = image_bgr.copy()
+    if box is not None:
+        x1, y1, x2, y2, conf = box
+        cv2.rectangle(annotated, (x1, y1), (x2, y2), color, thickness)
+        cv2.putText(annotated, f"LED panel {conf:.2f}", (x1, max(0, y1 - 10)),
+                    cv2.FONT_HERSHEY_SIMPLEX, scale, color, thickness, cv2.LINE_AA)
+    else:
+        cv2.putText(annotated, "no LED panel found - whole image OCR", (10, int(40 * scale)),
+                    cv2.FONT_HERSHEY_SIMPLEX, scale, color, thickness, cv2.LINE_AA)
+    cv2.putText(annotated, f"target {bus_no if bus_no.isascii() else ''}: {'MATCH' if matched else 'NO MATCH'}",
+                (10, height - 20), cv2.FONT_HERSHEY_SIMPLEX, scale, color, thickness, cv2.LINE_AA)
+
+    for suffix, image in (("raw", image_bgr), ("box", annotated)):
+        ok, encoded = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 92])
+        if ok:
+            (directory / f"{stem}_{suffix}.jpg").write_bytes(encoded.tobytes())
+
+    (directory / f"{stem}.json").write_text(
+        json.dumps(
+            {
+                "bus_no": bus_no,
+                "matched": matched,
+                "ocr_text": ocr_text,
+                "led_box": None if box is None else {"x1": box[0], "y1": box[1], "x2": box[2], "y2": box[3], "conf": round(box[4], 3)},
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    return directory / f"{stem}_box.jpg"
 
 
 def apply_clahe(gray):
@@ -591,6 +670,10 @@ def vision_text(gray, language_hints, budget: OcrBudget) -> str:
         return ""
     if not config.GOOGLE_APPLICATION_CREDENTIALS:
         raise NotConfiguredError("GOOGLE_APPLICATION_CREDENTIALS 尚未設定")
+    # 設了但檔案不在：以前在建立 client 時才丟出 google-auth 的例外，/bus-ocr 回 500，
+    # log 裡一大串 traceback。改成跟「沒設定」一樣回 503 並說清楚是哪個檔案。
+    if not Path(config.GOOGLE_APPLICATION_CREDENTIALS).is_file():
+        raise NotConfiguredError(f"找不到 Google Vision 服務帳戶金鑰：{config.GOOGLE_APPLICATION_CREDENTIALS}")
 
     import cv2
     from google.cloud import vision
@@ -625,14 +708,26 @@ def run_bus_by_image(image_bgr, bus_no: str, stop_id: str = "", direction: int =
 
     budget = OcrBudget(MAX_OCR_CALLS)
 
-    roi = detect_led_roi(image_bgr)
-    if roi is None:
+    box = detect_led_box(image_bgr)
+    if box is None:
         print("⚠️ YOLO 未偵測到 LED 區域，改用整張圖片辨識")
         roi = image_bgr
+    else:
+        x1, y1, x2, y2, conf = box
+        print(f"✅ YOLO 找到 LED 看板（信心 {conf:.2f}）")
+        roi = image_bgr[y1:y2, x1:x2]
 
     gray = preprocess_bus_gray(roi)
     text = vision_text(gray, ["zh-TW", "en"], budget)
     matched = match_bus_no(text, bus_no)
+
+    if config.BUS_OCR_DEBUG_DIR:
+        try:
+            saved = save_debug_images(image_bgr, box, bus_no, text, matched, config.BUS_OCR_DEBUG_DIR)
+            print("🖼️ 已存辨識畫面：", saved)
+        except Exception as e:
+            # 存圖只是輔助，失敗不能讓使用者的確認公車跟著失敗。
+            print("⚠️ 存辨識畫面失敗：", e)
 
     return {
         "success": True,

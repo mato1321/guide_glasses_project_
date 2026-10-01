@@ -26,3 +26,6 @@ weights/
 # 本地測試留下的東西
 *.log
 /tmp/
+
+# /bus-ocr 的辨識畫面（BUS_OCR_DEBUG_DIR），可能拍到路人 —— 不進版控
+debug/

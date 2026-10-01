@@ -640,8 +640,11 @@ class AssistantViewModel @Inject constructor(
 
         viewModelScope.launch {
             when (val outcome = confirmBus.execute(plan, eta)) {
-                is ConfirmBusUseCase.Outcome.Recognized ->
-                    announce(outcome.result.message, AnnouncementPriority.USER_RESPONSE)
+                is ConfirmBusUseCase.Outcome.Recognized -> {
+                    // 後端的原始結果只記進 log，播報用 UseCase 組好的句子。
+                    Log.i(TAG, "確認公車：matched=${outcome.result.matched} 車頭文字「${outcome.result.recognizedText}」")
+                    announce(outcome.spoken, AnnouncementPriority.USER_RESPONSE)
+                }
 
                 ConfirmBusUseCase.Outcome.Unavailable ->
                     announce(MESSAGE_BUS_UNAVAILABLE, AnnouncementPriority.USER_RESPONSE)
