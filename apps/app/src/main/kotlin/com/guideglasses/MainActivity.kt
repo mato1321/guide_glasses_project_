@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.util.Log
 import androidx.core.content.ContextCompat
 import android.os.Bundle
+import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.ScrollView
@@ -23,14 +24,14 @@ import com.guideglasses.ai.asr.MicrophoneProbe
 import com.guideglasses.feature.assistant.AssistantViewModel
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
-import android.widget.Button
 
 /**
  * 助理主畫面。
  *
  * 設計取向和一般 App 相反：畫面資訊是給陪同者與低視力使用者看的，
- * 主要使用者靠的是語音。因此觸發區做成整片可點擊的大按鈕 ——
- * 看不見的人不必尋找按鈕在哪，點畫面任何地方都有效。
+ * 主要使用者靠的是語音。所以畫面上**沒有任何按鈕** —— 戴著眼鏡要先在觸控板上
+ * 滑到按鈕再點，看不見的人做不到。一切都用說的（見 `VoiceCommand`），
+ * 觸控板點一下是吵雜環境下的備用方式（[onKeyUp]），不必先滑到哪裡。
  */
 @AndroidEntryPoint
 class MainActivity : AppCompatActivity() {
@@ -94,9 +95,10 @@ class MainActivity : AppCompatActivity() {
         tvStatus = findViewById(R.id.tvStatus)
         tvLog = findViewById(R.id.tvLog)
         scrollLog = findViewById(R.id.scrollLog)
-        findViewById<Button>(R.id.btnTrigger).setOnClickListener { triggerAssistant() }
         observeState()
         registerDebugTrigger()
+        // 重建（例如權限對話框還開著時被旋轉）不要再問一次，對話框會疊起來。
+        if (savedInstanceState == null) requestMissingPermissions()
 
         // 眼鏡上 App 退到背景 2.4 秒就會被系統回收，而導盲的使用情境
         // 本來就是螢幕關著的。沒有這一行，整套系統在真實情境下等於不存在。
@@ -210,16 +212,55 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun triggerAssistant() {
-        val missing = REQUIRED_PERMISSIONS.filter { permission ->
-            ContextCompat.checkSelfPermission(this, permission) !=
-                PackageManager.PERMISSION_GRANTED
-        }
+        val missing = missingPermissions()
 
         if (missing.isEmpty()) {
             viewModel.onAssistantTriggered()
         } else {
             requestPermissions.launch(missing.toTypedArray())
         }
+    }
+
+    /**
+     * 缺權限就一開 App 馬上要。
+     *
+     * 以前只在按「說話」按鈕時才要，按鈕拿掉之後就沒有地方會要了 ——
+     * 新裝的 App 會安靜地什麼都聽不到。用 `adb install -g` 安裝時權限已經給了，
+     * 不會跳出任何對話框；否則系統的對話框仍要按一次「允許」。
+     */
+    private fun requestMissingPermissions() {
+        val missing = missingPermissions()
+        if (missing.isNotEmpty()) requestPermissions.launch(missing.toTypedArray())
+    }
+
+    private fun missingPermissions(): List<String> = REQUIRED_PERMISSIONS.filter { permission ->
+        ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED
+    }
+
+    /**
+     * 觸控板點一下＝開始聆聽（聆聽中再點一下＝取消），跟說「我要說話」一樣。
+     *
+     * 畫面上沒有能取得焦點的按鈕，按鍵事件直接落到這裡，不必先滑動選到哪裡。
+     * Rokid 觸控板點一下送出哪個按鍵代碼還沒在實機確認過，先接受常見的「確認」鍵，
+     * 並把每個按鍵記進 log，上機時對照（`adb logcat -s MainActivity`）。
+     */
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        Log.i(TAG, "按鍵：${KeyEvent.keyCodeToString(keyCode)}")
+        if (keyCode in TAP_KEYS) {
+            // 要追蹤才能在 onKeyUp 分辨「點一下」與被取消的按鍵。
+            event.startTracking()
+            return true
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        if (keyCode in TAP_KEYS && event.isTracking && !event.isCanceled) {
+            Log.i(TAG, "觸控板點一下 → 開始聆聽")
+            triggerAssistant()
+            return true
+        }
+        return super.onKeyUp(keyCode, event)
     }
 
     /**
@@ -272,6 +313,9 @@ class MainActivity : AppCompatActivity() {
         // 跟著 applicationId 走（com.guideglasses.cloudflare.DEBUG ⋯），見 registerDebugTrigger。
         const val DEBUG_ACTION = BuildConfig.APPLICATION_ID + ".DEBUG"
         const val DEBUG_TAG = "DebugTrigger"
+
+        /** 觸控板「點一下」可能送出的按鍵，見 [onKeyUp]。 */
+        val TAP_KEYS = setOf(KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER)
 
         val REQUIRED_PERMISSIONS = listOf(
             Manifest.permission.RECORD_AUDIO,

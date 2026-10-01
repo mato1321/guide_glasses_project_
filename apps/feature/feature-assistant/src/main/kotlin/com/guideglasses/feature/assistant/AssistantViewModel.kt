@@ -129,9 +129,9 @@ class AssistantViewModel @Inject constructor(
     private var lastReadText: String? = null
 
     /**
-     * 使用者觸發助理（點畫面、或按下眼鏡的 AI 實體鍵）。
+     * 使用者觸發助理：說「我要說話」（[VoiceCommand.START_LISTENING]），或點一下眼鏡觸控板。
      *
-     * 若正在聆聽則視為取消 —— 使用者按錯了要能反悔，
+     * 若正在聆聽則視為取消 —— 使用者點錯了要能反悔，
      * 而且不該逼他等到 ASR 逾時。
      */
     fun onAssistantTriggered() {
@@ -245,6 +245,16 @@ class AssistantViewModel @Inject constructor(
     }
 
     private fun onVoiceCommand(keyword: String) {
+        if (VoiceCommand.isStartListening(keyword)) {
+            Log.i(TAG, "語音指令：「$keyword」→ 開始聆聽")
+            // 提示音就是「可以說了」的信號 —— 看不見畫面的人沒有別的方式知道。
+            ackTone.play()
+            appendLog("🎤 $keyword")
+            // 跟以前按「說話」按鈕走同一條路：暫停指令監聽、開始語音辨識，辨識完自動恢復。
+            onAssistantTriggered()
+            return
+        }
+
         val intent = VoiceCommand.intentFor(keyword)
         if (intent == null) {
             // keywords.txt 加了詞卻忘了加對照時會走到這裡。

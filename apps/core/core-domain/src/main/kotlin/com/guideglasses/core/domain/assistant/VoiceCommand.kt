@@ -21,7 +21,7 @@ package com.guideglasses.core.domain.assistant
  * | 失敗點 | 喚醒沒中、辨識聽錯、片語沒對上 | 偵測沒中 |
  *
  * 開放式的輸入（要翻譯的整段內容、「帶我去哪裡」）仍然需要語音辨識，
- * 那時候再走原本那條路。
+ * 那時候再走原本那條路。進入那條路的方式是說 [START_LISTENING]。
  *
  * ### 關鍵詞怎麼加
  *
@@ -58,9 +58,20 @@ object VoiceCommand {
         "確認公車" to AssistantIntent.CONFIRM_BUS,
     )
 
-    /** 這個關鍵詞對應到哪個功能。認不得就回 null。 */
+    /**
+     * 進入聆聽：接下來說的整句話交給語音辨識（「帶我去台北車站」、跟助理聊天）。
+     *
+     * 以前只能按畫面上的「說話」按鈕 —— 戴著眼鏡要先在觸控板上滑到按鈕再點，
+     * 看不見的使用者根本做不到。它不是一個功能，而是「換一種方式聽」，
+     * 所以不放在 [MAPPING] 裡。四個音節：太短的詞關鍵詞偵測認不出來。
+     */
+    const val START_LISTENING = "我要說話"
+
+    /** 這個關鍵詞對應到哪個功能。認不得就回 null（[START_LISTENING] 也回 null，用 [isStartListening] 判斷）。 */
     fun intentFor(keyword: String): AssistantIntent? = MAPPING[keyword.trim()]
 
+    fun isStartListening(keyword: String): Boolean = keyword.trim() == START_LISTENING
+
     /** 目前支援的所有語音指令，供播報「你可以說⋯」使用。 */
-    val ALL: Set<String> = MAPPING.keys
+    val ALL: Set<String> = MAPPING.keys + START_LISTENING
 }

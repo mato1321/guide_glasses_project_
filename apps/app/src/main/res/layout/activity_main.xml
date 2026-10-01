@@ -1,10 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    整片畫面就是對話記錄。
+    整片畫面就是對話記錄，沒有任何按鈕。
 
-    原本有「說話」與「停止播報」兩個按鈕。語音指令改成常駐監聽之後，
-    按鈕就沒有存在的理由了 —— 使用者戴著眼鏡，本來就不會去點螢幕；
-    停止也改用語音（「停止播報」「不要說了」）。
+    以前有「說話」與「停止播報」兩個按鈕。戴著眼鏡要先在觸控板上滑到按鈕、
+    再點下去，看不見的使用者根本做不到。現在全部用語音：
+    - 功能直接講（「前面有什麼」「查公車路線」⋯）
+    - 開放式的話先說「我要說話」，聽到提示音再講（取代「說話」按鈕）
+    - 停止說「停止播報」「不要說了」
+    觸控板點一下也能開始聆聽，不必先滑到哪裡（MainActivity.onKeyUp）。
 
     畫面留給唯一有用的東西：**它聽到了什麼、回了什麼**。
     真正的使用者靠聽覺，這塊是給開發者與陪同者判斷
@@ -27,16 +30,6 @@
         android:textColor="#FFFFFF"
         android:textSize="18sp"
         android:textStyle="bold" />
-
-
-    <Button
-        android:id="@+id/btnTrigger"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:minHeight="56dp"
-        android:text="說話"
-        android:textSize="18sp" />
 
     <!--
         眼鏡螢幕只有 480×398，字級是在「看得到幾行」與「看得清楚」
