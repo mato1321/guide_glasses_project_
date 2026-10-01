@@ -459,9 +459,8 @@ class SherpaOfflineTtsAnnouncer(
      * 系統音效通常做到接近 0 dBFS，所以播報聽起來就是小一截 ——
      * 使用者回報的「比系統聲音小」不是錯覺。
      *
-     * 拉高音訊而不是叫使用者調音量，是因為導盲提示走
-     * `STREAM_ACCESSIBILITY`，那條串流的音量獨立於媒體音量，
-     * 而且眼鏡上預設只有 8/15 —— 不能假設使用者會去調它。
+     * 拉高音訊而不是叫使用者調音量：不能假設使用者會去調它。
+     * （播報走媒體音量，App 啟動時也會開到最大，見 [createTrack] 的 usage。）
      *
      * 用固定增益而非逐句正規化：串流合成拿不到整句峰值（樣本一塊一塊來），
      * 逐句算會讓同一句話「現場合成」與「快取播放」不一樣大聲。
@@ -496,9 +495,10 @@ class SherpaOfflineTtsAnnouncer(
         return AudioTrack.Builder()
             .setAudioAttributes(
                 AudioAttributes.Builder()
-                    // 與 AndroidTtsAnnouncer 一致：走無障礙通道，
-                    // 使用者把媒體音量調低時導盲提示仍然聽得見。
-                    .setUsage(AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY)
+                    // 導航語音 = 媒體音量，App 啟動時會開到最大（app 模組的 AnnouncementVolume）。
+                    // 以前走無障礙通道（USAGE_ASSISTANCE_ACCESSIBILITY），但眼鏡上那條串流
+                    // 固定 8/15、只有無障礙服務能調，播報最大就只有一半音量（2026-09-30 實測）。
+                    .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                     .build(),
             )

@@ -271,6 +271,8 @@ class MainActivity : AppCompatActivity() {
      */
     override fun onStart() {
         super.onStart()
+        // 使用者可能按音量鍵調小過；回到畫面就拉回最大，見 AnnouncementVolume。
+        AnnouncementVolume.maximize(this)
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
             PackageManager.PERMISSION_GRANTED
         ) {

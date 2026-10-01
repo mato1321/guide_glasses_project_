@@ -46,6 +46,9 @@ class GuideGlassesApplication : Application(), CameraXConfig.Provider {
     override fun onCreate() {
         super.onCreate()
 
+        // 前景服務被系統重啟時也會經過這裡，不只是使用者打開畫面。
+        AnnouncementVolume.maximize(this)
+
         // 別的版本接管相機與麥克風時，這一版讓出來。畫面的關閉由 MainActivity
         // 收 SensorHandoff.releaseRequests 處理，這裡只管不依賴畫面的部分。
         SensorHandoff.register(this) {

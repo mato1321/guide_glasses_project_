@@ -202,11 +202,11 @@ class AndroidTtsAnnouncer(
         engine.setSpeechRate(1.0f)
         engine.setPitch(1.0f)
 
-        // 走無障礙音訊通道，這樣即使使用者把媒體音量調低，
-        // 導盲提示仍然聽得見。
+        // 與 SherpaOfflineTtsAnnouncer 一致走導航語音（媒體音量，App 啟動時開到最大）。
+        // 無障礙通道在 Rokid 眼鏡上固定 8/15 又改不動，播報只有一半音量。
         engine.setAudioAttributes(
             AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY)
+                .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                 .build(),
         )

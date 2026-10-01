@@ -17,10 +17,11 @@ import android.util.Log
  *
  * 語音留給真正有內容要傳達的時候。
  *
- * ### 為什麼走無障礙音訊通道
+ * ### 為什麼走媒體音量
  *
- * 與所有導盲播報一致（`USAGE_ASSISTANCE_ACCESSIBILITY`）。使用者把媒體
- * 音量調低時，提示音仍然聽得見 —— 聽不到提示音就等於不知道它在聽了。
+ * 與所有導盲播報一致：導航語音（`USAGE_ASSISTANCE_NAVIGATION_GUIDANCE`）對應的
+ * 就是媒體串流，App 啟動時會把它開到最大。以前走無障礙串流，但眼鏡上那條
+ * 固定 8/15 又改不動 —— 聽不清楚提示音就等於不知道它在聽了。
  */
 internal class AckTone {
 
@@ -37,7 +38,7 @@ internal class AckTone {
     }
 
     private fun create(): ToneGenerator? = runCatching {
-        ToneGenerator(AudioManager.STREAM_ACCESSIBILITY, VOLUME)
+        ToneGenerator(AudioManager.STREAM_MUSIC, VOLUME)
     }.onFailure { error ->
         // 沒有提示音不影響功能，只是使用者少一個「可以講了」的訊號。
         Log.w(TAG, "提示音不可用", error)
