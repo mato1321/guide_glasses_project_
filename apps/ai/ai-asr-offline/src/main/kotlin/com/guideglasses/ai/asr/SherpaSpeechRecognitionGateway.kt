@@ -4,9 +4,11 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
+import android.icu.text.Transliterator
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.os.Build
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.guideglasses.core.domain.AppError
@@ -85,9 +87,24 @@ class SherpaSpeechRecognitionGateway(
 
     private val appContext = context.applicationContext
 
-    /** 模型很大（26MB），只在第一次真的要聽的時候載入。 */
+    /** 模型很大（26MB），由 [preload] 在背景預先載入，或第一次真的要聽的時候載入。 */
     @Volatile
     private var recognizer: OnlineRecognizer? = null
+
+    /**
+     * 簡體 → 繁體。模型輸出的是簡體字，實測辨識結果是「我要去中证纪念堂」——
+     * 畫面上的對話記錄與送給 LLM 的文字都該是繁體。用 Android 內建的 ICU（API 29+），
+     * 不必另外打包轉換表；拿不到轉換器就維持原文。
+     */
+    private val hansToHant: Transliterator? by lazy {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            null
+        } else {
+            runCatching { Transliterator.getInstance("Hans-Hant") }
+                .onFailure { Log.w(TAG, "沒有簡轉繁的轉換器，辨識結果維持原文", it) }
+                .getOrNull()
+        }
+    }
 
     @Volatile
     private var modelFailed = false
@@ -169,7 +186,7 @@ class SherpaSpeechRecognitionGateway(
                 stream.acceptWaveform(chunk, SAMPLE_RATE)
                 while (engine.isReady(stream)) engine.decode(stream)
 
-                val text = engine.getResult(stream).text.trim()
+                val text = traditional(engine.getResult(stream).text.trim())
                 if (text.isNotEmpty() && text != lastPartial) {
                     if (!heardSpeech) {
                         heardSpeech = true
@@ -233,6 +250,28 @@ class SherpaSpeechRecognitionGateway(
     override fun cancel() {
         cancelled.set(true)
     }
+
+    /**
+     * 在背景預先載入模型。
+     *
+     * 以前第一次說「我要說話」才載入，眼鏡實測要 6.4 秒 —— 提示音響完使用者就開口，
+     * 那 6 秒講的話全部沒收到，辨識只抓到後半句。
+     *
+     * 延後 [PRELOAD_DELAY_MILLIS] 再用最低優先權載入：App 剛啟動時中文 TTS 也在載，
+     * 讓第一句播報先。載入中有人要聽的話，[ensureRecognizer] 會等它載完而不是再載一份。
+     */
+    fun preload() {
+        Thread({
+            Thread.sleep(PRELOAD_DELAY_MILLIS)
+            ensureRecognizer()
+        }, "offline-asr-loader").apply {
+            isDaemon = true
+            priority = Thread.MIN_PRIORITY
+        }.start()
+    }
+
+    private fun traditional(text: String): String =
+        hansToHant?.let { converter -> runCatching { converter.transliterate(text) }.getOrNull() } ?: text
 
     override fun shutdown() {
         cancel()
@@ -377,6 +416,9 @@ class SherpaSpeechRecognitionGateway(
     private companion object {
         const val TAG = "OfflineAsr"
         const val ASSET_DIR = "zh"
+
+        /** App 啟動後多久才開始預載，見 [preload]。 */
+        const val PRELOAD_DELAY_MILLIS = 5_000L
 
         /** 模型是用 16kHz 訓練的，不能改。 */
         const val SAMPLE_RATE = 16_000

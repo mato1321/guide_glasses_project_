@@ -170,7 +170,8 @@ object AssistantModule {
         Log.i("SpeechGateway", "系統沒有語音辨識服務，改用 APK 內建的離線引擎")
         // 把播報狀態接進去 —— 眼鏡的喇叭與麥克風只隔幾公分，
         // 不擋掉播報期間的音訊，助理會聽到自己講的指令詞而自問自答。
-        return SherpaSpeechRecognitionGateway(context) { announcer.isSpeaking }
+        // 預載：說「我要說話」時模型已經在記憶體裡，不必等 6 秒，見 preload。
+        return SherpaSpeechRecognitionGateway(context) { announcer.isSpeaking }.also { it.preload() }
     }
 
     /**

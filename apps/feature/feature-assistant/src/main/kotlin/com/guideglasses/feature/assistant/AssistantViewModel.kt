@@ -158,9 +158,11 @@ class AssistantViewModel @Inject constructor(
 
             speechGateway.listen().collect { event ->
                 when (event) {
-                    SpeechEvent.ReadyForSpeech,
-                    SpeechEvent.SpeechStarted,
-                    -> Unit
+                    // 提示音在「真的開始聽」的這一刻才響，不是偵測到「我要說話」就響 ——
+                    // 眼鏡實測模型第一次載入要 6.4 秒，提示音先響的話使用者開口時根本還沒在聽。
+                    SpeechEvent.ReadyForSpeech -> ackTone.play()
+
+                    SpeechEvent.SpeechStarted -> Unit
 
                     is SpeechEvent.PartialResult ->
                         _state.update { it.copy(transcript = event.text) }
@@ -247,8 +249,7 @@ class AssistantViewModel @Inject constructor(
     private fun onVoiceCommand(keyword: String) {
         if (VoiceCommand.isStartListening(keyword)) {
             Log.i(TAG, "語音指令：「$keyword」→ 開始聆聽")
-            // 提示音就是「可以說了」的信號 —— 看不見畫面的人沒有別的方式知道。
-            ackTone.play()
+            // 這裡不響提示音：「可以說了」的提示音在辨識真的開始聽時才響（ReadyForSpeech）。
             appendLog("🎤 $keyword")
             // 跟以前按「說話」按鈕走同一條路：暫停指令監聽、開始語音辨識，辨識完自動恢復。
             onAssistantTriggered()
