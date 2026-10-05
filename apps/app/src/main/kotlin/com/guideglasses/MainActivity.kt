@@ -21,8 +21,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.guideglasses.ai.asr.MicrophoneProbe
+import com.guideglasses.core.domain.backend.BackendUrl
+import com.guideglasses.di.BackendUrlOverride
 import com.guideglasses.feature.assistant.AssistantViewModel
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 import kotlinx.coroutines.launch
 
 /**
@@ -37,6 +40,10 @@ import kotlinx.coroutines.launch
 class MainActivity : AppCompatActivity() {
 
     private val viewModel: AssistantViewModel by viewModels()
+
+    /** 執行期的後端網址，debug 廣播 SET_BACKEND 會改它，見 [registerDebugTrigger]。 */
+    @Inject
+    lateinit var backendUrl: BackendUrlOverride
 
     private lateinit var tvStatus: TextView
     private lateinit var tvLog: TextView
@@ -142,6 +149,7 @@ class MainActivity : AppCompatActivity() {
      * ```bash
      * adb shell am broadcast -a com.guideglasses.cloudflare.DEBUG --es cmd READ_TEXT
      * adb shell am broadcast -a com.guideglasses.cloudflare.DEBUG --es cmd TRANSLATE --es target_language ja
+     * adb shell am broadcast -a com.guideglasses.cloudflare.DEBUG --es cmd SET_BACKEND --es url https://xxxx.trycloudflare.com
      * ```
      *
      * ⚠️ **相機相關的指令要先讓 App 離開 idle**，否則 Android 會擋：
@@ -183,6 +191,21 @@ class MainActivity : AppCompatActivity() {
                      * 是很常見的事，只能一個一個試。測試時要持續說話。
                      */
                     "MIC_TEST" -> Thread { MicrophoneProbe.runAll() }.start()
+
+                    /*
+                     * 換後端網址（Cloudflare 通道重開了），不必重新建置，見 BackendUrlOverride。
+                     * 連得到手機直連的話在手機 App 上改就好，眼鏡會自己同步；這個給連不到手機時用。
+                     * `--es url reset` 改回建置時的網址。
+                     */
+                    "SET_BACKEND" -> {
+                        val url = intent.getStringExtra("url").orEmpty()
+                        when {
+                            url == "reset" -> backendUrl.reset()
+                            BackendUrl.normalize(url) == null -> Log.w(DEBUG_TAG, "SET_BACKEND：網址格式不對「$url」")
+                            else -> backendUrl.set(url)
+                        }
+                        Log.i(DEBUG_TAG, "後端網址：${backendUrl.effective()}")
+                    }
 
                     else -> {
                         val args = buildMap {

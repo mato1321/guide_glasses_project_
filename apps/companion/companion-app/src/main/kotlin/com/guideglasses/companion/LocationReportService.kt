@@ -88,8 +88,17 @@ class LocationReportService : Service() {
      * 眼鏡直連用的區網伺服器，見 [LocalLocationServer]。埠依 flavor 不同
      * （Cloudflare 8765、AWS 8766），兩版同時開在同一支手機上也不會搶。
      */
-    private val localServer = LocalLocationServer(BuildConfig.GLASSES_DIRECT_PORT, BuildConfig.API_KEY) { latestFix }
+    private val localServer = LocalLocationServer(
+        port = BuildConfig.GLASSES_DIRECT_PORT,
+        apiKey = BuildConfig.API_KEY,
+        latestFix = { latestFix },
+        // 眼鏡直連時順便告訴眼鏡後端網址，眼鏡就跟著換（見 BackendUrlStore）。
+        backendUrl = { backend.effective() },
+    )
     private var localServerStarted = false
+
+    /** 後端網址：畫面上設定過的，否則建置時的。每次送出都重新讀，改了不必重開服務。 */
+    private val backend by lazy { BackendUrlStore(this) }
 
     private val callback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
@@ -100,7 +109,7 @@ class LocationReportService : Service() {
                 accuracyM = location.accuracy,
                 elapsedRealtimeNanos = location.elapsedRealtimeNanos,
             )
-            if (BuildConfig.BUS_API_ENDPOINT.isBlank()) {
+            if (backend.effective().isBlank()) {
                 statusText.value = "未設定後端，只提供眼鏡直連\n${directStatus()}"
             } else {
                 send(location)
@@ -200,7 +209,7 @@ class LocationReportService : Service() {
             put("fix_time_ms", location.time)
         }
         val request = Request.Builder()
-            .url("${BuildConfig.BUS_API_ENDPOINT}/update-location")
+            .url("${backend.effective()}/update-location")
             // 後端除了 /health 一律驗證共用金鑰，沒帶會回 401（見 backend/app/main.py）。
             .apply { if (BuildConfig.API_KEY.isNotBlank()) header("X-Api-Key", BuildConfig.API_KEY) }
             .post(payload.toString().toRequestBody(JSON_MEDIA_TYPE))

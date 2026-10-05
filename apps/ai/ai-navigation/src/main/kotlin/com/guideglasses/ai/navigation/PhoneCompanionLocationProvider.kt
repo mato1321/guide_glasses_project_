@@ -69,6 +69,12 @@ class PhoneCompanionLocationProvider(
     private val directClient: OkHttpClient = directDefaultClient(),
     /** 定位來源改變時通知（給 log 用），例如「手機直連」→「經由後端」。 */
     private val onSourceChanged: (String) -> Unit = {},
+    /**
+     * 手機直連的回應附上了手機目前用的後端網址（`backend_url`）。每次直連成功都會呼叫，
+     * 由呼叫端判斷有沒有變（見 app 模組的 BackendUrlOverride）—— 通道網址換了只要在
+     * 手機上改一次，眼鏡就跟著換。只採用手機直連的回應，經由後端的不採用。
+     */
+    private val onBackendUrl: (String) -> Unit = {},
     private val monotonicMillis: () -> Long = { System.nanoTime() / 1_000_000 },
 ) : LocationProvider {
 
@@ -108,6 +114,7 @@ class PhoneCompanionLocationProvider(
         return when (val result = fetchFrom(base, directClient)) {
             is Fetch.Reached -> {
                 directFailures = 0
+                result.backendUrl?.let(onBackendUrl)
                 result.coordinate
             }
             Fetch.Unreachable -> {
@@ -126,7 +133,7 @@ class PhoneCompanionLocationProvider(
             httpClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) return Fetch.Unreachable
                 val payload = response.body?.string() ?: return Fetch.Unreachable
-                Fetch.Reached(parseLocation(payload, maxAgeMillis))
+                Fetch.Reached(parseLocation(payload, maxAgeMillis), parseBackendUrl(payload))
             }
         } catch (e: IOException) {
             Fetch.Unreachable
@@ -140,7 +147,7 @@ class PhoneCompanionLocationProvider(
 
     /** 一次查詢的結果：連得上（座標可能因為太舊而是 null），或連不上。 */
     private sealed interface Fetch {
-        data class Reached(val coordinate: Coordinate?) : Fetch
+        data class Reached(val coordinate: Coordinate?, val backendUrl: String? = null) : Fetch
         data object Unreachable : Fetch
     }
 
@@ -151,6 +158,8 @@ class PhoneCompanionLocationProvider(
         val lng: Double = 0.0,
         @SerialName("accuracy_m") val accuracyM: Double? = null,
         @SerialName("age_ms") val ageMs: Long? = null,
+        /** 只有手機直連的回應有，見 [onBackendUrl]。 */
+        @SerialName("backend_url") val backendUrl: String? = null,
     )
 
     companion object {
@@ -219,5 +228,10 @@ class PhoneCompanionLocationProvider(
                 timestampMillis = now() - (ageMs ?: 0L),
             )
         }
+
+        /** 回應裡的 `backend_url`；沒有或格式不對回 null（驗證交給 [onBackendUrl] 的接收端）。 */
+        internal fun parseBackendUrl(payload: String): String? =
+            runCatching { json.decodeFromString<LocationResponse>(payload) }.getOrNull()
+                ?.backendUrl?.takeIf { it.isNotBlank() }
     }
 }

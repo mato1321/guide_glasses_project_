@@ -29,6 +29,8 @@ internal class LocalLocationServer(
     private val port: Int,
     private val apiKey: String,
     private val latestFix: () -> LocationHttpResponder.Fix?,
+    /** 手機目前用的後端網址，一併告訴眼鏡（見 [BackendUrlStore]）。 */
+    private val backendUrl: () -> String? = { null },
 ) {
 
     /** 成功回給眼鏡幾次座標，顯示在畫面上讓人知道直連有沒有在運作。 */
@@ -93,6 +95,7 @@ internal class LocalLocationServer(
             expectedKey = apiKey,
             fix = latestFix(),
             nowElapsedNanos = SystemClock.elapsedRealtimeNanos(),
+            backendUrl = backendUrl(),
         )
         if (reply.status == 200 && requestLine.contains("/current-location")) servedCount.incrementAndGet()
 

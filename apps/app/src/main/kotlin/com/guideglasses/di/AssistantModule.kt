@@ -20,6 +20,7 @@ import com.guideglasses.glasses.sensors.AndroidMotionSensorGateway
 import com.guideglasses.core.common.DispatcherProvider
 import com.guideglasses.core.domain.announce.Announcement
 import com.guideglasses.di.ApiKeyInterceptor.Companion.withApiKey
+import com.guideglasses.di.BackendRedirectInterceptor.Companion.withBackendRedirect
 import com.guideglasses.core.domain.announce.AnnouncementManager
 import com.guideglasses.core.domain.announce.AnnouncementPriority
 import com.guideglasses.core.domain.announce.Announcer
@@ -234,12 +235,12 @@ object AssistantModule {
      */
     @Provides
     @Singleton
-    fun provideLlmGateway(): LlmIntentGateway {
+    fun provideLlmGateway(backendUrl: BackendUrlOverride): LlmIntentGateway {
         val endpoint = BuildConfig.LLM_ENDPOINT
         return if (endpoint.isBlank()) {
             OfflineLlmIntentGateway()
         } else {
-            RemoteLlmIntentGateway(endpoint, RemoteLlmIntentGateway.defaultClient().withApiKey(BuildConfig.API_KEY))
+            RemoteLlmIntentGateway(endpoint, RemoteLlmIntentGateway.defaultClient().withApiKey(BuildConfig.API_KEY).withBackendRedirect(backendUrl))
         }
     }
 
@@ -420,12 +421,13 @@ object AssistantModule {
     fun provideFaceIdentification(
         embedder: FaceEmbedder,
         repository: PersonRepository,
+        backendUrl: BackendUrlOverride,
     ): FaceIdentificationStrategy = CompositeFaceIdentification(
         listOfNotNull(
             OnDeviceFaceIdentification(embedder, repository),
             BuildConfig.FACE_ENDPOINT
                 .takeIf { it.isNotBlank() }
-                ?.let { RemoteFaceIdentification(it, RemoteFaceIdentification.defaultClient().withApiKey(BuildConfig.API_KEY)) },
+                ?.let { RemoteFaceIdentification(it, RemoteFaceIdentification.defaultClient().withApiKey(BuildConfig.API_KEY).withBackendRedirect(backendUrl)) },
         ),
     )
 
@@ -520,7 +522,7 @@ object AssistantModule {
      */
     @Provides
     @Singleton
-    fun provideLocationProvider(@ApplicationContext context: Context): LocationProvider {
+    fun provideLocationProvider(@ApplicationContext context: Context, backendUrl: BackendUrlOverride): LocationProvider {
         val onDevice = GlassesGpsLocationProvider(context)
         if (onDevice.isAvailable) return onDevice
 
@@ -528,7 +530,7 @@ object AssistantModule {
         val hotspot = PhoneHotspotAddress(context)
         return PhoneCompanionLocationProvider(
             endpoint = BuildConfig.BUS_API_ENDPOINT,
-            client = PhoneCompanionLocationProvider.defaultClient().withApiKey(BuildConfig.API_KEY),
+            client = PhoneCompanionLocationProvider.defaultClient().withApiKey(BuildConfig.API_KEY).withBackendRedirect(backendUrl),
             directEndpoint = {
                 BuildConfig.PHONE_LOCATION_ENDPOINT.ifBlank {
                     hotspot.gatewayHost()?.let { "http://$it:${BuildConfig.PHONE_DIRECT_PORT}" }.orEmpty()
@@ -537,6 +539,8 @@ object AssistantModule {
             // 手機的直連伺服器與後端用同一把金鑰。
             directClient = PhoneCompanionLocationProvider.directDefaultClient().withApiKey(BuildConfig.API_KEY),
             onSourceChanged = { source -> Log.i("PhoneLocation", "定位來源：$source") },
+            // 手機上改了後端網址（通道換了），眼鏡直連時跟著換，見 BackendUrlOverride。
+            onBackendUrl = { url -> if (backendUrl.set(url)) Log.i("BackendUrl", "已從手機同步後端網址：$url") },
         )
     }
 
@@ -546,16 +550,16 @@ object AssistantModule {
      */
     @Provides
     @Singleton
-    fun provideBusPlanningGateway(): BusPlanningGateway =
-        HttpBusPlanningGateway(BuildConfig.BUS_API_ENDPOINT, HttpBusPlanningGateway.defaultClient().withApiKey(BuildConfig.API_KEY))
+    fun provideBusPlanningGateway(backendUrl: BackendUrlOverride): BusPlanningGateway =
+        HttpBusPlanningGateway(BuildConfig.BUS_API_ENDPOINT, HttpBusPlanningGateway.defaultClient().withApiKey(BuildConfig.API_KEY).withBackendRedirect(backendUrl))
 
     /** 公車車頭 OCR 確認，走同一個後端的 `/bus-ocr`。 */
     @Provides
     @Singleton
-    fun provideBusOcrGateway(): BusOcrGateway =
+    fun provideBusOcrGateway(backendUrl: BackendUrlOverride): BusOcrGateway =
         HttpBusOcrGateway(
             "${BuildConfig.BUS_API_ENDPOINT}/bus-ocr",
-            HttpBusOcrGateway.defaultClient().withApiKey(BuildConfig.API_KEY),
+            HttpBusOcrGateway.defaultClient().withApiKey(BuildConfig.API_KEY).withBackendRedirect(backendUrl),
         )
 
     @Provides
@@ -589,8 +593,8 @@ object AssistantModule {
      */
     @Provides
     @Singleton
-    fun provideWalkingRouteGateway(): WalkingRouteGateway =
-        HttpWalkingRouteGateway(BuildConfig.BUS_API_ENDPOINT, HttpWalkingRouteGateway.defaultClient().withApiKey(BuildConfig.API_KEY))
+    fun provideWalkingRouteGateway(backendUrl: BackendUrlOverride): WalkingRouteGateway =
+        HttpWalkingRouteGateway(BuildConfig.BUS_API_ENDPOINT, HttpWalkingRouteGateway.defaultClient().withApiKey(BuildConfig.API_KEY).withBackendRedirect(backendUrl))
 
     @Provides
     @Singleton
@@ -614,4 +618,13 @@ object AssistantModule {
     fun provideMotionSensorGateway(
         @ApplicationContext context: Context,
     ): MotionSensorGateway = AndroidMotionSensorGateway(context)
+
+    /**
+     * 執行期換後端網址（見 BackendUrlOverride）。所有打後端的閘道共用同一份，
+     * 從手機同步或用 adb 改了之後，下一個請求就送到新網址，不必重新建置。
+     */
+    @Provides
+    @Singleton
+    fun provideBackendUrlOverride(@ApplicationContext context: Context): BackendUrlOverride =
+        BackendUrlOverride(context, BuildConfig.BUS_API_ENDPOINT)
 }

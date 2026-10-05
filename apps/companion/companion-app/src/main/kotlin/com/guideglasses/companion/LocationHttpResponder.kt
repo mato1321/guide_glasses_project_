@@ -24,6 +24,8 @@ internal object LocationHttpResponder {
      * @param apiKeyHeader 請求帶的 `X-Api-Key`，沒帶是 null。
      * @param expectedKey 這支手機編進 APK 的金鑰；空字串代表不驗證。
      * @param nowElapsedNanos 現在的 `SystemClock.elapsedRealtimeNanos()`，用來算 `age_ms`。
+     * @param backendUrl 手機目前用的後端網址，放進 `backend_url` 讓眼鏡跟著換（見 [BackendUrlStore]）；
+     *   空的就不放。後端的 `/current-location` 沒有這個欄位，眼鏡只從手機直連的回應讀它。
      */
     fun respond(
         method: String,
@@ -32,6 +34,7 @@ internal object LocationHttpResponder {
         expectedKey: String,
         fix: Fix?,
         nowElapsedNanos: Long,
+        backendUrl: String? = null,
     ): Reply {
         val route = path.substringBefore('?')
         if (method != "GET") return Reply(405, """{"success":false,"message":"只支援 GET"}""")
@@ -46,7 +49,7 @@ internal object LocationHttpResponder {
         }
 
         if (fix == null) {
-            return Reply(200, """{"success":true,"lat":0.0,"lng":0.0,"accuracy_m":null,"age_ms":null}""")
+            return Reply(200, withBackendUrl("""{"success":true,"lat":0.0,"lng":0.0,"accuracy_m":null,"age_ms":null}""", backendUrl))
         }
         val ageMs = ((nowElapsedNanos - fix.elapsedRealtimeNanos) / 1_000_000).coerceAtLeast(0)
         // 手寫 JSON：只有數字，不必為此在 JVM 測試裡拉 org.json（Android stub 在單元測試會丟例外）。
@@ -55,7 +58,14 @@ internal object LocationHttpResponder {
             """{"success":true,"lat":%.7f,"lng":%.7f,"accuracy_m":%.1f,"age_ms":%d}""",
             fix.lat, fix.lng, fix.accuracyM, ageMs,
         )
-        return Reply(200, body)
+        return Reply(200, withBackendUrl(body, backendUrl))
+    }
+
+    /** 在 JSON 物件最後補上 `backend_url`。網址經過 BackendUrl.normalize，仍保險地跳脫引號與反斜線。 */
+    private fun withBackendUrl(json: String, backendUrl: String?): String {
+        if (backendUrl.isNullOrBlank()) return json
+        val escaped = backendUrl.replace("\\", "\\\\").replace("\"", "\\\"")
+        return json.dropLast(1) + ""","backend_url":"$escaped"}"""
     }
 
     /** 固定時間比較，避免從回應時間逐字元猜出金鑰。 */

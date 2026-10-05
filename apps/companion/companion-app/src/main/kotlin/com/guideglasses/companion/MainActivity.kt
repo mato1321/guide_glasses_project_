@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.widget.Button
+import android.widget.EditText
 import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
@@ -27,12 +28,16 @@ import kotlinx.coroutines.launch
  * 講話、互相蓋台。
  *
  * 實際回報在 [LocationReportService]（定位型前景服務），這個畫面只負責
- * 要權限、開始／停止、顯示狀態 —— 手機放進口袋、螢幕關掉之後回報仍會繼續。
+ * 要權限、開始／停止、顯示狀態、設定後端網址 —— 手機放進口袋、螢幕關掉之後回報仍會繼續。
  */
 class MainActivity : ComponentActivity() {
 
     private lateinit var statusView: TextView
     private lateinit var toggleButton: Button
+    private lateinit var backendInput: EditText
+    private lateinit var backendStatus: TextView
+
+    private val backend by lazy { BackendUrlStore(this) }
 
     /**
      * 定位與通知一起要。通知權限（Android 13+）被拒絕時服務照樣會跑，
@@ -54,13 +59,24 @@ class MainActivity : ComponentActivity() {
         setContentView(R.layout.activity_main)
         statusView = findViewById(R.id.statusView)
         toggleButton = findViewById(R.id.toggleButton)
+        backendInput = findViewById(R.id.backendInput)
+        backendStatus = findViewById(R.id.backendStatus)
 
         // 沒有後端位址也能用：眼鏡可以透過熱點直接跟手機拿位置（LocalLocationServer）。
         // 只是公車、步行路線這些要後端的功能不能用，所以只提醒、不擋。
-        if (BuildConfig.BUS_API_ENDPOINT.isBlank()) {
-            statusView.text = "尚未設定後端位址，只能提供眼鏡直連\n" +
-                "（要用公車與路線功能，請在 local.properties 加入 guideglasses.${BuildConfig.FLAVOR}.busApiEndpoint）"
+        if (backend.effective().isBlank()) {
+            statusView.text = "尚未設定後端位址，只能提供眼鏡直連\n（要用公車與路線功能，請在下方貼上後端網址）"
         }
+
+        findViewById<Button>(R.id.backendSave).setOnClickListener { saveBackend(backendInput.text.toString()) }
+        findViewById<Button>(R.id.backendReset).setOnClickListener {
+            backend.reset()
+            showBackend("已還原為內建網址")
+        }
+        showBackend(null)
+        // debug 版也能用 adb 設定：MIUI 擋 adb 輸入文字，只能從啟動參數帶進來。
+        // 正式版不收 —— 不然手機上任何 App 都能把位置改送到別的伺服器。
+        if (BuildConfig.DEBUG) intent.getStringExtra(EXTRA_BACKEND_URL)?.let(::saveBackend)
 
         toggleButton.setOnClickListener {
             if (LocationReportService.isRunning.value) {
@@ -73,6 +89,20 @@ class MainActivity : ComponentActivity() {
 
         // 打開 App 就開始回報，跟以前一樣 —— 使用者多半看不到畫面，不該要他再按一次。
         if (!LocationReportService.isRunning.value) startReporting()
+    }
+
+    private fun saveBackend(raw: String) {
+        if (backend.save(raw) == null) {
+            backendStatus.text = "網址格式不對，要像 https://xxxx.trycloudflare.com"
+            return
+        }
+        showBackend("已儲存。下一筆位置就會送到這裡；眼鏡直連時會自動跟著換")
+    }
+
+    private fun showBackend(message: String?) {
+        val current = backend.effective()
+        backendInput.setText(current)
+        backendStatus.text = listOfNotNull(message, "目前使用：${current.ifBlank { "（未設定）" }}").joinToString("\n")
     }
 
     private fun hasPermission(permission: String): Boolean =
@@ -105,5 +135,13 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    companion object {
+        /**
+         * debug 版用 adb 設定後端網址：
+         * `adb shell am start -n com.guideglasses.companion.cloudflare/com.guideglasses.companion.MainActivity --es backend_url https://xxxx.trycloudflare.com`
+         */
+        const val EXTRA_BACKEND_URL = "backend_url"
     }
 }

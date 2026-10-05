@@ -99,6 +99,34 @@ class PhoneDirectLocationTest {
     }
 
     @Test
+    fun `手機直連附上的後端網址會交給呼叫端，後端轉傳的不採用`() {
+        val urls = mutableListOf<String>()
+        phone.enqueue(
+            MockResponse().setBody(
+                """{"success":true,"lat":25.08,"lng":121.56,"accuracy_m":10.0,"age_ms":100,"backend_url":"https://new.trycloudflare.com"}""",
+            ),
+        )
+        backend.enqueue(
+            MockResponse().setBody(
+                """{"success":true,"lat":25.09,"lng":121.56,"accuracy_m":10.0,"age_ms":100,"backend_url":"https://evil.example"}""",
+            ),
+        )
+        val withUrl = { directBase: String? ->
+            PhoneCompanionLocationProvider(
+                endpoint = backend.url("/").toString().trimEnd('/'),
+                ioDispatcher = Dispatchers.IO,
+                directEndpoint = { directBase },
+                onBackendUrl = { urls += it },
+                monotonicMillis = { clock },
+            )
+        }
+
+        assertThat(withUrl(phone.url("/").toString().trimEnd('/')).next().latitude).isEqualTo(25.08)
+        assertThat(withUrl(null).next().latitude).isEqualTo(25.09)
+        assertThat(urls).containsExactly("https://new.trycloudflare.com")
+    }
+
+    @Test
     fun `沒有手機位址（不是連手機熱點）時只問後端`() {
         backend.enqueue(location(lat = 25.06, ageMs = 500))
 

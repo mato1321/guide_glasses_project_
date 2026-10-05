@@ -129,6 +129,8 @@ kotlin {
 }
 
 dependencies {
+    // 後端網址的正規化與「重新建置後舊設定作廢」的判斷，眼鏡與手機共用（core/domain/backend）。
+    implementation(project(":core:core-domain"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity)
     // 畫面觀察 LocationReportService 的狀態（StateFlow + repeatOnLifecycle）。

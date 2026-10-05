@@ -4,11 +4,13 @@
 家中 GPU 電腦上的 FastAPI 公開成固定網址 `https://api.<你的網域>`：
 
 - 電腦上的 `cloudflared` **主動往外**連 Cloudflare，家用路由器不用開任何埠，也不怕浮動 IP
-- 網址固定 —— 後端位址是編譯進 APK 的，換網址就要重新建置安裝
+- 網址固定 —— 建置時寫進 APK 的網址一直有效，不必另外設定
 - 自動 HTTPS
 
 **不要用 Quick Tunnel（`trycloudflare.com`）當正式用途**：每次執行網址都會變，
 Cloudflare 官方也明說只供測試。之前 portable 版就是用它，網址失效後 App 整個連不到。
+還沒有網域、只能先用 Quick Tunnel 測試的話，網址變了不必重新建置，見下方
+「Quick Tunnel 換網址」。
 
 ## 前置
 
@@ -66,6 +68,31 @@ guideglasses.cloudflare.apiKey=<與 backend/.env 的 GUIDEGLASSES_API_KEY 相同
 
 重新建置並安裝眼鏡端（`:app:assembleCloudflareDebug`）與手機端
 （`:companion:companion-app:assembleCloudflareDebug`）。走 HTTPS 之後就不再需要 `adb reverse`。
+
+## Quick Tunnel 換網址（不必重新建置）
+
+`cloudflared tunnel --url http://localhost:8001` 每次重開都會印出新的
+`https://xxxx.trycloudflare.com`。兩個 App 都能在執行期換網址
+（`core/domain/backend/BackendUrl`），建置時的網址只是預設值：
+
+1. **手機**：打開「導盲定位 CF」，在「後端網址」貼上新網址 →「儲存網址」。
+   下一筆位置就送到新網址
+2. **眼鏡**：
+   - 連著手機熱點（手機直連可用）時**什麼都不用做**：手機回位置時會附上它的後端網址，
+     眼鏡一秒內就跟著換（log：`已從手機同步後端網址`）
+   - 連不到手機直連（例如兩支都連在別人的熱點上）時用 adb：
+     ```
+     adb shell am broadcast -a com.guideglasses.cloudflare.DEBUG --es cmd SET_BACKEND --es url https://xxxx.trycloudflare.com
+     ```
+     `--es url reset` 改回建置時的網址；不帶 `url` 只印出目前的網址
+
+手機也可以用 adb 設定（debug 版才收，MIUI 擋 adb 輸入文字時用）：
+
+```
+adb shell am start -n com.guideglasses.companion.cloudflare/com.guideglasses.companion.MainActivity --es backend_url https://xxxx.trycloudflare.com
+```
+
+之後若用新網址重新建置，舊的執行期設定會自動作廢，以新建置的網址為準。
 
 ## 開機自動啟動（企畫書第 2 週）
 

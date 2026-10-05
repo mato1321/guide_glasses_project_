@@ -58,4 +58,32 @@ class LocationHttpResponderTest {
         val reply = LocationHttpResponder.respond("GET", "/current-location", null, "", fix, 10_320_000_000L)
         assertEquals(200, reply.status)
     }
+
+    @Test
+    fun `附上手機目前的後端網址，眼鏡就能跟著換`() {
+        val reply = LocationHttpResponder.respond(
+            "GET", "/current-location", key, key, fix, 10_320_000_000L,
+            backendUrl = "https://new-tunnel.trycloudflare.com",
+        )
+        assertEquals(
+            """{"success":true,"lat":25.0330761,"lng":121.5645082,"accuracy_m":16.2,"age_ms":320,""" +
+                """"backend_url":"https://new-tunnel.trycloudflare.com"}""",
+            reply.body,
+        )
+    }
+
+    @Test
+    fun `還沒有定位時也附上後端網址；沒有網址就不放這個欄位`() {
+        val withUrl = LocationHttpResponder.respond("GET", "/current-location", key, key, null, 0L, backendUrl = "https://a.com")
+        assertTrue(withUrl.body.endsWith(""","backend_url":"https://a.com"}"""))
+        assertTrue(!respond().body.contains("backend_url"))
+        assertTrue(!LocationHttpResponder.respond("GET", "/current-location", key, key, fix, 0L, backendUrl = " ").body.contains("backend_url"))
+    }
+
+    @Test
+    fun `沒帶金鑰時連後端網址也不給`() {
+        val reply = LocationHttpResponder.respond("GET", "/current-location", null, key, fix, 0L, backendUrl = "https://a.com")
+        assertEquals(401, reply.status)
+        assertTrue(!reply.body.contains("a.com"))
+    }
 }
