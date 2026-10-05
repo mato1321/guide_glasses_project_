@@ -288,6 +288,25 @@ class AssistantViewModel @Inject constructor(
      * adb shell am broadcast -a com.guideglasses.cloudflare.DEBUG --es cmd TRANSLATE --es target_language ja
      * ```
      */
+    /**
+     * 開發用入口：把一句話當成語音辨識的結果，走完整的「路由（本地或 LLM）→ 執行 → 播報」。
+     *
+     * 跟 [debugDispatch] 不同，這裡**經過 IntentRouter**，所以能測一般聊天與 LLM 意圖解析 ——
+     * 那條路原本只能對眼鏡說話才觸發，沒辦法自動測試。只由 debug build 的廣播呼叫。
+     *
+     * ```bash
+     * adb shell am broadcast -a com.guideglasses.cloudflare.DEBUG --es cmd ASK --es text 你好
+     * ```
+     */
+    fun debugUtterance(text: String) {
+        android.util.Log.i("AssistantVM", "debugUtterance：「$text」")
+        appendLog("🎤 $text")
+        viewModelScope.launch {
+            _state.update { it.copy(transcript = text, phase = Phase.THINKING) }
+            handleUtterance(text)
+        }
+    }
+
     fun debugDispatch(intentName: String, arguments: Map<String, String> = emptyMap()) {
         val intent = AssistantIntent.entries
             .firstOrNull { it.name.equals(intentName, ignoreCase = true) }

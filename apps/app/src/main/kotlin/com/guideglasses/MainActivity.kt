@@ -207,6 +207,15 @@ class MainActivity : AppCompatActivity() {
                         Log.i(DEBUG_TAG, "後端網址：${backendUrl.effective()}")
                     }
 
+                    /*
+                     * 把一句話當成語音辨識結果送進去（一般聊天、LLM 意圖解析），
+                     * 不必真的對眼鏡說話。見 AssistantViewModel.debugUtterance。
+                     */
+                    "ASK" -> {
+                        val text = intent.getStringExtra("text").orEmpty()
+                        if (text.isBlank()) Log.w(DEBUG_TAG, "ASK：缺少 --es text") else viewModel.debugUtterance(text)
+                    }
+
                     else -> {
                         val args = buildMap {
                             intent.getStringExtra("target_language")?.let { put("target_language", it) }
