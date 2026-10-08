@@ -1,0 +1,16 @@
+# Cloudflare 具名通道設定範本。步驟見同資料夾的 README.md。
+#
+# 複製到 %USERPROFILE%\.cloudflared\config.yml（改成 Windows 服務時放
+# C:\Windows\System32\config\systemprofile\.cloudflared\config.yml），
+# 把 <TUNNEL_UUID>、<你的帳號>、<你的網域> 換成實際值。
+# 這個檔案本身沒有機密；機密在 credentials-file 指到的那個 .json，不要進版控。
+
+tunnel: <TUNNEL_UUID>
+credentials-file: C:\Users\<你的帳號>\.cloudflared\<TUNNEL_UUID>.json
+
+ingress:
+  # 後端只聽 127.0.0.1:8000（見 start-backend.ps1），外部一律經過這條通道進來。
+  - hostname: api.<你的網域>
+    service: http://localhost:8000
+  # 其他主機名稱一律 404，避免通道被拿去轉到別的服務。
+  - service: http_status:404

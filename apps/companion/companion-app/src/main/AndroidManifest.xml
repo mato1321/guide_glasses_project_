@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 送座標給後端 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- 取得手機目前位置 -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!--
+        定位型前景服務：手機放進口袋、螢幕關掉之後仍持續回報，見 LocationReportService。
+        不需要 ACCESS_BACKGROUND_LOCATION —— 服務從 App 畫面啟動時，
+        拿的是「使用中」的定位權限。
+        FOREGROUND_SERVICE_LOCATION 是 Android 14 起的要求；POST_NOTIFICATIONS 是
+        Android 13 起顯示那則常駐通知（含「停止」按鈕）所需。
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application
+        android:allowBackup="true"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:usesCleartextTraffic="${cleartextTraffic}"
+        android:theme="@android:style/Theme.Material.Light">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:screenOrientation="portrait">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name=".LocationReportService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
+    </application>
+
+</manifest>

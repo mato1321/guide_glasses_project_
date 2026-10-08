@@ -1,0 +1,115 @@
+[versions]
+# --- 建置工具 ---
+# AGP 9 需要 gradle.properties 裡兩個相容性開關才能建置，**不要拿掉**：
+#
+#   android.builtInKotlin=false
+#       AGP 9 內建 Kotlin 支援，會與 org.jetbrains.kotlin.android 搶
+#       kotlin extension（Cannot add extension with name 'kotlin'）。
+#       設 false 讓出 extension 給 Kotlin plugin。
+#
+#   android.newDsl=false
+#       AGP 9 的新 DSL 移除了 BaseExtension，Hilt Gradle plugin（至 2.57.1）
+#       套用時會失敗（Android BaseExtension not found）。設 false 保留舊 DSL。
+#
+# 這兩個開關是**過渡措施**，Google 終究會移除它們。
+# 移除條件：Hilt 正式支援 AGP 9 的新 DSL 之後（追蹤 Hilt release note），
+# 屆時先拿掉 android.newDsl，確認 Hilt 仍能套用，再拿掉 android.builtInKotlin
+# 並把 kotlin.android plugin 從各模組移除。
+agp = "9.3.1"
+kotlin = "2.2.10"
+ksp = "2.3.6"
+# compileSdk 36 = Android 16。Rokid Glasses 的 YodaOS 基於 Android 12 (API 32)，
+# 而 CXR-M SDK 要求 minSdk >= 28，故 minSdk 取 28。
+compileSdk = "36"
+minSdk = "28"
+targetSdk = "36"
+jvmTarget = "17"
+
+# --- AndroidX ---
+coreKtx = "1.17.0"
+appcompat = "1.7.1"
+material = "1.13.0"
+activity = "1.12.3"
+lifecycle = "2.9.4"
+camerax = "1.4.2"
+# 用 bundled 版（模型打包進 APK）而非 play-services 版 ——
+# Rokid Glasses 是否預裝 Google Play Services 無法確認，bundled 版沒有這個依賴。
+mlkitTextChinese = "16.0.1"
+mlkitFaceDetection = "16.1.7"
+# 翻譯：語言包在執行期下載（每種語言約 30MB），下載後完全離線。
+# 這個 artifact 是 standalone ML Kit，不依賴 Google Play Services。
+mlkitTranslate = "17.0.3"
+tensorflowLite = "2.17.0"
+# ONNX Runtime：直接讀 InsightFace 匯出的 .onnx，不需要轉檔。
+# 轉成 tflite 要處理 NCHW→NHWC，錯了不會報錯只會安靜地認不出人 ——
+# 不轉檔就沒有這個風險。代價是 APK 多約 15MB。
+onnxRuntime = "1.20.0"
+room = "2.7.2"
+coroutines = "1.10.2"
+# 手機 companion 用來取得 GPS 座標（眼鏡沒有 GPS，見 docs/DEVICE_FINDINGS.md A10）。
+playServicesLocation = "21.3.0"
+
+# --- 網路 / 序列化 ---
+okhttp = "4.12.0"
+kotlinxSerialization = "1.9.0"
+
+# --- DI ---
+hilt = "2.57.1"
+
+# --- 測試 ---
+junit = "4.13.2"
+androidxJunit = "1.3.0"
+truth = "1.4.5"
+turbine = "1.2.1"
+
+[libraries]
+androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
+androidx-activity = { group = "androidx.activity", name = "activity-ktx", version.ref = "activity" }
+material = { group = "com.google.android.material", name = "material", version.ref = "material" }
+
+androidx-camera-core = { group = "androidx.camera", name = "camera-core", version.ref = "camerax" }
+androidx-camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "camerax" }
+androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }
+
+mlkit-face-detection = { group = "com.google.mlkit", name = "face-detection", version.ref = "mlkitFaceDetection" }
+tensorflow-lite = { group = "org.tensorflow", name = "tensorflow-lite", version.ref = "tensorflowLite" }
+tensorflow-lite-gpu = { group = "org.tensorflow", name = "tensorflow-lite-gpu", version.ref = "tensorflowLite" }
+onnxruntime-android = { group = "com.microsoft.onnxruntime", name = "onnxruntime-android", version.ref = "onnxRuntime" }
+
+androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
+androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
+androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
+
+mlkit-text-recognition-chinese = { group = "com.google.mlkit", name = "text-recognition-chinese", version.ref = "mlkitTextChinese" }
+mlkit-translate = { group = "com.google.mlkit", name = "translate", version.ref = "mlkitTranslate" }
+
+play-services-location = { group = "com.google.android.gms", name = "play-services-location", version.ref = "playServicesLocation" }
+
+androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycle" }
+androidx-lifecycle-viewmodel-ktx = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-ktx", version.ref = "lifecycle" }
+
+kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
+kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
+
+okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
+okhttp-mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver", version.ref = "okhttp" }
+kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
+
+hilt-android = { group = "com.google.dagger", name = "hilt-android", version.ref = "hilt" }
+hilt-compiler = { group = "com.google.dagger", name = "hilt-android-compiler", version.ref = "hilt" }
+
+junit = { group = "junit", name = "junit", version.ref = "junit" }
+androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxJunit" }
+truth = { group = "com.google.truth", name = "truth", version.ref = "truth" }
+turbine = { group = "app.cash.turbine", name = "turbine", version.ref = "turbine" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }

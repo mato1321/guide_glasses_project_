@@ -1,507 +1,238 @@
-# Guide Glasses — Rokid AI 導盲眼鏡
+# Guide Glasses — AI Navigation Glasses for the Visually Impaired
 
-一套跑在 **Rokid Glasses** 上的智慧導盲系統。使用者用語音下指令，系統用語音回答。
-單一 Android APK，直接安裝在眼鏡上執行。
+**English** | [繁體中文](README.zh-TW.md)
 
-| | |
-|---|---|
-| 最後更新 | 2026-08-09 |
-| 完成度 | 約 94% |
-| 單元測試 | **333 個，全過**（純 JVM，秒級） |
-| APK | debug 288 MB |
-| 實機狀態 | ✅ **語音指令、TTS、OCR、人臉、翻譯、障礙物、前景服務全部在眼鏡上實測可用** |
+Guide Glasses turns a pair of **Rokid smart glasses** into a voice-controlled assistant for blind and low-vision users.
+Wearing the glasses, the user never has to look at a screen or press a button. They just speak, and the glasses
+tell them what is ahead, who is in front of them, what a sign says, and how to catch the right bus.
 
-**使用者直接對眼鏡講話就會執行**，不需要喚醒詞也不需要按鈕 ——
-「前面有什麼」「這是誰」「唸給我聽」「翻成英文」等 14 句。
+> The cloud makes the glasses *smarter*; the glasses keep the user *safe*.
+> Obstacle detection, face recognition, text reading and speech all run **on the glasses, offline**.
+> Only queries that need live data, such as bus routes and arrival times, go online.
 
 ---
 
-## 📖 先看哪一份文件
+## Highlights
 
-| 你要做什麼 | 看這份 |
-|---|---|
-| **第一次接手** | [`docs/DEVELOPER_GUIDE.md`](docs/DEVELOPER_GUIDE.md) —— 從零建置到接手開發 |
-| **眼鏡上跑不起來 / 沒聲音** | [`docs/DEVICE_FINDINGS.md`](docs/DEVICE_FINDINGS.md) —— 實機診斷，全部指令可重跑 |
-| **拿到一台新眼鏡** | [`docs/PROVISIONING.md`](docs/PROVISIONING.md) —— 一次性佈建，不做的話什麼都不會動 |
-| 現況與交接 | [`docs/STATUS.md`](docs/STATUS.md) |
-| 待辦清單 | [`docs/TASKS.md`](docs/TASKS.md) |
-| 分層架構決策 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
-| 做簡報 | [`docs/PRESENTATION.md`](docs/PRESENTATION.md) |
+- **Fully voice-controlled, no buttons.** 18 spoken commands, no wake word. Say *"我要說話"* (or tap the touchpad once) to ask anything in free speech.
+- **Safety features work offline.** Obstacle detection (YOLOv8), face recognition, text reading (OCR), translation, speech recognition and speech synthesis all run on the glasses.
+- **A complete bus trip, end to end.** Plan the fastest bus → walk to the stop with turn-by-turn voice guidance → point the glasses at the arriving bus to confirm its route number.
+- **The phone is the GPS.** The glasses have no GPS. The companion phone app shares its location **directly over the Wi-Fi hotspot**, so navigation keeps working even if the backend goes down. The backend acts as a fallback relay.
+- **A natural-language assistant.** An LLM understands requests such as *"I want to take a bus to Chiang Kai-shek Memorial Hall"* and corrects speech-recognition typos in Taiwanese place names.
+- **Built for real devices.** Announcements are always at maximum volume, the backend URL can be changed at runtime (no rebuild when a Cloudflare tunnel restarts), and three app versions can coexist on one pair of glasses.
+- **Privacy and security by default.** Face embeddings stay on the glasses, encrypted with AES-GCM keys held in the Android Keystore. The backend rejects every request without an API key (fail-closed). Keys, photos and location data are never committed.
 
----
+## What It Can Do
 
-## 🔴 這台裝置的核心教訓
+Just speak. No wake word is needed.
 
-**任何 API 呼叫「沒有拋例外」都不等於成功。**
+| Feature | Say (Mandarin) | Meaning | Needs internet |
+|---|---|---|---|
+| Stop everything (including navigation) | 停止播報 / 不要說了 | "Stop" | No |
+| Detect obstacles once / continuously | 前面有什麼 / 持續偵測前方 | "What's ahead?" / "Keep watching ahead" | No |
+| Recognize a person | 這是誰 / 這個人是誰 / 前面有沒有人 | "Who is this?" | No |
+| Read text / signs | 上面寫什麼 / 唸給我聽 / 這是哪裡 / 下一段 | "What does it say?" | No |
+| Translate the text just read | 翻成英文 | "Translate to English" | No (language pack downloaded once) |
+| Plan a bus trip (preset destination) | 查公車路線 | "Find a bus route" | Yes |
+| Confirm the arriving bus | 確認公車 | "Confirm the bus" | Yes |
+| Ask anything / name a destination | 我要說話 → *beep* → your question | "I want to talk" | Yes |
+| Readiness check | 出門前檢查 | "Check before going out" | No |
+| Sync registered faces | 同步人臉 | "Sync faces" | Local network |
+| Camera self-test | 測試相機 | "Test camera" | No |
 
-開發過程中中過**七次**「回報成功但實際沒生效」：Rokid 的 `bindSecurityService`
-不回呼、`startForeground` 被靜默拒絕、`VOICE_RECOGNITION` 音訊來源回傳純靜音、
-`pm list features` 假宣告、`adb install` 回報 Success 但裝的是舊版⋯
+**Example: taking a bus**
 
-所以這個專案的預設寫法是**主動查證**：量麥克風音量、查 `isForeground` 旗標、
-核對 APK 大小、加逾時檢查。詳見 [`docs/DEVICE_FINDINGS.md`](docs/DEVICE_FINDINGS.md)。
+1. Say *"我要說話"*, wait for the beep, then say *"I want to take a bus to …"* (in Mandarin). Or simply say *"查公車路線"*.
+2. The glasses announce which bus to take, where to board, and when the next one arrives.
+3. Turn-by-turn **walking navigation to the bus stop starts automatically**.
+4. When a bus arrives, face its front and say *"確認公車"*. The glasses read the route number on the LED panel and tell you whether it matches.
+5. Say *"停止播報"* to end navigation.
 
----
-
-## 📁 專案結構
+## System Architecture
 
 ```
-guide_glasses_project_/
-├── guide-glasses/          ★ 最終整合系統（只在這裡開發）
-├── docs/                   專案文件
-├── AI_Assistant/           組員工作區 —— 不可修改
-├── Face_Recognition/       組員工作區 —— 不可修改
-├── Obstacle_Recognition/   組員工作區 —— 不可修改
-├── Audio_Navigation/       組員工作區 —— 不可修改
-└── Text_Recognition/       組員工作區 —— 不可修改
+ ┌──────────────────────────┐   Wi-Fi hotspot (direct GPS)   ┌──────────────────────┐
+ │  Rokid Glasses (Android) │ ◄────────────────────────────► │  Android phone       │
+ │  • voice commands, ASR   │                                │  • GPS, 1 fix/second │
+ │  • obstacles / faces /   │                                │  • hotspot server    │
+ │    OCR / translation     │                                │  • backend URL setup │
+ │  • offline TTS, nav      │                                └──────────┬───────────┘
+ └────────────┬─────────────┘                                           │
+              │ HTTPS (Cloudflare Tunnel, X-Api-Key)                    │ HTTPS
+              ▼                                                         ▼
+ ┌────────────────────────────────────────────────────────────────────────────────┐
+ │  Backend — FastAPI (home PC)                                                   │
+ │  /route (LLM intent) · /bus-plans · /eta · /walking-route · /bus-ocr · location │
+ └──────────┬──────────────────┬───────────────────┬──────────────────┬───────────┘
+            ▼                  ▼                   ▼                  ▼
+         OpenAI         Google Routes API      TDX (bus ETA)   Google Cloud Vision
 ```
 
-**五個功能資料夾是五位組員各自的工作區，`guide-glasses` 不修改它們。**
-需要引用時複製過來重新整合。
+| Part | Responsibilities | Tech |
+|---|---|---|
+| Glasses app | Voice commands, speech recognition, on-device vision, offline speech output, navigation state machine, announcement arbitration | Kotlin, CameraX, Hilt, sherpa-onnx, ONNX Runtime, ML Kit |
+| Phone app | GPS fixes every second, served directly to the glasses over the hotspot and relayed to the backend as a fallback | Kotlin, Fused Location, foreground service |
+| Backend | LLM intent parsing, bus plans and arrival times, walking routes, bus front-panel recognition, location relay | Python 3.12, FastAPI, OpenAI, Google Routes, TDX, Ultralytics YOLO, Google Cloud Vision |
 
----
+## AI Models
 
-## 🚀 快速開始
+| Task | Model | Runs on | License |
+|---|---|---|---|
+| Obstacle detection (8 classes: pedestrian, car, motorcycle, bicycle, obstacle, crosswalk, tactile paving, sidewalk) | `obstacle_yolov8.onnx`, **trained by our team** from YOLOv8n-seg | Glasses | AGPL-3.0 (Ultralytics) |
+| Bus LED panel detection | `best.pt`, **trained by our team** with Ultralytics YOLO | Backend | AGPL-3.0 (Ultralytics) |
+| Face embedding (512-d) | InsightFace `w600k_mbf` (MobileFaceNet, ArcFace) | Glasses | Non-commercial research only |
+| English speech synthesis | Piper `en_US-amy-medium` (VITS) | Glasses | See model card |
+| Keyword spotting (voice commands) | sherpa-onnx zipformer KWS | Glasses | See sherpa-onnx |
+| Speech recognition (Mandarin, streaming) | `sherpa-onnx-streaming-zipformer-small-ctc-zh-int8-2025-04-01` | Glasses | See sherpa-onnx |
+| Mandarin speech synthesis | `matcha-icefall-zh-baker` + HiFi-GAN vocoder | Glasses | See sherpa-onnx |
+| Face detection, OCR, translation | Google ML Kit | Glasses | Google ML Kit terms |
+| Intent parsing and chat | OpenAI `gpt-4o-mini` | Cloud | OpenAI terms |
+| Bus number OCR | Google Cloud Vision | Cloud | Google Cloud terms |
+
+Model sources and SHA-256 checksums are listed in [`shared/models/README.md`](shared/models/README.md).
+
+## Repository Structure
+
+```
+apps/              Android project (Cloudflare & AWS flavors share one codebase)
+├── app/           Glasses app — "導盲眼鏡 CF / AWS"
+├── companion/     Phone app — "導盲定位 CF / AWS"
+├── core/          Domain logic: voice commands, bus planning & confirmation,
+│                  walking navigation, announcement priority, encrypted face storage
+├── ai/            Offline ASR & keyword spotting, offline TTS, obstacle detection,
+│                  face recognition, OCR, translation, location & bus gateways
+├── glasses/       Camera (CameraX) and motion sensors
+├── feature/       Assistant view model (command dispatch) and beep tone
+└── tools/         Face enrollment server (upload photos in a browser)
+backend/           FastAPI backend, tests, Cloudflare Tunnel deployment guide
+edge/              Offline-only edition (frozen, kept for reference)
+docs/              Architecture, device findings, project plan, quick-start card (PDF)
+shared/models/     Model inventory and SHA-256 checksums
+backup/            Pre-restructure originals, kept untouched
+```
+
+## Getting Started
+
+### Requirements
+
+- Rokid Glasses (Android 12) and an Android phone
+- Windows PC with **Android Studio** (bundled JDK 17+), Android SDK 36
+- **Python 3.12** and **cloudflared**
+- API keys: OpenAI, Google Maps Platform (Routes API), TDX, and a Google Cloud Vision service account
+
+### 1. Get the code
 
 ```bash
 git clone https://github.com/mato1321/guide_glasses_project_.git
+cd guide_glasses_project_
+git checkout restructure/three-versions
 ```
 
-建立 `guide-glasses/local.properties`（**唯一**需要自己補的檔案，注意跳脫字元）：
+The speech recognition and keyword-spotting model files are too large for Git. See [`shared/models/README.md`](shared/models/README.md)
+for where to get them and how to verify their checksums. Place them in `apps/ai/ai-asr-offline/src/main/assets/`.
 
+### 2. Start the backend
+
+```bash
+cd backend
+py -3.12 -m venv .venv
+.venv\Scripts\pip install -r requirements.txt
+copy .env.example .env
 ```
-sdk.dir=C\:\Users\<你的帳號>\AppData\Local\Android\Sdk
+
+Fill in `.env`, including `GUIDEGLASSES_API_KEY`, a shared secret of your choice. Without it, the backend rejects every request. Then start the backend and open a tunnel:
+
+```bash
+powershell -ExecutionPolicy Bypass -File deploy\cloudflare\start-backend.ps1 -Port 8001
 ```
 
 ```bash
-export JAVA_HOME="/c/Program Files/Android/Android Studio/jbr"
-cd guide-glasses && ./gradlew build
+cloudflared tunnel --url http://localhost:8001
 ```
 
-需要 **JDK 17+**（JDK 11 不行）與 Android SDK Platform 36。
-完整步驟見 [`docs/DEVELOPER_GUIDE.md`](docs/DEVELOPER_GUIDE.md) §3。
+Check `https://<your-tunnel>.trycloudflare.com/health`. It should return `{"status":"ok"}`.
 
----
+### 3. Configure and build the apps
 
-## ⚠️ 三個必須知道的硬體事實
+Create `apps/local.properties`. It is git-ignored, so keys stay on your machine.
 
-全部由 adb 實測確認（見 [`DEVICE_FINDINGS.md`](docs/DEVICE_FINDINGS.md)）：
+```properties
+sdk.dir=C\:\\Users\\<you>\\AppData\\Local\\Android\\Sdk
+guideglasses.cloudflare.busApiEndpoint=https://<your-tunnel>.trycloudflare.com
+guideglasses.cloudflare.llmEndpoint=https://<your-tunnel>.trycloudflare.com/route
+guideglasses.cloudflare.apiKey=<same value as GUIDEGLASSES_API_KEY>
+```
 
-| 事實 | 影響 |
+Optional: copy `apps/keystore.properties.example` to `keystore.properties` so that every team member signs with the same key.
+
+Open the `apps` folder in Android Studio, or build from the command line:
+
+```bash
+cd apps
+gradlew.bat :app:assembleCloudflareDebug :companion:companion-app:assembleCloudflareDebug
+```
+
+### 4. Install
+
+```bash
+adb -s <glasses-serial> install -r -g app/build/outputs/apk/cloudflare/debug/app-cloudflare-debug.apk
+adb -s <phone-serial> install -r companion/companion-app/build/outputs/apk/cloudflare/debug/companion-app-cloudflare-debug.apk
+```
+
+One-time setup on the glasses, so the app is not killed in the background and the clock stays correct:
+
+```bash
+adb -s <glasses-serial> shell cmd appops set com.guideglasses.cloudflare RUN_ANY_IN_BACKGROUND allow
+adb -s <glasses-serial> shell settings put global auto_time 1
+```
+
+### 5. Use it
+
+1. Turn on the phone's hotspot and connect the glasses to it.
+2. On the phone, open **導盲定位 CF**. It starts sharing location automatically.
+3. On the glasses, open **導盲眼鏡 CF** and wait about 20 seconds for the speech models to load.
+4. Say *"出門前檢查"*. When you hear "可以出門了" ("ready to go"), you're set.
+
+**Tunnel URL changed?** No rebuild is needed. Paste the new URL into the phone app's backend URL field. Glasses connected to the phone's hotspot
+pick it up automatically. Otherwise, set it with
+`adb shell am broadcast -a com.guideglasses.cloudflare.DEBUG --es cmd SET_BACKEND --es url <new-url>`.
+
+## Testing
+
+```bash
+cd apps && gradlew.bat test            # 423 unit tests
+cd backend && .venv\Scripts\python -m pytest   # 14 tests
+```
+
+Debug builds also accept `adb` broadcasts that trigger any feature without speaking, for example
+`--es cmd DETECT_OBSTACLES` or `--es cmd ASK --es text 你好`. See `MainActivity.kt` for the full list.
+
+## Troubleshooting
+
+| Symptom | Cause / fix |
 |---|---|
-| **沒有 Google Play Services** | STT 完全不可用；ML Kit 必須用 bundled / standalone 版 |
-| **沒有語音辨識服務、TTS 綁定失敗** | 🔴 **目前無法用語音操作**，需靠 debug 廣播觸發 |
-| **沒有 GPS、沒有電子羅盤** | 導航需手機提供座標，且**算不出朝向** |
-
-> 這台眼鏡有一個反覆出現的陷阱：**`pm list features` 宣告有，實際上沒有**。
-> GPS、前鏡頭、TTS 都中過。**任何硬體能力都要實測，不能看 API 宣告。**
-
----
-
-## 📝 目前功能狀態
-
-| 功能 | 狀態 |
-|---|---|
-| 語音指令（關鍵詞偵測，14 句） | ✅ 眼鏡實測可用，直接講直接做 |
-| 語音合成（中文＋英文，22050Hz） | ✅ 眼鏡實測可用 |
-| 語音辨識（開放式輸入） | ✅ 可用，2–3.5 秒 |
-| OCR 朗讀 | ✅ 使用者實測可用（約 3 秒） |
-| 人臉辨識 | ✅ 使用者實測可用 |
-| 翻譯（中↔英） | ✅ 使用者實測可用 |
-| 障礙物偵測（YOLOv8 八類） | 🟡 推論可跑，偵測率未測 |
-| 前景服務（背景存活） | ✅ 眼鏡實測可用 |
-| 導航 | 🔴 無 GPS 且無電子羅盤 |
-
-⚠️ **每台眼鏡要先做一次性佈建**，見 [`docs/PROVISIONING.md`](docs/PROVISIONING.md)。
-
----
-
-## Rokid 眼鏡 Android 開發框架
-
----
-
-## **Android 前端結構**
-
-```
-android/
-├── app/                                    # 應用主模塊
-│   ├── src/main/
-│   │   ├── java/com/rokid/ai_assistant/
-│   │   │   └── MainActivity.kt            # 應用入口，權限檢查和主邏輯
-│   │   ├── res/
-│   │   │   ├── layout/
-│   │   │   │   └── activity_main.xml      # 定義應用的 UI 布局 
-│   │   │   ├── values/
-│   │   │   │   ├── strings.xml            # 應用文字常量
-│   │   │   │   └── colors.xml             # 顏色定義
-│   │   │   ├── mipmap/                    # 應用圖標
-│   │   │   └── drawable/                  # 圖片資源
-│   │   └── AndroidManifest.xml            # 權限、SDK 版本配置
-│   ├── build.gradle.kts                   # 項目依賴和編譯配置
-│   └── proguard-rules.pro                 # 代碼混淆規則
-│
-├── gradle/
-│   └── libs.versions.toml                 # 依賴版本管理
-│
-├── build.gradle.kts                       # 根項目配置
-├── gradle.properties                      # Gradle 全局配置
-├── settings.gradle.kts                    # 項目設置
-├── gradlew                                # Gradle 包裝腳本
-└── README.md                              # 本文件
-```
-
----
-
-## **主要文件**
-
-### **1. MainActivity.kt**
-
-**位置：** `app/src/main/java/com/rokid/ai_assistant/MainActivity.kt`
-
-**用途：** 應用入口，包含：
-- 應用初始化
-- 權限檢查和請求
-- 全螢幕沉浸模式 (可修改為自己要的鏡片設計)
-
----
-
-### **2. activity_main.xml**
-
-**位置：** `app/src/main/res/layout/activity_main.xml`
-
-**用途：** 定義應用的 UI 布局
-
----
-
-### **3. AndroidManifest.xml** 
-
-**位置：** `app/src/main/AndroidManifest.xml`
-
-**用途：** 配置應用權限和 SDK 版本
-
-**包含的權限：**
-
-| 權限 | 用途 |
-|------|------|
-| `CAMERA` | 相機訪問 |
-| `USB` | USB 設備連接（Rokid 眼鏡） |
-| `INTERNET` | 網路訪問 |
-| `RECORD_AUDIO` | 麥克風訪問 |
-| `READ_EXTERNAL_STORAGE` | 讀取存儲 |
-| `WRITE_EXTERNAL_STORAGE` | 寫入存儲 |
-
-**修改權限方法：**
-
-如果需要添加新權限，在 `<manifest>` 標籤下加入：
-
-```xml
-<uses-permission android:name="android.permission.新權限" />
-```
-
----
-
-### **4. build.gradle.kts** 
-
-**位置：** `app/build.gradle.kts`
-
-**用途：** 配置項目編譯選項和依賴庫
-
-**重要配置：**
-
-```kotlin
-android {
-    namespace = "com.rokid.ai_assistant"  // 應用包名
-    compileSdk = 36                       // 編譯 SDK 版本
-    
-    defaultConfig {
-        applicationId = "com.rokid.ai_assistant"
-        minSdk = 26        // Rokid眼鏡最低 SDK
-        targetSdk = 36
-        versionCode = 1    // 版本號（每次發佈增加）
-        versionName = "1.0" // 版本名稱
-    }
-}
-
-dependencies {
-    // 依賴放在這裡
-    implementation("androidx.core:core-ktx:1.17.0")
-    implementation("androidx.appcompat:appcompat:1.7.0")
-}
-```
-
-**如何添加新依賴：**
-
-在 `dependencies {}` 中加入：
-
-```kotlin
-implementation("group:artifact:version")
-```
-
-例如添加 Retrofit（網路請求庫）：
-
-```kotlin
-implementation("com.squareup.retrofit2:retrofit:2.9.0")
-```
-
----
-
-### **5. libs.versions.toml**
-
-**位置：** `gradle/libs.versions.toml`
-
-**用途：** 統一管理所有依賴版本
-
-**添加新依賴的方法：**
-
-**Step 1 - 在 `[versions]` 中定義版本號**
-
-```toml
-[versions]
-retrofit = "2.9.0"
-```
-
-**Step 2 - 在 `[libraries]` 中定義依賴**
-
-```toml
-[libraries]
-retrofit = { group = "com.squareup.retrofit2", name = "retrofit", version.ref = "retrofit" }
-```
-
-**Step 3 - 在 `build.gradle.kts` 中使用**
-
-```kotlin
-dependencies {
-    implementation(libs.retrofit)
-}
-```
-
----
-
-## **添加功能的完整流程**
-
-### **例子：在ai_assistant資料夾添加網路請求功能**
-
-#### **Step 1 - 添加依賴**
-
-在 `gradle/libs.versions.toml` 中：
-
-```toml
-[versions]
-retrofit = "2.9.0"
-
-[libraries]
-retrofit = { group = "com.squareup.retrofit2", name = "retrofit", version.ref = "retrofit" }
-retrofit-gson = { group = "com.squareup.retrofit2", name = "converter-gson", version.ref = "retrofit" }
-```
-
-在 `app/build.gradle.kts` 中：
-
-```kotlin
-dependencies {
-    implementation(libs.retrofit)
-    implementation(libs.retrofit.gson)
-}
-```
-
-#### **Step 2 - 創建 API Service**
-
-在 `app/src/main/java/com/rokid/ai_assistant/` 下創建 `ApiService.kt`：
-
-```kotlin
-package com.rokid.ai_assistant
-
-import retrofit2.Response
-import retrofit2.http.GET
-
-interface ApiService {
-    @GET("/api/status")
-    suspend fun getStatus(): Response<StatusResponse>
-}
-
-data class StatusResponse(
-    val message: String,
-    val status: String
-)
-```
-
-#### **Step 3 - 在 MainActivity 中使用**
-
-```kotlin
-class MainActivity : ComponentActivity() {
-    
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-
-        when (requestCode) {
-            CAMERA_PERMISSION_CODE -> {
-                if (grantResults.isNotEmpty() && 
-                    grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    // 開始你的功能
-                    makeNetworkRequest()
-                }
-            }
-        }
-    }
-
-    private fun makeNetworkRequest() {
-        // 你的網路請求邏輯
-    }
-}
-```
-
----
-
-## **調用 Rokid 眼鏡 SDK**
-
-### **Rokid 眼鏡相機 SDK**
-
-#### **添加依賴**
-
-在 `gradle/libs.versions.toml` 中：
-
-```toml
-[versions]
-uvcAndroid = "1.0.7"
-
-[libraries]
-uvc-android = { group = "com.herohan", name = "UVCAndroid", version.ref = "uvcAndroid" }
-```
-
-在 `app/build.gradle.kts` 中：
-
-```kotlin
-dependencies {
-    implementation(libs.uvc.android)
-}
-```
-
-#### **在 MainActivity 中初始化相機**
-
-```kotlin
-import com.herohan.uvc.CameraManager
-
-class MainActivity : ComponentActivity() {
-    
-    private var cameraManager: CameraManager? = null
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
-        
-        checkCameraPermission()
-    }
-
-    private fun initCamera() {
-        cameraManager = CameraManager(this)
-        // 設置相機回調
-        cameraManager?.setOnFrameCallback { data ->
-            // 處理相機幀數據
-            processCameraFrame(data)
-        }
-    }
-
-    private fun processCameraFrame(data: ByteArray) {
-        // 你的圖像處理邏輯
-    }
-}
-```
-
----
-
-### **語音識別 SDK**
-
-#### **添加依賴**
-
-在 `app/build.gradle.kts` 中：
-
-```kotlin
-dependencies {
-    // Rokid 語音 SDK（需要從 Rokid 官方獲取）
-    implementation("com.rokid.speech:speech-sdk:版本號")
-}
-```
-
-#### **使用語音識別**
-
-```kotlin
-import com.rokid.speech.SpeechClient
-
-class MainActivity : ComponentActivity() {
-
-    private var speechClient: SpeechClient? = null
-
-    private fun initSpeech() {
-        speechClient = SpeechClient(this)
-        speechClient?.startListening { text ->
-            // 處理識別結果
-            onSpeechRecognized(text)
-        }
-    }
-
-    private fun onSpeechRecognized(text: String) {
-        // 更新 UI
-        val tvStatus = findViewById<TextView>(R.id.tvStatus)
-        tvStatus.text = "識別結果：$text"
-    }
-}
-```
-
----
-## **常用 Android API**
-
-### **UI 更新**
-
-```kotlin
-// 獲取 UI 元件
-val tvStatus = findViewById<TextView>(R.id.tvStatus)
-
-// 更新文本
-tvStatus.text = "新文本"
-
-// 修改顏色
-tvStatus.setTextColor(resources.getColor(R.color.white))
-```
-
-### **Log 輸出**
-
-```kotlin
-import android.util.Log
-
-Log.d("TAG", "調試信息")
-Log.e("TAG", "錯誤信息", exception)
-```
-
-### **Toast 提示**
-
-```kotlin
-import android.widget.Toast
-
-Toast.makeText(this, "提示信息", Toast.LENGTH_SHORT).show()
-```
-
-### **權限檢查**
-
-```kotlin
-if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
-    == PackageManager.PERMISSION_GRANTED) {
-    // 有權限
-} else {
-    // 沒有權限
-}
-```
-
----
-- [Android 官方文檔](https://developer.android.com)
-- [Kotlin 官方文檔](https://kotlinlang.org)
-- [Rokid 開發者文檔](https://developer.rokid.com)
-- [Gradle 文檔](https://gradle.org)
-- 在 `MainActivity.kt` 中加邏輯
-- 在 `activity_main.xml` 中設計 UI
-- 在 `build.gradle.kts` 中添加依賴
-- 在 `AndroidManifest.xml` 中添加權限
----
-**各位加油！強大**
+| "目前沒有網路" ("no network") or Wi-Fi shows *limited connectivity* | The glasses' clock is wrong, so every HTTPS certificate fails. Enable automatic time (see step 4). |
+| "拿不到定位" ("no location") | Make sure the phone app is running and online. Indoor fixes can take up to 15 seconds. |
+| Two voices talking at once | The old offline edition (導盲眼鏡) is also running. Close it. |
+| A command isn't recognized | Speak clearly and close to the glasses, or tap the touchpad once and speak after the beep. |
+
+## Documentation
+
+- [Quick-start card (PDF, Chinese)](docs/AI導盲眼鏡操作卡.pdf)
+- [Project plan (PDF, Chinese)](docs/AI導盲眼鏡專題計畫書.pdf)
+- [Architecture](docs/ARCHITECTURE.md) · [Device findings](docs/DEVICE_FINDINGS.md) · [Glasses provisioning](docs/PROVISIONING.md)
+- [Backend](backend/README.md) · [Cloudflare Tunnel deployment](backend/deploy/cloudflare/README.md)
+- [Restructure notes, 2026-09-29 (Chinese)](docs/RESTRUCTURE_NOTES.md)
+
+## Editions
+
+| Edition | Glasses app | Backend | Status |
+|---|---|---|---|
+| Edge (offline only) | `edge/` | none | Frozen |
+| **Cloudflare** | `apps/`, flavor `cloudflare` | FastAPI on a home PC + Cloudflare Tunnel | **Main edition, field-tested** |
+| AWS | `apps/`, flavor `aws` | AWS Lambda (in progress) | In progress |
+
+## License
+
+Source code is released under the [MIT License](LICENSE). Third-party models and libraries keep their own licenses.
+Notably, the InsightFace weights are for non-commercial research only, and models trained with Ultralytics YOLO fall under AGPL-3.0.

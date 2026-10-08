@@ -60,13 +60,13 @@ desktop.ini
 *.pt
 *.tflite
 *.task
-!guide-glasses/ai/ai-face/src/main/assets/*.onnx
+!**/ai/ai-face/src/main/assets/*.onnx
 # 障礙物模型同理 —— 12.7MB，少了它 clone 下來的人說「前面有什麼」
 # 只會聽到「障礙物偵測目前不可用，缺少模型檔」。
-!guide-glasses/ai/ai-vision/src/main/assets/*.onnx
+!**/ai/ai-vision/src/main/assets/*.onnx
 # 離線 TTS 模型（18.6MB）—— 這個更不能少：眼鏡上 Android TextToSpeech
 # 綁不上，沒有這個檔案就**完全沒有聲音**，等於整個 App 不能用。
-!guide-glasses/ai/ai-tts-offline/src/main/assets/tts/*/*.onnx
+!**/ai/ai-tts-offline/src/main/assets/tts/*/*.onnx
 
 # ===== 執行期產物 =====
 *.log
@@ -79,9 +79,20 @@ recording_*.m4a
 # ===== 人臉資料（生物特徵，不得進版控）=====
 # 註冊工具上傳的照片。這是**真人的臉部照片**，屬個資法特種個資，
 # 絕不可進公開 repo。少了這行，第一次 git add 就會把它們掃進去。
-guide-glasses/tools/face_photos/
+**/tools/face_photos/
 # 測試用的 face_database 目前保留，正式環境請整個排除
 # face_database/
 
 # 注意：不要用 *.json / *.png / *.jpg 這類全域規則，
 # 會誤擋 google-services.json 與 Android res/drawable 資源。
+
+# ===== glasses-project 三版結構（2026-09-29 重整）=====
+# 共用資料夾：人臉照片是生物特徵，模型母本太大且部分無授權轉散布。
+# 只有 SHA256 清單與說明進版控，實體檔案留在本機。
+shared/faces/
+shared/models/*
+!shared/models/SHA256SUMS.txt
+!shared/models/README.md
+# 備份區裡的本機設定與 APK 成品不進版控
+backup/local-configs/
+backup/apk/

@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:padding="24dp">
+
+    <TextView
+        android:id="@+id/titleView"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:text="導盲眼鏡 · 定位轉傳" />
+
+    <TextView
+        android:id="@+id/statusView"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:gravity="center"
+        android:textSize="16sp"
+        android:text="準備中..." />
+
+    <Button
+        android:id="@+id/toggleButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:text="開始回報" />
+
+    <!--
+        後端網址（見 BackendUrlStore）。Cloudflare 臨時通道一重開網址就變，
+        在這裡貼新的就好，不必重新建置；眼鏡直連時會自動跟著換。
+    -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="32dp"
+        android:textSize="14sp"
+        android:text="後端網址（通道網址換了就貼新的）" />
+
+    <EditText
+        android:id="@+id/backendInput"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="https://xxxx.trycloudflare.com"
+        android:importantForAutofill="no"
+        android:inputType="textUri"
+        android:singleLine="true"
+        android:textSize="14sp" />
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/backendSave"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="儲存網址" />
+
+        <Button
+            android:id="@+id/backendReset"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:text="還原預設" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/backendStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:gravity="center"
+        android:textSize="13sp" />
+
+</LinearLayout>

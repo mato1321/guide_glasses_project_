@@ -1,0 +1,1055 @@
+package com.guideglasses.feature.assistant
+
+import android.util.Log
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.guideglasses.core.domain.AppError
+import com.guideglasses.core.domain.announce.Announcement
+import com.guideglasses.core.domain.announce.AnnouncementManager
+import com.guideglasses.core.domain.announce.AnnouncementPriority
+import com.guideglasses.core.domain.assistant.AssistantIntent
+import com.guideglasses.core.domain.assistant.IntentRouter
+import com.guideglasses.core.domain.assistant.VoiceCommand
+import com.guideglasses.core.domain.assistant.RoutedIntent
+import com.guideglasses.core.domain.bus.BusEta
+import com.guideglasses.core.domain.bus.BusPlan
+import com.guideglasses.core.domain.bus.ConfirmBusUseCase
+import com.guideglasses.core.domain.bus.PlanBusRouteUseCase
+import com.guideglasses.core.domain.translate.TargetLanguage
+import com.guideglasses.core.domain.readiness.ReadinessCheckUseCase
+import com.guideglasses.core.domain.translate.PrepareLanguagesUseCase
+import com.guideglasses.core.domain.translate.TranslateUseCase
+import com.guideglasses.core.domain.face.IdentifyPersonUseCase
+import com.guideglasses.core.domain.face.RegisterFaceUseCase
+import com.guideglasses.core.domain.face.SyncPeopleUseCase
+import com.guideglasses.core.domain.glasses.CameraSelfTestUseCase
+import com.guideglasses.core.domain.motion.MotionSensorGateway
+import com.guideglasses.core.domain.navigation.Coordinate
+import com.guideglasses.core.domain.navigation.NavigateWalkingUseCase
+import com.guideglasses.core.domain.obstacle.DetectObstaclesUseCase
+import com.guideglasses.core.domain.obstacle.WatchObstaclesUseCase
+import com.guideglasses.core.domain.ocr.OcrMode
+import com.guideglasses.core.domain.ocr.ReadTextUseCase
+import com.guideglasses.core.domain.ocr.ReadingSession
+import com.guideglasses.core.domain.speech.SpeechCapability
+import com.guideglasses.core.domain.speech.SpeechEvent
+import com.guideglasses.core.domain.speech.SpeechRecognitionGateway
+import com.guideglasses.core.domain.speech.WakeWordDetector
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import javax.inject.Inject
+
+/**
+ * 助理中樞的 ViewModel。
+ *
+ * 完整流程：語音 → ASR → 意圖路由 → 分派 → 播報。
+ * 所有輸出一律經過 [AnnouncementManager]，這個類別不持有任何播放器。
+ */
+@HiltViewModel
+class AssistantViewModel @Inject constructor(
+    private val speechGateway: SpeechRecognitionGateway,
+    private val intentRouter: IntentRouter,
+    private val announcementManager: AnnouncementManager,
+    private val cameraSelfTest: CameraSelfTestUseCase,
+    private val readText: ReadTextUseCase,
+    private val identifyPerson: IdentifyPersonUseCase,
+    private val registerFace: RegisterFaceUseCase,
+    private val motionSensors: MotionSensorGateway,
+    private val translateText: TranslateUseCase,
+    private val syncPeople: SyncPeopleUseCase,
+    private val readinessCheck: ReadinessCheckUseCase,
+    private val prepareLanguages: PrepareLanguagesUseCase,
+    private val detectObstacles: DetectObstaclesUseCase,
+    private val watchObstacles: WatchObstaclesUseCase,
+    private val planBusRoute: PlanBusRouteUseCase,
+    private val confirmBus: ConfirmBusUseCase,
+    private val navigateWalking: NavigateWalkingUseCase,
+    private val wakeWordDetector: WakeWordDetector,
+) : ViewModel() {
+
+    private val _state = MutableStateFlow(AssistantUiState())
+    val state: StateFlow<AssistantUiState> = _state.asStateFlow()
+
+    private var listeningJob: Job? = null
+
+    /**
+     * 喚醒詞監聽。與 [listeningJob] **互斥** —— 眼鏡只有一組麥克風，
+     * 兩邊同時開 `AudioRecord` 會互相搶，實測會有一邊完全收不到聲音。
+     */
+    private var wakeWordJob: Job? = null
+
+    /**
+     * 持續障礙物偵測的 job。
+     *
+     * 用相機、不用麥克風，所以可以和喚醒詞監聽（[wakeWordJob]）同時跑。
+     * 再說一次指令就 `cancel()` 它，[WatchObstaclesUseCase] 的串流跟著收束、
+     * 相機跟著關 —— 生命週期只有這一個地方在管。
+     */
+    private var obstacleWatchJob: Job? = null
+
+    /**
+     * 即時步行導航的 job。
+     *
+     * 公車方案規劃成功後自動開始，邊走邊播報轉彎指示，走到上車站牌附近
+     * 自動結束。使用者說「停」會取消——見 [onStopRequested]。
+     */
+    private var walkingNavJob: Job? = null
+
+    /** 被叫醒時的提示音。延遲敏感，所以不用語音播報。 */
+    private val ackTone by lazy { AckTone() }
+
+    /** 上一次播報的內容，供「再說一次」使用。 */
+    private var lastSpoken: String? = null
+
+    /** 目前進行中的朗讀。長文分段之後，使用者可以說「下一段」「上一段」。 */
+    private var readingSession: ReadingSession? = null
+
+    /**
+     * 上一次成功規劃的公車方案與到站資訊，供「確認公車」使用。
+     *
+     * 「確認公車」不重新規劃、只核對眼前這台車是不是剛剛講的那班 ——
+     * 沒有先規劃過就沒有比對基準。
+     */
+    private var lastBusPlan: BusPlan? = null
+    private var lastBusEta: BusEta? = null
+
+    /**
+     * 上一次 OCR 讀到的完整文字，供「翻成英文」使用。
+     *
+     * 這是 OCR 與翻譯的交叉整合點：使用者說「唸給我聽」聽到中文菜單，
+     * 接著說「翻成英文」就能把同一份內容翻譯出來，**不需要再拍一次**。
+     * 存整份而不是當前段落 —— 使用者要的是整張紙的翻譯。
+     */
+    private var lastReadText: String? = null
+
+    /**
+     * 使用者觸發助理：說「我要說話」（[VoiceCommand.START_LISTENING]），或點一下眼鏡觸控板。
+     *
+     * 若正在聆聽則視為取消 —— 使用者點錯了要能反悔，
+     * 而且不該逼他等到 ASR 逾時。
+     */
+    fun onAssistantTriggered() {
+        if (_state.value.phase == Phase.LISTENING) {
+            cancelListening()
+            return
+        }
+
+        // 麥克風只有一組，喚醒監聽必須先讓位。
+        wakeWordJob?.cancel()
+        wakeWordJob = null
+
+        if (!speechGateway.isAvailable) {
+            announce(MESSAGE_NO_ASR, AnnouncementPriority.USER_RESPONSE)
+            return
+        }
+
+        // 使用者開口時，先讓正在播的內容安靜下來。
+        announcementManager.clearAtOrBelow(AnnouncementPriority.NAVIGATION)
+
+        listeningJob?.cancel()
+        listeningJob = viewModelScope.launch {
+            _state.update { it.copy(phase = Phase.LISTENING, transcript = "", lastReply = "") }
+
+            speechGateway.listen().collect { event ->
+                when (event) {
+                    // 提示音在「真的開始聽」的這一刻才響，不是偵測到「我要說話」就響 ——
+                    // 眼鏡實測模型第一次載入要 6.4 秒，提示音先響的話使用者開口時根本還沒在聽。
+                    SpeechEvent.ReadyForSpeech -> ackTone.play()
+
+                    SpeechEvent.SpeechStarted -> Unit
+
+                    is SpeechEvent.PartialResult ->
+                        _state.update { it.copy(transcript = event.text) }
+
+                    is SpeechEvent.FinalResult -> {
+                        _state.update { it.copy(transcript = event.text, phase = Phase.THINKING) }
+                        handleUtterance(event.text)
+                    }
+
+                    is SpeechEvent.Failed -> {
+                        _state.update { it.copy(phase = Phase.IDLE) }
+                        announce(messageFor(event.error), AnnouncementPriority.USER_RESPONSE)
+                    }
+                }
+            }
+
+        }
+
+        /*
+         * 用 invokeOnCompletion 而不是在 job 內部直接呼叫 ——
+         * 在 job 裡呼叫時 `listeningJob.isActive` 還是 true，
+         * 會被自己的防重入檢查擋掉，耳朵就再也還不回來了。
+         */
+        listeningJob?.invokeOnCompletion { startWakeWordListening() }
+    }
+
+    /**
+     * 開始監聽語音指令。
+     *
+     * **沒有喚醒詞**：直接聽，聽到指令就做。
+     *
+     * 原本是「喚醒詞 → 提示音 → 再講一次 → 辨識 2–3 秒 → 執行」，
+     * 實測每一段都在扣分，使用者的結論是「呼叫他好像沒有什麼用」。
+     * 但導盲的指令是封閉集合，關鍵詞偵測可以直接把指令本身當成要偵測的詞 ——
+     * 中間那些步驟一個都不需要。見 [VoiceCommand]。
+     *
+     * 開放式輸入（要翻譯的整段內容、「帶我去哪裡」）仍然走
+     * [onAssistantTriggered] 那條完整的辨識流程。
+     */
+    fun startWakeWordListening() {
+        // portable 曾在這裡直接 return（「這台裝置跑這個模型會讓原生引擎當機」）。
+        // 真正原因是 kws/ 下的三個 .onnx 從未進版控，portable 裡根本沒有 ——
+        // sherpa-onnx 找不到模型檔會在原生層 abort，runCatching 攔不住。
+        // 模型補回後恢復；同一份程式碼在端側版（edge/）的眼鏡上一直正常運作。
+        //
+        // 這幾行看似囉嗦，但「沒啟動」在眼鏡上完全沒有徵兆 ——
+        // 使用者只會看到講了沒反應，log 裡一片安靜。
+        if (wakeWordJob?.isActive == true) {
+            Log.d(TAG, "語音指令監聽：已經在跑了")
+            return
+        }
+        if (!wakeWordDetector.isAvailable) {
+            Log.w(TAG, "語音指令監聽：偵測器不可用（缺麥克風權限或模型載入失敗）")
+            return
+        }
+
+        Log.i(TAG, "語音指令監聽已啟動，可以直接說指令")
+        wakeWordJob = viewModelScope.launch {
+            wakeWordDetector.detections().collect { keyword -> onVoiceCommand(keyword) }
+        }
+    }
+
+    /**
+     * 直接聽到指令了。
+     *
+     * 提示音先響，讓使用者知道被聽到了 —— 有些功能（相機、人臉）要跑幾秒，
+     * 沒有立即回饋的話使用者會以為沒反應而重講一次。
+     */
+    /**
+     * 累積對話記錄。
+     *
+     * 使用者的原話：「我根本不知道他聽到了什麼文字」。眼鏡上沒有畫面回饋時，
+     * 「沒聽到」「聽錯了」「聽對了但功能慢」三種情況的外在表現一模一樣，
+     * 開發時完全無從判斷。
+     *
+     * 有界，因為這是常駐 App —— 不限制的話跑一整天會把記憶體吃光。
+     */
+    private fun appendLog(line: String) {
+        _state.update { current ->
+            current.copy(log = (current.log + line).takeLast(MAX_LOG_LINES))
+        }
+    }
+
+    private fun onVoiceCommand(keyword: String) {
+        if (VoiceCommand.isStartListening(keyword)) {
+            Log.i(TAG, "語音指令：「$keyword」→ 開始聆聽")
+            // 這裡不響提示音：「可以說了」的提示音在辨識真的開始聽時才響（ReadyForSpeech）。
+            appendLog("🎤 $keyword")
+            // 跟以前按「說話」按鈕走同一條路：暫停指令監聽、開始語音辨識，辨識完自動恢復。
+            onAssistantTriggered()
+            return
+        }
+
+        val intent = VoiceCommand.intentFor(keyword)
+        if (intent == null) {
+            // keywords.txt 加了詞卻忘了加對照時會走到這裡。
+            Log.w(TAG, "偵測到「$keyword」但沒有對應的功能")
+            appendLog("🎤 $keyword（沒有對應的功能）")
+            return
+        }
+
+        Log.i(TAG, "語音指令：「$keyword」→ $intent")
+        ackTone.play()
+        appendLog("🎤 $keyword")
+
+        // 指令執行期間不要再收自己播報的聲音 —— 播報內容裡就有指令詞。
+        _state.update { it.copy(transcript = keyword, phase = Phase.THINKING) }
+        dispatch(RoutedIntent(intent, source = RoutedIntent.Source.LOCAL_FAST_PATH))
+        _state.update { it.copy(phase = Phase.IDLE) }
+    }
+
+    /**
+     * 開發用入口：直接執行某個 intent。
+     *
+     * **存在的理由：Rokid Glasses 上沒有任何語音辨識服務**
+     * （見 `docs/DEVICE_FINDINGS.md` §3），所以無法用說話觸發任何功能。
+     * 少了這個入口，OCR／人臉／翻譯／障礙物的邏輯在眼鏡上完全無法驗證。
+     *
+     * 只由 debug build 的廣播接收器呼叫，release 不會有任何呼叫端。
+     *
+     * ```bash
+     * adb shell am broadcast -a com.guideglasses.cloudflare.DEBUG --es cmd READ_TEXT
+     * adb shell am broadcast -a com.guideglasses.cloudflare.DEBUG --es cmd TRANSLATE --es target_language ja
+     * ```
+     */
+    /**
+     * 開發用入口：把一句話當成語音辨識的結果，走完整的「路由（本地或 LLM）→ 執行 → 播報」。
+     *
+     * 跟 [debugDispatch] 不同，這裡**經過 IntentRouter**，所以能測一般聊天與 LLM 意圖解析 ——
+     * 那條路原本只能對眼鏡說話才觸發，沒辦法自動測試。只由 debug build 的廣播呼叫。
+     *
+     * ```bash
+     * adb shell am broadcast -a com.guideglasses.cloudflare.DEBUG --es cmd ASK --es text 你好
+     * ```
+     */
+    fun debugUtterance(text: String) {
+        android.util.Log.i("AssistantVM", "debugUtterance：「$text」")
+        appendLog("🎤 $text")
+        viewModelScope.launch {
+            _state.update { it.copy(transcript = text, phase = Phase.THINKING) }
+            handleUtterance(text)
+        }
+    }
+
+    fun debugDispatch(intentName: String, arguments: Map<String, String> = emptyMap()) {
+        val intent = AssistantIntent.entries
+            .firstOrNull { it.name.equals(intentName, ignoreCase = true) }
+        if (intent == null) {
+            android.util.Log.w("AssistantVM", "debugDispatch: 找不到 intent「$intentName」")
+            return
+        }
+        android.util.Log.i("AssistantVM", "debugDispatch → $intent args=$arguments")
+        dispatch(RoutedIntent(intent, arguments, RoutedIntent.Source.LOCAL_FAST_PATH))
+    }
+
+    fun onStopRequested() {
+        cancelListening()
+        announcementManager.stopAll()
+        // 即時導航是持續運作的背景工作，跟朗讀／播報不一樣——只清播報佇列
+        // 不會讓它停止，必須額外取消 job，否則使用者說了「停」，
+        // 下一個轉彎點還是會突然開口。
+        walkingNavJob?.cancel()
+        walkingNavJob = null
+        _state.update { it.copy(phase = Phase.IDLE) }
+    }
+
+    private fun cancelListening() {
+        listeningJob?.cancel()
+        listeningJob = null
+        speechGateway.cancel()
+        _state.update { it.copy(phase = Phase.IDLE) }
+    }
+
+    private suspend fun handleUtterance(utterance: String) {
+        val routed = intentRouter.route(utterance)
+        _state.update { it.copy(phase = Phase.IDLE, routedFrom = routed.source) }
+        dispatch(routed)
+    }
+
+    private fun dispatch(routed: RoutedIntent) {
+        when (routed.intent) {
+            AssistantIntent.STOP -> onStopRequested()
+
+            AssistantIntent.REPEAT_LAST -> {
+                val previous = lastSpoken
+                if (previous.isNullOrBlank()) {
+                    announce(MESSAGE_NOTHING_TO_REPEAT, AnnouncementPriority.USER_RESPONSE)
+                } else {
+                    // 重播不更新 lastSpoken，也不套用去抖動 ——
+                    // 使用者是刻意要求再聽一次的。
+                    speak(
+                        Announcement(previous, AnnouncementPriority.USER_RESPONSE),
+                    )
+                }
+            }
+
+            AssistantIntent.CAMERA_TEST -> runCameraSelfTest()
+
+            AssistantIntent.SENSOR_TEST ->
+                announce(
+                    motionSensors.capabilities.spokenSummary,
+                    AnnouncementPriority.USER_RESPONSE,
+                )
+
+            AssistantIntent.READ_TEXT -> startReading(OcrMode.DOCUMENT)
+
+            AssistantIntent.READ_SIGN -> startReading(OcrMode.SIGN)
+
+            AssistantIntent.READING_NEXT -> readNextSegment()
+
+            AssistantIntent.READING_PREVIOUS -> readPreviousSegment()
+
+            AssistantIntent.IDENTIFY_PERSON -> identifyPersonAhead()
+
+            AssistantIntent.SYNC_PEOPLE -> syncPeople()
+
+            AssistantIntent.READINESS_CHECK -> checkReadiness()
+
+            AssistantIntent.PREPARE_TRANSLATION -> prepareTranslation()
+
+            AssistantIntent.REGISTER_FACE -> registerPerson(
+                name = routed.arguments["name"].orEmpty(),
+                relation = routed.arguments["relation"],
+            )
+
+            AssistantIntent.CHAT ->
+                announce(
+                    routed.spokenReply ?: MESSAGE_GENERIC_FAILURE,
+                    AnnouncementPriority.USER_RESPONSE,
+                )
+
+            AssistantIntent.TRANSLATE -> translate(
+                text = routed.arguments[IntentRouter.ARG_TEXT],
+                targetLanguage = routed.arguments[IntentRouter.ARG_TARGET_LANGUAGE],
+            )
+
+            AssistantIntent.DETECT_OBSTACLES -> detectObstacles()
+
+            AssistantIntent.WATCH_OBSTACLES -> toggleObstacleWatch()
+
+            AssistantIntent.PLAN_BUS_ROUTE -> planBusRoute()
+
+            AssistantIntent.CONFIRM_BUS -> confirmBusAhead()
+
+            // LLM 從開放式語句（「帶我去台北車站」）抽出目的地文字，跟
+            // 「查公車路線」共用同一套規劃／播報邏輯，差別只在目的地來源。
+            AssistantIntent.NAVIGATE -> planBusRoute(routed.arguments["destination"])
+        }
+    }
+
+    /**
+     * 相機自我檢測。
+     *
+     * 先講「正在測試相機」再開始擷取 —— 擷取可能要一兩秒，
+     * 中間完全沒有聲音會讓看不見畫面的使用者以為系統當掉了。
+     */
+    private fun runCameraSelfTest() {
+        announce(MESSAGE_CAMERA_TESTING, AnnouncementPriority.USER_RESPONSE)
+        viewModelScope.launch {
+            val report = cameraSelfTest.execute()
+            announce(report.spoken, AnnouncementPriority.USER_RESPONSE)
+        }
+    }
+
+    // ===== OCR 朗讀 =====
+
+    private fun startReading(mode: OcrMode) {
+        announce(MESSAGE_READING_CAPTURING, AnnouncementPriority.USER_RESPONSE)
+        readingSession = null
+        lastReadText = null
+
+        viewModelScope.launch {
+            when (val outcome = readText.execute(mode)) {
+                is ReadTextUseCase.Outcome.Success -> {
+                    readingSession = outcome.session
+                    // 記下整份內容，讓接下來的「翻成英文」不必再拍一次。
+                    lastReadText = outcome.session.fullText
+                    announceReadingStart(outcome.session)
+                }
+
+                ReadTextUseCase.Outcome.NoTextFound ->
+                    announce(MESSAGE_NO_TEXT, AnnouncementPriority.USER_RESPONSE)
+
+                is ReadTextUseCase.Outcome.Failed ->
+                    announce(messageFor(outcome.error), AnnouncementPriority.USER_RESPONSE)
+            }
+        }
+    }
+
+    /**
+     * 先說共幾段，再唸第一段。
+     *
+     * 看得見的人一眼就知道這份文件有多長，看不見的人需要被告知 ——
+     * 否則他不知道該準備聽三十秒還是三分鐘。
+     */
+    private fun announceReadingStart(session: ReadingSession) {
+        if (session.total > 1) {
+            // 一定要講「說下一段繼續」。唸完第一段就安靜下來，而使用者不知道
+            // 有這個指令的話，他會以為 OCR 只讀到這麼多 —— 對看不見畫面的人，
+            // 沒有下一步的沉默和系統當掉沒有分別。
+            announce(
+                "共 ${session.total} 段，說下一段繼續",
+                AnnouncementPriority.USER_RESPONSE,
+            )
+        }
+        speakSegment(session.next())
+    }
+
+    private fun readNextSegment() {
+        val session = readingSession
+        if (session == null) {
+            announce(MESSAGE_NOTHING_TO_READ, AnnouncementPriority.USER_RESPONSE)
+            return
+        }
+
+        val segment = session.next()
+        if (segment == null) {
+            announce(MESSAGE_READING_FINISHED, AnnouncementPriority.USER_RESPONSE)
+            return
+        }
+        speakSegment(segment)
+    }
+
+    private fun readPreviousSegment() {
+        val session = readingSession
+        if (session == null) {
+            announce(MESSAGE_NOTHING_TO_READ, AnnouncementPriority.USER_RESPONSE)
+            return
+        }
+        speakSegment(session.previous())
+    }
+
+    /**
+     * 朗讀一段。
+     *
+     * 用 AMBIENT 而不是 USER_RESPONSE —— 長文朗讀應該讓路給導航提示與
+     * 危險警示。`resumable = true` 讓它被打斷後能續播。
+     */
+    private fun speakSegment(segment: String?) {
+        if (segment == null) {
+            announce(MESSAGE_READING_FINISHED, AnnouncementPriority.USER_RESPONSE)
+            return
+        }
+        lastSpoken = segment
+        _state.update { it.copy(lastReply = segment) }
+        speak(
+            Announcement(segment, AnnouncementPriority.AMBIENT, resumable = true),
+        )
+    }
+
+    // ===== 障礙物 =====
+
+    /**
+     * 回應「前面有什麼」。
+     *
+     * 先講一句再開始 —— 拍照加推論要一兩秒，中間完全沒有聲音會讓看不見畫面
+     * 的使用者以為系統當掉。與 OCR、人臉同步同一個處理方式。
+     */
+    private fun detectObstacles() {
+        announce(MESSAGE_SCANNING_AHEAD, AnnouncementPriority.USER_RESPONSE)
+
+        viewModelScope.launch {
+            when (val outcome = detectObstacles.execute()) {
+                is DetectObstaclesUseCase.Outcome.Detected -> {
+                    Log.i(
+                        TAG,
+                        "障礙物 ${outcome.detections.size} 個：" +
+                            outcome.detections.joinToString {
+                                "${it.type.name}@${"%.2f".format(it.confidence)}"
+                            },
+                    )
+                    announce(outcome.spoken, AnnouncementPriority.USER_RESPONSE)
+                }
+
+                DetectObstaclesUseCase.Outcome.NothingDetected ->
+                    announce(MESSAGE_NOTHING_AHEAD, AnnouncementPriority.USER_RESPONSE)
+
+                DetectObstaclesUseCase.Outcome.Unavailable ->
+                    announce(MESSAGE_OBSTACLE_UNAVAILABLE, AnnouncementPriority.USER_RESPONSE)
+
+                is DetectObstaclesUseCase.Outcome.Failed ->
+                    announce(messageFor(outcome.error), AnnouncementPriority.USER_RESPONSE)
+            }
+        }
+    }
+
+    /**
+     * 開始／停止「持續」偵測前方。
+     *
+     * 這是為了解決「一個指令拍一張、拍完就沒了」對盲人不友善的問題 ——
+     * 開著之後相機串流一直跑，每一張都推論，只有真的有危險（5 公尺內的
+     * 車、人、機車…）才會出聲，而且同一個物體 5 秒內只講一次。
+     *
+     * 再說一次同樣的指令就會關閉。用 [speak] 送出讓每一則也寫進畫面的
+     * 對話記錄，方便在眼鏡上（拿不到 logcat 時）除錯。
+     *
+     * ⚠️ 目前 job 綁在 ViewModel 上，MainActivity 被銷毀時會一起停。
+     * 之後會把它搬進前景服務，讓螢幕關掉也持續運作 —— 見 LATENCY_PLAN 階段 2。
+     */
+    private fun toggleObstacleWatch() {
+        if (obstacleWatchJob?.isActive == true) {
+            obstacleWatchJob?.cancel()
+            obstacleWatchJob = null
+            announce(MESSAGE_WATCH_STOPPED, AnnouncementPriority.USER_RESPONSE)
+            return
+        }
+
+        announce(MESSAGE_WATCH_STARTED, AnnouncementPriority.USER_RESPONSE)
+        obstacleWatchJob = viewModelScope.launch {
+            watchObstacles.watch().collect { announcement -> speak(announcement) }
+        }
+    }
+
+    // ===== 公車 =====
+
+    /**
+     * 回應「查公車路線」。
+     *
+     * 目的地固定在設定檔（短指令沒有畫面可選），座標一律來自
+     * [com.guideglasses.core.domain.navigation.LocationProvider] —— 眼鏡
+     * 沒有 GPS 時是手機 companion 轉傳，這個 ViewModel 完全不知道座標從哪來。
+     *
+     * 規劃成功後記下方案與到站資訊，供接下來的「確認公車」核對車號使用。
+     *
+     * @param destinationName 開放式語句時 LLM 抽出來的目的地文字（「台北車站」）；
+     *   null 時用設定檔固定的目的地——「查公車路線」快捷指令走這條。
+     */
+    private fun planBusRoute(destinationName: String? = null) {
+        announce(MESSAGE_BUS_PLANNING, AnnouncementPriority.USER_RESPONSE)
+
+        viewModelScope.launch {
+            when (val outcome = planBusRoute.execute(destinationName)) {
+                is PlanBusRouteUseCase.Outcome.Planned -> {
+                    lastBusPlan = outcome.plan
+                    lastBusEta = outcome.eta
+                    // 後端的說明不唸給使用者（見 PlanBusRouteUseCase.spokenEta），但排查時要看得到。
+                    Log.i(TAG, "公車方案：${outcome.plan.busNumber}，到站資訊：${outcome.eta.message}")
+                    announce(outcome.spoken, AnnouncementPriority.USER_RESPONSE)
+                    startWalkingNavigation(outcome.plan.boardingStopCoordinate)
+                }
+
+                is PlanBusRouteUseCase.Outcome.PlannedWithoutEta -> {
+                    lastBusPlan = outcome.plan
+                    lastBusEta = null
+                    announce(outcome.spoken, AnnouncementPriority.USER_RESPONSE)
+                    startWalkingNavigation(outcome.plan.boardingStopCoordinate)
+                }
+
+                PlanBusRouteUseCase.Outcome.NoRouteFound ->
+                    announce(MESSAGE_BUS_NO_ROUTE, AnnouncementPriority.USER_RESPONSE)
+
+                PlanBusRouteUseCase.Outcome.LocationUnavailable ->
+                    announce(MESSAGE_BUS_NO_LOCATION, AnnouncementPriority.USER_RESPONSE)
+
+                PlanBusRouteUseCase.Outcome.Unavailable ->
+                    announce(MESSAGE_BUS_UNAVAILABLE, AnnouncementPriority.USER_RESPONSE)
+
+                is PlanBusRouteUseCase.Outcome.Failed ->
+                    announce(messageFor(outcome.error), AnnouncementPriority.USER_RESPONSE)
+            }
+        }
+    }
+
+    /**
+     * 開始邊走邊播報的即時步行導航，目的地是剛規劃好的上車站牌。
+     *
+     * 每則轉彎指示都走 [speak]，跟障礙物警告用同一個 [AnnouncementManager]——
+     * CRITICAL 等級的障礙物警告可以直接插話，不需要另外處理，這是刻意
+     * 不接 Google Maps App、自己做這段的原因（見 `NavigateWalkingUseCase` 的說明）。
+     *
+     * 再次查詢公車路線會重新開始（取消舊的、開新的），避免兩條導航同時播報。
+     */
+    private fun startWalkingNavigation(destination: Coordinate) {
+        walkingNavJob?.cancel()
+        walkingNavJob = viewModelScope.launch {
+            navigateWalking.navigate(destination = destination).collect { announcement -> speak(announcement) }
+        }
+    }
+
+    /**
+     * 回應「確認公車」：拍照核對眼前這台車是不是剛剛規劃好的班次。
+     *
+     * 必須先成功執行過「查公車路線」—— 沒有方案可以核對時直接播報提示，
+     * 不會嘗試呼叫後端。
+     */
+    private fun confirmBusAhead() {
+        val plan = lastBusPlan
+        val eta = lastBusEta
+        if (plan == null || eta == null) {
+            announce(MESSAGE_BUS_NOTHING_TO_CONFIRM, AnnouncementPriority.USER_RESPONSE)
+            return
+        }
+
+        announce(MESSAGE_BUS_CONFIRMING, AnnouncementPriority.USER_RESPONSE)
+
+        viewModelScope.launch {
+            when (val outcome = confirmBus.execute(plan, eta)) {
+                is ConfirmBusUseCase.Outcome.Recognized -> {
+                    // 後端的原始結果只記進 log，播報用 UseCase 組好的句子。
+                    Log.i(TAG, "確認公車：matched=${outcome.result.matched} 車頭文字「${outcome.result.recognizedText}」")
+                    announce(outcome.spoken, AnnouncementPriority.USER_RESPONSE)
+                }
+
+                ConfirmBusUseCase.Outcome.Unavailable ->
+                    announce(MESSAGE_BUS_UNAVAILABLE, AnnouncementPriority.USER_RESPONSE)
+
+                is ConfirmBusUseCase.Outcome.Failed ->
+                    announce(messageFor(outcome.error), AnnouncementPriority.USER_RESPONSE)
+            }
+        }
+    }
+
+    // ===== 出門前準備 =====
+
+    /**
+     * 出門前檢查。
+     *
+     * 眼鏡沒有 SIM，出了 Wi-Fi 範圍就沒有網路。這個檢查回答一個問題：
+     * **現在拔掉網路，還有哪些功能能用？**
+     */
+    private fun checkReadiness() {
+        viewModelScope.launch {
+            val report = readinessCheck.execute()
+            announce(report.spoken, AnnouncementPriority.USER_RESPONSE)
+        }
+    }
+
+    /**
+     * 預先下載翻譯語言包。
+     *
+     * 每種語言約 30MB，下載可能要幾十秒，所以先講一句再開始。
+     */
+    private fun prepareTranslation() {
+        announce(MESSAGE_PREPARING_TRANSLATION, AnnouncementPriority.USER_RESPONSE)
+
+        viewModelScope.launch {
+            when (val outcome = prepareLanguages.execute()) {
+                is PrepareLanguagesUseCase.Outcome.Finished ->
+                    announce(outcome.spoken, AnnouncementPriority.USER_RESPONSE)
+
+                PrepareLanguagesUseCase.Outcome.Unavailable ->
+                    announce(MESSAGE_TRANSLATE_UNAVAILABLE, AnnouncementPriority.USER_RESPONSE)
+            }
+        }
+    }
+
+    // ===== 翻譯 =====
+
+    /**
+     * 翻譯。
+     *
+     * 兩個來源，優先序刻意如此：
+     *
+     * 1. LLM 帶來的 `text` 參數（「把『謝謝』翻成日文」）
+     * 2. **上一次 OCR 讀到的內容** —— 這是不用 BFF 就能用的路徑，
+     *    也是最實用的組合：說「唸給我聽」聽菜單，再說「翻成英文」。
+     *
+     * @param targetLanguage 語言碼或中文名稱。null／無法解析時套用預設（英文）。
+     */
+    private fun translate(text: String?, targetLanguage: String?) {
+        val source = text?.takeIf { it.isNotBlank() } ?: lastReadText
+
+        if (source.isNullOrBlank()) {
+            announce(MESSAGE_NOTHING_TO_TRANSLATE, AnnouncementPriority.USER_RESPONSE)
+            return
+        }
+
+        val target = targetLanguage?.let { TargetLanguage.fromCodeOrName(it) }
+
+        viewModelScope.launch {
+            val outcome = translateText.execute(
+                text = source,
+                target = target,
+                // 語言包首次下載可能要幾十秒。不先講一句，使用者會以為當掉了。
+                onPreparing = { language ->
+                    announce(
+                        "正在準備${language.spokenName}翻譯，第一次使用需要下載，請稍等",
+                        AnnouncementPriority.USER_RESPONSE,
+                    )
+                },
+            )
+
+            when (outcome) {
+                is TranslateUseCase.Outcome.Translated -> {
+                    if (outcome.truncated) {
+                        announce(MESSAGE_TRANSLATE_TRUNCATED, AnnouncementPriority.USER_RESPONSE)
+                    }
+                    lastSpoken = outcome.spoken
+                    _state.update { it.copy(lastReply = outcome.spoken) }
+                    // languageTag 是關鍵 —— 沒有它，TTS 會用中文語音唸英文，
+                    // 結果幾乎聽不懂。
+                    speak(
+                        Announcement(
+                            text = outcome.spoken,
+                            priority = AnnouncementPriority.USER_RESPONSE,
+                            languageTag = outcome.target.code,
+                        ),
+                    )
+                }
+
+                TranslateUseCase.Outcome.NothingToTranslate ->
+                    announce(MESSAGE_NOTHING_TO_TRANSLATE, AnnouncementPriority.USER_RESPONSE)
+
+                TranslateUseCase.Outcome.Unavailable ->
+                    announce(MESSAGE_TRANSLATE_UNAVAILABLE, AnnouncementPriority.USER_RESPONSE)
+
+                is TranslateUseCase.Outcome.Failed ->
+                    announce(translateFailureFor(outcome.error), AnnouncementPriority.USER_RESPONSE)
+            }
+        }
+    }
+
+    // ===== 人臉辨識 =====
+
+    private fun identifyPersonAhead() {
+        viewModelScope.launch {
+            when (val outcome = identifyPerson.execute()) {
+                is IdentifyPersonUseCase.Outcome.Identified -> {
+                    // 相似度是校正閾值的唯一依據，但播報裡只有「是」「可能是」
+                    // 「不認識」三種說法 —— 不印出來就沒有人知道差多少，
+                    // 也就無從判斷閾值該不該調。眼鏡戴在頭上拿不到畫面，
+                    // 這個數字只能靠 logcat。
+                    Log.i(
+                        TAG,
+                        "辨識結果 similarity=${"%.3f".format(outcome.match.similarity)} " +
+                            "band=${outcome.match::class.simpleName} source=${outcome.source}",
+                    )
+                    lastSpoken = outcome.spoken
+                    _state.update { it.copy(lastReply = outcome.spoken) }
+                    // 用 dedupeKey 讓同一個人連續被辨識到時不會一直重複播報。
+                    speak(
+                        Announcement(
+                            text = outcome.spoken,
+                            priority = AnnouncementPriority.USER_RESPONSE,
+                            dedupeKey = outcome.dedupeKey,
+                        ),
+                    )
+                }
+
+                IdentifyPersonUseCase.Outcome.NoFaceDetected ->
+                    announce(MESSAGE_NO_FACE, AnnouncementPriority.USER_RESPONSE)
+
+                is IdentifyPersonUseCase.Outcome.Failed ->
+                    announce(messageFor(outcome.error), AnnouncementPriority.USER_RESPONSE)
+            }
+        }
+    }
+
+    /**
+     * 從註冊工具同步人臉。
+     *
+     * 同步幾十張照片可能要十幾秒，中間完全沒有聲音會讓看不見畫面的使用者
+     * 以為系統當掉，所以先講一句再開始。
+     */
+    private fun syncPeople() {
+        announce(MESSAGE_SYNC_STARTED, AnnouncementPriority.USER_RESPONSE)
+
+        viewModelScope.launch {
+            when (val outcome = syncPeople.execute()) {
+                is SyncPeopleUseCase.Outcome.Completed -> {
+                    // coherence 只在低於門檻時才會被播報出來，但它是校正辨識閾值的
+                    // 基準線 —— 同一個人不同照片能拿到多少分，決定了「認得出來」
+                    // 應該設在哪。正常時也要留下紀錄。
+                    Log.i(
+                        TAG,
+                        "同步完成 people=${outcome.people} photos=${outcome.photos} " +
+                            "skipped=${outcome.skippedPhotos} coherence=${outcome.coherence}",
+                    )
+                    announce(outcome.spoken, AnnouncementPriority.USER_RESPONSE)
+                }
+
+                SyncPeopleUseCase.Outcome.SourceUnavailable ->
+                    announce(MESSAGE_SYNC_NO_SOURCE, AnnouncementPriority.USER_RESPONSE)
+
+                SyncPeopleUseCase.Outcome.ModelUnavailable ->
+                    announce(MESSAGE_SYNC_NO_MODEL, AnnouncementPriority.USER_RESPONSE)
+
+                SyncPeopleUseCase.Outcome.NothingToSync ->
+                    announce(MESSAGE_SYNC_EMPTY, AnnouncementPriority.USER_RESPONSE)
+
+                is SyncPeopleUseCase.Outcome.Failed -> {
+                    // 「連得到但沒人在聽」要跟「沒有網路」分開講。前者是註冊工具
+                    // 沒啟動，後者是網路問題 —— 講錯會讓使用者去修一個沒壞的東西。
+                    val message = if (outcome.error is AppError.Remote) {
+                        MESSAGE_SYNC_UNREACHABLE
+                    } else {
+                        messageFor(outcome.error)
+                    }
+                    announce(message, AnnouncementPriority.USER_RESPONSE)
+                }
+            }
+        }
+    }
+
+    /**
+     * 把眼前的人記起來。
+     *
+     * **人臉是生物特徵，未經同意建檔在臺灣涉及個資法。** 因此註冊前一定
+     * 先播報一句提示，讓當事人知道正在發生什麼事 —— 這不只是法律要求，
+     * 也是基本的尊重。
+     */
+    private fun registerPerson(name: String, relation: String?) {
+        if (name.isBlank()) {
+            announce(MESSAGE_REGISTER_NEED_NAME, AnnouncementPriority.USER_RESPONSE)
+            return
+        }
+
+        announce(MESSAGE_REGISTER_CONSENT, AnnouncementPriority.USER_RESPONSE)
+
+        viewModelScope.launch {
+            when (val outcome = registerFace.execute(name, relation)) {
+                is RegisterFaceUseCase.Outcome.Registered ->
+                    announce(outcome.spoken, AnnouncementPriority.USER_RESPONSE)
+
+                RegisterFaceUseCase.Outcome.NoFaceDetected ->
+                    announce(MESSAGE_NO_FACE, AnnouncementPriority.USER_RESPONSE)
+
+                is RegisterFaceUseCase.Outcome.MultipleFaces ->
+                    announce(
+                        "看到 ${outcome.count} 個人，請確認只有一個人在鏡頭前",
+                        AnnouncementPriority.USER_RESPONSE,
+                    )
+
+                RegisterFaceUseCase.Outcome.InvalidName ->
+                    announce(MESSAGE_REGISTER_NEED_NAME, AnnouncementPriority.USER_RESPONSE)
+
+                is RegisterFaceUseCase.Outcome.Failed ->
+                    announce(messageFor(outcome.error), AnnouncementPriority.USER_RESPONSE)
+            }
+        }
+    }
+
+    /**
+     * 所有播報的唯一入口。
+     *
+     * 原本有四處直接呼叫 `announcementManager` 繞過這裡，結果那些內容
+     * （人臉、翻譯、障礙物）**不會出現在畫面的對話記錄上** ——
+     * 使用者看到的是一片空白，以為記錄壞了。
+     * 統一入口之後，新增功能不必記得「也要寫一筆記錄」。
+     */
+    private fun speak(announcement: Announcement) {
+        appendLog("🔊 ${announcement.text}")
+        announcementManager.announce(announcement)
+    }
+
+    private fun announce(text: String, priority: AnnouncementPriority) {
+        lastSpoken = text
+        _state.update { it.copy(lastReply = text) }
+        speak(Announcement(text, priority))
+    }
+
+    /**
+     * 翻譯失敗的說法。
+     *
+     * 不能沿用 [messageFor] —— 它把 [AppError.NoResult] 一律翻成
+     * 「我沒有聽到，請再說一次」，那是給語音辨識用的。翻譯引擎失敗時
+     * 播這句，使用者會以為是自己講得不夠大聲，然後一直重講一句
+     * 其實已經被正確聽到的話。
+     */
+    private fun translateFailureFor(error: AppError): String = when (error) {
+        is AppError.NoNetwork -> MESSAGE_TRANSLATE_NEEDS_NETWORK
+        is AppError.NoResult -> MESSAGE_TRANSLATE_NOT_PREPARED
+        is AppError.CapabilityUnavailable -> MESSAGE_TRANSLATE_UNAVAILABLE
+        else -> MESSAGE_TRANSLATE_NOT_PREPARED
+    }
+
+    /**
+     * 把領域錯誤翻成使用者聽得懂的話。絕不播報錯誤碼或例外訊息。
+     *
+     * [AppError.CapabilityUnavailable] 要再依 `capability` 分岔：
+     * 「沒有語音辨識服務」和「有服務但缺中文語音資料」對使用者是完全
+     * 不同的兩件事 —— 前者無解，後者去設定下載就好。全部收斂成同一句
+     * 等於沒有告訴他任何事。
+     */
+    private fun messageFor(error: AppError): String = when (error) {
+        is AppError.NoResult -> MESSAGE_NOT_HEARD
+        is AppError.NoNetwork -> MESSAGE_NO_NETWORK
+        is AppError.PermissionDenied -> MESSAGE_NO_MIC_PERMISSION
+        is AppError.CapabilityUnavailable -> when (error.capability) {
+            SpeechCapability.LANGUAGE_PACK -> MESSAGE_NO_SPEECH_LANGUAGE
+            SpeechCapability.BUSY -> MESSAGE_RECOGNIZER_BUSY
+            SpeechCapability.MICROPHONE -> MESSAGE_MIC_BUSY
+            SpeechCapability.NO_SPEECH -> MESSAGE_NO_SPEECH_HEARD
+            else -> MESSAGE_NO_ASR
+        }
+        else -> MESSAGE_GENERIC_FAILURE
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        wakeWordJob?.cancel()
+        listeningJob?.cancel()
+        obstacleWatchJob?.cancel()
+        walkingNavJob?.cancel()
+        ackTone.release()
+        wakeWordDetector.shutdown()
+        speechGateway.shutdown()
+    }
+
+    enum class Phase { IDLE, LISTENING, THINKING }
+
+    data class AssistantUiState(
+        val phase: Phase = Phase.IDLE,
+        val transcript: String = "",
+        val lastReply: String = "",
+        val routedFrom: RoutedIntent.Source? = null,
+        /**
+         * 對話記錄：聽到什麼、回應什麼，一路往下累積。
+         *
+         * 眼鏡上沒有這個的話，「沒聽到」「聽錯了」「聽對了但功能慢」
+         * 三種情況的外在表現完全一樣，開發時無從判斷。
+         */
+        val log: List<String> = emptyList(),
+    )
+
+    private companion object {
+        const val TAG = "Assistant"
+
+        /** 這是常駐 App，記錄不設上限的話跑一整天會把記憶體吃光。 */
+        const val MAX_LOG_LINES = 60
+
+        const val MESSAGE_NOT_HEARD = "我沒有聽到，請再說一次"
+        const val MESSAGE_NO_NETWORK = "目前沒有網路"
+        const val MESSAGE_NO_MIC_PERMISSION = "需要麥克風權限才能聽你說話，請到設定中開啟"
+        const val MESSAGE_NO_ASR = "這台裝置沒有可用的語音辨識服務"
+        const val MESSAGE_NO_SPEECH_LANGUAGE =
+            "這台裝置沒有中文語音辨識資料。請到系統設定的語音輸入中下載中文，再試一次"
+        const val MESSAGE_RECOGNIZER_BUSY = "我還在處理上一句，請稍等一下再說"
+        const val MESSAGE_MIC_BUSY = "麥克風好像正被其他程式使用中"
+
+        /**
+         * 有在聽但沒聽到 —— 與「沒有辨識服務」是不同的事。
+         *
+         * 混在一起講會讓使用者以為系統壞掉而放棄，實際上再說一次就好。
+         */
+        const val MESSAGE_NO_SPEECH_HEARD = "我沒有聽到聲音，請再說一次"
+
+        /**
+         * 被喚醒詞叫醒時的回應。
+         *
+         * 刻意極短 —— 使用者已經準備好要講下一句了，這裡拖長只會讓他
+         * 對著還在講話的助理說指令，然後被自己的播報蓋掉。
+         */
+        const val MESSAGE_WOKEN = "我在"
+        const val MESSAGE_GENERIC_FAILURE = "我現在無法處理，請再試一次"
+        const val MESSAGE_NOTHING_TO_REPEAT = "目前沒有可以重複的內容"
+        const val MESSAGE_CAMERA_TESTING = "正在測試相機"
+        const val MESSAGE_READING_CAPTURING = "正在辨識文字"
+        const val MESSAGE_NO_TEXT = "沒有看到文字，請調整角度或靠近一點"
+        const val MESSAGE_NOTHING_TO_READ = "目前沒有正在朗讀的內容"
+        const val MESSAGE_READING_FINISHED = "已經唸完了"
+        const val MESSAGE_NO_FACE = "前方沒有偵測到人"
+        const val MESSAGE_REGISTER_NEED_NAME = "請告訴我要記成什麼名字"
+        const val MESSAGE_REGISTER_CONSENT = "正在記住這個人的臉，請確認對方同意"
+        const val MESSAGE_NOTHING_TO_TRANSLATE =
+            "沒有可以翻譯的內容。你可以先說「唸給我聽」，再說「翻成英文」"
+        const val MESSAGE_TRANSLATE_UNAVAILABLE = "翻譯功能目前不可用"
+        const val MESSAGE_TRANSLATE_NEEDS_NETWORK =
+            "翻譯的語言包還沒下載完成，需要網路。請連上網路後說「準備翻譯」"
+        const val MESSAGE_TRANSLATE_NOT_PREPARED =
+            "翻譯失敗，語言包可能不完整。請說「準備翻譯」重新下載後再試一次"
+        const val MESSAGE_TRANSLATE_TRUNCATED = "內容較長，只翻譯前面的部分"
+        const val MESSAGE_SYNC_STARTED = "正在同步人臉，請稍等"
+        const val MESSAGE_SYNC_NO_SOURCE = "還沒設定註冊工具的位址"
+
+        /**
+         * 位址有設定、網路也通，只是那個埠上沒有人在聽。
+         *
+         * 講「沒有網路」會讓使用者去檢查一個沒壞的東西 ——
+         * 實測過網路 ping 0% 掉包卻聽到「目前沒有網路」。
+         */
+        const val MESSAGE_SYNC_UNREACHABLE =
+            "連不到註冊工具。請確認電腦上的註冊工具有啟動，而且防火牆沒有擋住"
+        const val MESSAGE_SYNC_NO_MODEL = "缺少人臉模型檔，無法同步"
+        const val MESSAGE_SYNC_EMPTY = "註冊工具上還沒有任何人"
+        const val MESSAGE_PREPARING_TRANSLATION = "正在下載語言包，需要網路，請稍等"
+        const val MESSAGE_SCANNING_AHEAD = "正在看前面"
+        const val MESSAGE_NOTHING_AHEAD = "前面沒有偵測到障礙物"
+        const val MESSAGE_OBSTACLE_UNAVAILABLE = "障礙物偵測目前不可用，缺少模型檔"
+        const val MESSAGE_WATCH_STARTED = "開始持續偵測前方，有危險我會提醒你"
+        const val MESSAGE_WATCH_STOPPED = "已停止持續偵測前方"
+
+        const val MESSAGE_BUS_PLANNING = "正在查詢公車路線"
+        const val MESSAGE_BUS_CONFIRMING = "正在核對車號"
+        const val MESSAGE_BUS_NO_ROUTE = "查不到往這個目的地的公車路線"
+        const val MESSAGE_BUS_NO_LOCATION = "目前拿不到定位，請確認手機同伴 App 已開啟並連上網路"
+        const val MESSAGE_BUS_UNAVAILABLE = "公車查詢功能目前不可用，還沒設定後端位址"
+        const val MESSAGE_BUS_NOTHING_TO_CONFIRM = "還沒有規劃公車路線，請先說「查公車路線」"
+    }
+}
