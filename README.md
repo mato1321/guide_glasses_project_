@@ -125,7 +125,6 @@ backup/            Pre-restructure originals, kept untouched
 ```bash
 git clone https://github.com/mato1321/guide_glasses_project_.git
 cd guide_glasses_project_
-git checkout restructure/three-versions
 ```
 
 The speech recognition and keyword-spotting model files are too large for Git. See [`shared/models/README.md`](shared/models/README.md)

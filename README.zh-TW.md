@@ -123,7 +123,6 @@ backup/            整理前的原始檔案，原封不動保留
 ```bash
 git clone https://github.com/mato1321/guide_glasses_project_.git
 cd guide_glasses_project_
-git checkout restructure/three-versions
 ```
 
 語音辨識與語音指令的模型檔太大，沒有放進 Git。取得方式與校驗方法見 [`shared/models/README.md`](shared/models/README.md)，
