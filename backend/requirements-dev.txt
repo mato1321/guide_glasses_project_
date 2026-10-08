@@ -3,3 +3,10 @@
 # 測試（tests/）
 pytest==8.3.4
 httpx==0.28.1
+
+# AWS Lambda 版：Mangum 包裝、deploy/aws/deploy.py 用 boto3 部署。
+# 測試（test_location_store、test_lambda_handler、test_aws_deploy）用 moto 在本機模擬
+# DynamoDB、Lambda、S3、IAM、CloudWatch Logs，不會連到真的 AWS。
+mangum==0.22.0
+boto3==1.43.105
+moto[awslambda,dynamodb,s3,logs,iam,sts]==5.2.3

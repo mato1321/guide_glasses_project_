@@ -4,6 +4,8 @@
 照工作目錄找不到檔案，每次都 500，log 裡一大串 google-auth 的 traceback。
 """
 
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -44,6 +46,12 @@ def test_金鑰檔不存在時回_503_並說出是哪個檔案(monkeypatch, tmp_
     assert response.status_code == 503
     assert str(missing) in response.json()["message"]
     assert response.json()["matched"] is False
+
+
+def test_Lambda_上從環境變數的內容寫出金鑰檔(tmp_path):
+    path = config._google_credentials_from_json('{"type": "service_account"}', tmp_path)
+    assert Path(path).read_text(encoding="utf-8") == '{"type": "service_account"}'
+    assert config._google_credentials_from_json("", tmp_path) == ""
 
 
 @pytest.mark.parametrize("box", [(4, 6, 40, 20, 0.87), None])

@@ -1,0 +1,26 @@
+# AWS Lambda 版的套件，deploy/aws/build_lambda.py 用這份打包。
+#
+# 跟 requirements.txt 的差別：
+# - 不裝 uvicorn、websockets：Function URL 的事件由 Mangum 轉給 FastAPI；
+#   Function URL 也不支援 WebSocket
+# - 不裝 ultralytics：它連帶的 torch 解壓後超過 700 MB，Lambda 的上限是 250 MB。
+#   /bus-ocr 沒有 YOLO 時本來就會把整張圖交給 Google Vision（bus_logic.detect_led_roi）
+# - 不裝 boto3：Lambda 的 Python 執行環境內建（DynamoDB 存座標用）
+fastapi==0.115.6
+python-dotenv==1.0.1
+python-multipart==0.0.20
+mangum==0.22.0
+
+# LLM 意圖解析（/route）
+openai==1.58.1
+
+# 公車路線規劃／到站時間
+requests==2.32.3
+
+# 公車車頭 OCR（/bus-ocr，不含 YOLO）
+opencv-python-headless==4.10.0.84
+numpy==1.26.4
+google-cloud-vision==3.8.1
+
+# 英→繁中翻譯
+deep-translator==1.11.4

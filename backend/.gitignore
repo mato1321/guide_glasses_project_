@@ -8,6 +8,7 @@ __pycache__/
 .env
 .env.*
 !.env.example
+!.env.aws.example
 *.key
 *.pem
 # Google Cloud 服務帳戶金鑰通常是 .json，上面那三條擋不到，另外擋整個資料夾
