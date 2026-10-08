@@ -94,19 +94,68 @@ Guide Glasses 把 **Rokid 智慧眼鏡**變成視障者的語音助理。
 ## 專案結構
 
 ```
-apps/              Android 專案（Cloudflare 版與 AWS 版共用同一份程式碼）
-├── app/           眼鏡 App「導盲眼鏡 CF／AWS」
-├── companion/     手機 App「導盲定位 CF／AWS」
-├── core/          功能邏輯：語音指令、公車規劃與核對、步行導航、播報優先順序、人臉資料加密儲存
-├── ai/            離線語音辨識與指令偵測、離線語音合成、障礙物偵測、人臉辨識、文字辨識、翻譯、定位與公車
-├── glasses/       相機（CameraX）與動作感測
-├── feature/       助理的指令分派與提示音
-└── tools/         人臉註冊工具（在瀏覽器上傳照片）
-backend/           FastAPI 後端、測試、Cloudflare 通道部署說明
-edge/              端側版（只能離線，已凍結，保留作為對照）
-docs/              架構、裝置實測紀錄、專題計畫書、操作卡（PDF）
-shared/models/     模型清單與 SHA-256 校驗碼
-backup/            整理前的原始檔案，原封不動保留
+guide_glasses_project_/
+├── README.md                        英文說明（GitHub 首頁）
+├── README.zh-TW.md                  繁體中文說明（本檔案）
+├── LICENSE                          MIT
+│
+├── apps/                            ★ Android 專案（Cloudflare 版與 AWS 版共用同一份程式碼）
+│   ├── app/                         眼鏡 App「導盲眼鏡 CF／AWS」
+│   │   ├── MainActivity.kt                  畫面（沒有按鈕）、觸控板點一下、開發用廣播
+│   │   ├── GuideGlassesApplication.kt       啟動時把音量開到最大、版本交接
+│   │   ├── GuideGlassesForegroundService.kt 前景服務：相機、麥克風在背景持續運作
+│   │   ├── SensorHandoff.kt                 三個版本輪流使用相機與麥克風
+│   │   ├── AnnouncementVolume.kt            播報音量 15/15
+│   │   └── di/                              功能組裝、X-Api-Key、執行期更換後端網址
+│   ├── companion/companion-app/     手機 App「導盲定位 CF／AWS」
+│   │   ├── LocationReportService.kt         前景服務：GPS 送到後端
+│   │   ├── LocalLocationServer.kt           熱點直連伺服器，眼鏡直接來問位置（port 8765／8766）
+│   │   └── BackendUrlStore.kt               手機上設定的後端網址，會同步給眼鏡
+│   ├── core/
+│   │   ├── core-domain/             純 Kotlin 功能邏輯：語音指令、公車規劃與核對、步行導航、
+│   │   │                            播報優先順序、人臉比對
+│   │   ├── core-common/             共用工具
+│   │   └── core-database/           人臉特徵（以 Android Keystore 金鑰加密）
+│   ├── ai/
+│   │   ├── ai-asr-offline/          離線語音辨識與語音指令偵測
+│   │   ├── ai-tts-offline/          離線語音合成（中文、英文）
+│   │   ├── ai-speech/               系統語音服務（備援）
+│   │   ├── ai-agent/                LLM 意圖解析（後端 /route）
+│   │   ├── ai-vision/               障礙物偵測（團隊自訓 obstacle_yolov8.onnx）
+│   │   ├── ai-face/                 人臉偵測與特徵（InsightFace w600k_mbf）、照片同步
+│   │   ├── ai-ocr/                  文字辨識（ML Kit）
+│   │   ├── ai-translate/            翻譯（ML Kit）
+│   │   └── ai-navigation/           手機定位（直連／經由後端）、公車與步行路線、車頭辨識
+│   ├── glasses/                     相機（CameraX）與動作感測
+│   ├── feature/feature-assistant/   助理的指令分派與提示音
+│   ├── tools/face_enroll_server.py  人臉註冊工具（在瀏覽器上傳照片）
+│   ├── keystore.properties.example  共用簽章設定範本
+│   └── local.properties             （不進版控）後端網址與金鑰
+│
+├── backend/                         ★ FastAPI 後端
+│   ├── app/
+│   │   ├── main.py                  金鑰驗證、/route（LLM）、/health
+│   │   ├── config.py                設定（路徑一律以 backend/ 為準）
+│   │   ├── llm.py                   OpenAI 意圖解析、修正地名
+│   │   ├── bus_logic.py             公車方案、到站時間、LED 看板 YOLO ＋ Cloud Vision
+│   │   ├── navigation_logic.py      步行路線
+│   │   ├── lambda_handler.py        AWS Lambda 進入點（Mangum）
+│   │   └── routers/                 bus · location（記憶體或 DynamoDB）· navigation · translate
+│   ├── tests/                       pytest（36 個；AWS 以 moto 在本機模擬）
+│   ├── deploy/
+│   │   ├── cloudflare/              Cloudflare 通道說明與啟動腳本
+│   │   └── aws/                     Lambda 打包、部署腳本與說明
+│   ├── requirements.txt             本機／Cloudflare 版
+│   ├── requirements-lambda.txt      AWS Lambda 版
+│   ├── requirements-dev.txt         測試與部署工具
+│   ├── .env.example                 設定範本（Cloudflare 版）
+│   ├── .env.aws.example             設定範本（AWS 版）
+│   └── .env、credentials/、models/、debug/   （不進版控）金鑰、服務帳戶、LED 看板模型、辨識畫面
+│
+├── docs/                            架構、裝置實測紀錄、眼鏡佈建、專題計畫書、操作卡（PDF）、重整紀錄
+├── edge/                            端側版（只能離線，已凍結，保留作為對照）
+├── shared/models/                   模型清單與 SHA-256 校驗碼
+└── backup/                          整理前的原始檔案，原封不動保留
 ```
 
 ## 開始使用
@@ -197,7 +246,7 @@ adb -s <眼鏡序號> shell settings put global auto_time 1
 
 ```bash
 cd apps && gradlew.bat test            # 423 個單元測試
-cd backend && .venv\Scripts\python -m pytest   # 14 個測試
+cd backend && .venv\Scripts\python -m pytest   # 36 個測試（AWS 在本機模擬）
 ```
 
 debug 版也可以用 `adb` 廣播直接觸發任何功能，不必對眼鏡說話，例如
@@ -217,7 +266,7 @@ debug 版也可以用 `adb` 廣播直接觸發任何功能，不必對眼鏡說�
 - [操作卡（PDF）](docs/AI導盲眼鏡操作卡.pdf)
 - [專題計畫書（PDF）](docs/AI導盲眼鏡專題計畫書.pdf)
 - [系統架構](docs/ARCHITECTURE.md) · [裝置實測紀錄](docs/DEVICE_FINDINGS.md) · [眼鏡佈建](docs/PROVISIONING.md)
-- [後端說明](backend/README.md) · [Cloudflare 通道部署](backend/deploy/cloudflare/README.md)
+- [後端說明](backend/README.md) · [Cloudflare 通道部署](backend/deploy/cloudflare/README.md) · [AWS Lambda 部署](backend/deploy/aws/README.md)
 - [2026-09-29 三版重整紀錄](docs/RESTRUCTURE_NOTES.md)
 
 ## 版本
@@ -226,7 +275,7 @@ debug 版也可以用 `adb` 廣播直接觸發任何功能，不必對眼鏡說�
 |---|---|---|---|
 | 端側版（只能離線） | `edge/` | 無 | 凍結 |
 | **Cloudflare 版** | `apps/`，flavor `cloudflare` | 家中電腦上的 FastAPI ＋ Cloudflare 通道 | **主力版本，已實測** |
-| AWS 版 | `apps/`，flavor `aws` | AWS Lambda | 開發中 |
+| AWS 版 | `apps/`，flavor `aws` | AWS Lambda ＋ Function URL ＋ DynamoDB | 部署腳本完成，尚未部署 |
 
 ## 授權
 

@@ -94,21 +94,69 @@ Model sources and SHA-256 checksums are listed in [`shared/models/README.md`](sh
 ## Repository Structure
 
 ```
-apps/              Android project (Cloudflare & AWS flavors share one codebase)
-├── app/           Glasses app — "導盲眼鏡 CF / AWS"
-├── companion/     Phone app — "導盲定位 CF / AWS"
-├── core/          Domain logic: voice commands, bus planning & confirmation,
-│                  walking navigation, announcement priority, encrypted face storage
-├── ai/            Offline ASR & keyword spotting, offline TTS, obstacle detection,
-│                  face recognition, OCR, translation, location & bus gateways
-├── glasses/       Camera (CameraX) and motion sensors
-├── feature/       Assistant view model (command dispatch) and beep tone
-└── tools/         Face enrollment server (upload photos in a browser)
-backend/           FastAPI backend, tests, Cloudflare Tunnel deployment guide
-edge/              Offline-only edition (frozen, kept for reference)
-docs/              Architecture, device findings, project plan, quick-start card (PDF)
-shared/models/     Model inventory and SHA-256 checksums
-backup/            Pre-restructure originals, kept untouched
+guide_glasses_project_/
+├── README.md                        English README (this file)
+├── README.zh-TW.md                  Traditional Chinese README
+├── LICENSE                          MIT
+│
+├── apps/                            ★ Android project — Cloudflare & AWS flavors share one codebase
+│   ├── app/                         Glasses app "導盲眼鏡 CF / AWS"
+│   │   ├── MainActivity.kt                  Screen with no buttons, touchpad tap, debug broadcasts
+│   │   ├── GuideGlassesApplication.kt       Max volume on start, hand-off between editions
+│   │   ├── GuideGlassesForegroundService.kt Keeps camera & microphone alive in the background
+│   │   ├── SensorHandoff.kt                 Lets the three editions take turns with the sensors
+│   │   ├── AnnouncementVolume.kt            Announcement volume 15/15
+│   │   └── di/                              Dependency wiring, X-Api-Key, runtime backend URL
+│   ├── companion/companion-app/     Phone app "導盲定位 CF / AWS"
+│   │   ├── LocationReportService.kt         Foreground service: GPS → backend
+│   │   ├── LocalLocationServer.kt           Hotspot server the glasses query directly (port 8765 / 8766)
+│   │   └── BackendUrlStore.kt               Backend URL set on the phone, synced to the glasses
+│   ├── core/
+│   │   ├── core-domain/             Pure-Kotlin logic: voice commands, bus planning & confirmation,
+│   │   │                            walking navigation, announcement priority, face matching
+│   │   ├── core-common/             Shared utilities
+│   │   └── core-database/           Face embeddings encrypted with an Android Keystore key
+│   ├── ai/
+│   │   ├── ai-asr-offline/          Offline speech recognition & keyword spotting
+│   │   ├── ai-tts-offline/          Offline speech synthesis (Mandarin & English)
+│   │   ├── ai-speech/               System speech services (fallback)
+│   │   ├── ai-agent/                LLM intent gateway (backend /route)
+│   │   ├── ai-vision/               Obstacle detection (team-trained obstacle_yolov8.onnx)
+│   │   ├── ai-face/                 Face detection & embedding (InsightFace w600k_mbf), photo sync
+│   │   ├── ai-ocr/                  Text recognition (ML Kit)
+│   │   ├── ai-translate/            Translation (ML Kit)
+│   │   └── ai-navigation/           Phone location (direct / via backend), bus & walking routes, bus OCR
+│   ├── glasses/                     Camera (CameraX) and motion sensors
+│   ├── feature/feature-assistant/   Assistant view model (command dispatch) and beep tone
+│   ├── tools/face_enroll_server.py  Face enrollment server (upload photos in a browser)
+│   ├── keystore.properties.example  Shared signing-key template
+│   └── local.properties             (git-ignored) backend URLs and API keys
+│
+├── backend/                         ★ FastAPI backend
+│   ├── app/
+│   │   ├── main.py                  API-key check, /route (LLM), /health
+│   │   ├── config.py                Settings (paths resolved relative to backend/)
+│   │   ├── llm.py                   OpenAI intent parsing, place-name correction
+│   │   ├── bus_logic.py             Bus plans, ETA, LED-panel YOLO + Cloud Vision
+│   │   ├── navigation_logic.py      Walking routes
+│   │   ├── lambda_handler.py        AWS Lambda entry point (Mangum)
+│   │   └── routers/                 bus · location (memory or DynamoDB) · navigation · translate
+│   ├── tests/                       pytest (36 tests; AWS mocked locally with moto)
+│   ├── deploy/
+│   │   ├── cloudflare/              Cloudflare Tunnel guide and start script
+│   │   └── aws/                     Lambda build & deploy scripts and guide
+│   ├── requirements.txt             Local / Cloudflare edition
+│   ├── requirements-lambda.txt      AWS Lambda package
+│   ├── requirements-dev.txt         Tests and deployment tools
+│   ├── .env.example                 Settings template (Cloudflare edition)
+│   ├── .env.aws.example             Settings template (AWS edition)
+│   └── .env, credentials/, models/, debug/   (git-ignored) keys, service account, LED-panel model, debug images
+│
+├── docs/                            Architecture, device findings, provisioning, project plan,
+│                                    quick-start card (PDF), restructure notes
+├── edge/                            Offline-only edition (frozen, kept for reference)
+├── shared/models/                   Model inventory and SHA-256 checksums
+└── backup/                          Pre-restructure originals, kept untouched
 ```
 
 ## Getting Started
@@ -200,7 +248,7 @@ pick it up automatically. Otherwise, set it with
 
 ```bash
 cd apps && gradlew.bat test            # 423 unit tests
-cd backend && .venv\Scripts\python -m pytest   # 14 tests
+cd backend && .venv\Scripts\python -m pytest   # 36 tests (AWS mocked locally)
 ```
 
 Debug builds also accept `adb` broadcasts that trigger any feature without speaking, for example
@@ -220,7 +268,7 @@ Debug builds also accept `adb` broadcasts that trigger any feature without speak
 - [Quick-start card (PDF, Chinese)](docs/AI導盲眼鏡操作卡.pdf)
 - [Project plan (PDF, Chinese)](docs/AI導盲眼鏡專題計畫書.pdf)
 - [Architecture](docs/ARCHITECTURE.md) · [Device findings](docs/DEVICE_FINDINGS.md) · [Glasses provisioning](docs/PROVISIONING.md)
-- [Backend](backend/README.md) · [Cloudflare Tunnel deployment](backend/deploy/cloudflare/README.md)
+- [Backend](backend/README.md) · [Cloudflare Tunnel deployment](backend/deploy/cloudflare/README.md) · [AWS Lambda deployment](backend/deploy/aws/README.md)
 - [Restructure notes, 2026-09-29 (Chinese)](docs/RESTRUCTURE_NOTES.md)
 
 ## Editions
@@ -229,7 +277,7 @@ Debug builds also accept `adb` broadcasts that trigger any feature without speak
 |---|---|---|---|
 | Edge (offline only) | `edge/` | none | Frozen |
 | **Cloudflare** | `apps/`, flavor `cloudflare` | FastAPI on a home PC + Cloudflare Tunnel | **Main edition, field-tested** |
-| AWS | `apps/`, flavor `aws` | AWS Lambda (in progress) | In progress |
+| AWS | `apps/`, flavor `aws` | AWS Lambda + Function URL + DynamoDB | Deploy scripts ready, not yet deployed |
 
 ## License
 
