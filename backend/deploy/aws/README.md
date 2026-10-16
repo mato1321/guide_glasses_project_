@@ -88,6 +88,9 @@ adb -s <手機序號> install -r companion\companion-app\build\outputs\apk\aws\d
 adb -s <眼鏡序號> shell cmd appops set com.guideglasses.aws RUN_ANY_IN_BACKGROUND allow
 ```
 
+最後一行要在**安裝完約 15 秒後**再執行，每次眼鏡開機後也要再執行一次 ——
+系統會在安裝後與開機時把背景限制改回去（見 `docs/DEVICE_FINDINGS.md` §23.1）。
+
 使用時打開眼鏡的「**導盲眼鏡 AWS**」和手機的「**導盲定位 AWS**」。AWS 版的手機直連用 port 8766，和 CF 版的 8765 不衝突。
 
 ## 查看狀態、刪除
@@ -117,5 +120,13 @@ adb -s <眼鏡序號> shell cmd appops set com.guideglasses.aws RUN_ANY_IN_BACKG
 | `確認公車` 回「未設定」 | `.env.aws` 的 `GOOGLE_APPLICATION_CREDENTIALS` 沒填或路徑錯，改好後重新 `deploy` |
 | 想看錯誤紀錄 | AWS Console → CloudWatch → 紀錄群組 `/aws/lambda/guideglasses-backend` |
 
-> ⚠️ 尚未驗證：Learner Lab 結束 session（Stop Lab）之後，Function URL 還能不能呼叫。
-> 部署完成後要實測一次；如果不行，出門前就要先 Start Lab。
+## 實測結果（2026-10-15、10-16）
+
+- **Lab 結束後不能用**：session 到期（或 End Lab）後，Function URL 一律回 **502**；Learner Lab
+  會對帳號加上一條拒絕存取的政策（`voc-cancel-cred`），舊憑證也跟著失效。
+- **重新 Start Lab 後會自己恢復，不必重新部署**：實測開 Lab 後約十幾分鐘內恢復
+  （13:52 開 Lab，13:55 仍是 502，14:08 已正常）。部署用的憑證每次開 Lab 都要重貼。
+- 結論：**使用 AWS 版前要先 Start Lab**，一次最多 4 小時；拍片或戶外實測要預留時間。
+- 眼鏡上完整流程（離線功能、自由發問、查公車＋步行導航、確認公車、停止播報）都已實測通過。
+- 查公車比 Cloudflare 版慢（實測 7.2 秒 vs 3.1 秒）：Lambda 在美國西岸，查 TDX 與 Google 要跨太平洋來回好幾次；
+  Learner Lab 只允許 us-east-1 與 us-west-2，換不到亞洲的區域。

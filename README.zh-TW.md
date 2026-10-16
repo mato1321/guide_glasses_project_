@@ -225,7 +225,9 @@ adb -s <眼鏡序號> install -r -g app/build/outputs/apk/cloudflare/debug/app-c
 adb -s <手機序號> install -r companion/companion-app/build/outputs/apk/cloudflare/debug/companion-app-cloudflare-debug.apk
 ```
 
-眼鏡第一次使用前要設定一次，讓 App 在背景不會被系統關掉，並且時間保持正確：
+接著設定眼鏡，讓 App 在背景不會被系統關掉，並且時間保持正確。
+背景限制**不是設一次就好**：每次安裝 App（約 11 秒後）與每次眼鏡開機，系統都會改回去，
+所以裝完等 15 秒、每次開機後都要再執行第一行（見 [`docs/DEVICE_FINDINGS.md`](docs/DEVICE_FINDINGS.md) §23.1）：
 
 ```bash
 adb -s <眼鏡序號> shell cmd appops set com.guideglasses.cloudflare RUN_ANY_IN_BACKGROUND allow

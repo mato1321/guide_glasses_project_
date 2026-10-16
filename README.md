@@ -226,7 +226,9 @@ adb -s <glasses-serial> install -r -g app/build/outputs/apk/cloudflare/debug/app
 adb -s <phone-serial> install -r companion/companion-app/build/outputs/apk/cloudflare/debug/companion-app-cloudflare-debug.apk
 ```
 
-One-time setup on the glasses, so the app is not killed in the background and the clock stays correct:
+Then set up the glasses so the app is not killed in the background and the clock stays correct.
+The background setting does **not** stick: the system resets it about 11 seconds after every install and on every reboot,
+so run the first line again 15 seconds after installing and after each reboot (see [`docs/DEVICE_FINDINGS.md`](docs/DEVICE_FINDINGS.md) §23.1):
 
 ```bash
 adb -s <glasses-serial> shell cmd appops set com.guideglasses.cloudflare RUN_ANY_IN_BACKGROUND allow

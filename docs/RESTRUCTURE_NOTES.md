@@ -19,6 +19,8 @@
 
 ```
 edge/      端側版 Android 專案（凍結）。= GitHub tag v1-local-only（53cf852）= 眼鏡上實際安裝的 APK
+           （2026-10-16 更正：之後眼鏡上的 com.guideglasses 被改裝成組員 portable 的「導盲眼鏡_0924」，
+            已不是這一版，見 DEVICE_FINDINGS.md §23.2）
 apps/      連網版 Android 專案：眼鏡 App + 手機 companion，一份程式碼，之後用 productFlavors 分 cloudflare / aws
 backend/   Python FastAPI（公車、步行路線、LLM 意圖、翻譯、定位轉傳）
 shared/    模型母本（含 SHA256 清單）、人臉註冊照片、API 規格

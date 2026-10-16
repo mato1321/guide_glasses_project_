@@ -5,7 +5,8 @@
 > 這份文件記錄的是**用 adb 實際查出來的事實**，不是規格書、不是推論。
 > 每一項都附上取得方式，任何人都可以重跑驗證。
 >
-> 最後更新：2026-08-08（語音輸出入雙雙打通、§21 背景被殺、§22 音訊診斷）
+> 最後更新：2026-08-08（語音輸出入雙雙打通、§21 背景被殺、§22 音訊診斷）；
+> 2026-10-16 補充 §23（連網版實測：背景限制會被重設、端側版來源、手機直連、LLM 誤判）
 
 ---
 
@@ -902,6 +903,8 @@ adb shell cmd appops set com.guideglasses RUN_ANY_IN_BACKGROUND allow
 | 背景開相機 | `Access Denial: idle UID` | **成功**（480×640、1476ms） |
 | 背景播報 | 行程消失 | **正常** |
 
+> ⚠️ **2026-10-16 更正**：不是「每台執行一次」就好 —— 每次安裝與每次開機都會被改回 `ignore`，見 §23.1。
+
 ### 程式端已主動查證
 
 `startForeground()` 不丟例外不代表成功，所以服務啟動後用
@@ -941,3 +944,74 @@ Android 的音量鍵只調「當下正在播的那條串流」，所以**必須�
 adb shell am broadcast -a com.guideglasses.DEBUG --es cmd SENSOR_TEST
 sleep 2 && for i in $(seq 1 10); do adb shell input keyevent KEYCODE_VOLUME_UP; done
 ```
+
+---
+
+## 23. 2026-10 連網版實測補充（Cloudflare 版、AWS 版）
+
+### 23.1 🔴 背景限制會被改回去：每次安裝、每次開機
+
+§21 的佈建指令**不是一次就好**：
+
+- 安裝 App（`adb install -r`、Android Studio 的 Run 都算）**約 11 秒後**，YodaOS 會把
+  `RUN_ANY_IN_BACKGROUND` 改回 `ignore`。剛裝完馬上查會看到 `allow`，那是假象。
+- **重開機後也一樣**，所有版本都被改回 `ignore`。
+- 被改回之後，前景服務會被降級（`dumpsys activity services` 顯示 `isForeground=false`），
+  螢幕一暗 App 就可能被回收，語音指令跟著失效。
+
+裝完等 15 秒、每次開機後都要再執行一次：
+
+```bash
+for p in com.guideglasses.cloudflare com.guideglasses.aws; do adb shell cmd appops set $p RUN_ANY_IN_BACKGROUND allow; adb shell cmd appops get $p RUN_ANY_IN_BACKGROUND; done
+```
+
+印出 `No operations. Default mode: allow` 就是生效了。
+
+### 23.2 眼鏡上的 `com.guideglasses` 已經不是 `edge/`
+
+| | 眼鏡上現在裝的 | `edge/`（tag `v1-local-only`） |
+|---|---|---|
+| 名稱 | 導盲眼鏡_0924 | 導盲眼鏡 |
+| 來源 | 組員的 portable 專案（2026-09-24） | `backup/apk/` 有備份 |
+| 大小 | 229,331,115 bytes | 253,272,539 bytes |
+| 簽章（SHA-256 前 16 碼） | `e911c14f5f43bcf8` | `d10c45490bfd2335`（這台電腦重建 `edge/` 則是 `e911c14f…`） |
+| 語音指令 | 被兩行 `return` 關掉 | 正常 |
+
+0924 版的 log 寫「喚醒詞監聽暫時停用：這台裝置跑這個模型會讓原生引擎當機」。真正原因是當時
+portable 裡沒有 KWS 模型檔，sherpa-onnx 在原生層 abort，被誤判成裝置不相容；同一副眼鏡上
+Cloudflare 版、AWS 版的語音指令都正常。2026-10-16 決定保留 0924 版與它的名稱。
+
+### 23.3 手機直連：眼鏡要連「跑 companion 那支手機」的熱點才會生效
+
+眼鏡把**預設閘道**當成手機（`PhoneHotspotAddress.gatewayHost()`）。測試用的手機開不了熱點時，
+眼鏡和手機都連在另一支手機的熱點底下，閘道不是跑 companion 的那支 → 直連找不到，
+自動改走後端（log：`定位來源：經由後端`）。
+
+實測走後端也能用：取得定位約 1–2 秒，手機位置約 7–15 秒更新一次（室內網路定位，精確度約 100 公尺）。
+2026-10-16 決定維持走後端，不改程式。
+
+### 23.4 LLM 把聽不清楚的話猜成「查公車」（已修提示詞）
+
+眼鏡會把每句話記進對話歷史，但「查公車」這類工具只記使用者說的話、不記結果。歷史裡有搭公車的
+請求時，語音辨識聽錯的句子會被判斷成 `navigate_to`／`plan_bus_route`，又去查一次公車。
+
+用同一份提示詞直接問 gpt-4o-mini（帶著搭公車的歷史，各 3 次）：
+
+| 句子 | 修正前 | 修正後（`backend/app/llm.py` 加兩條規則與範例） |
+|---|---|---|
+| 「天字說話」（聽錯） | 0/3（3 次都變導航） | 3/3（請使用者再說一次） |
+| 「今天氣如何」 | 1/3 | 3/3 |
+| 「查公車路線」「帶我去中正紀念堂」「前面有什麼」 | 3/3 | 3/3（不受影響） |
+
+Cloudflare 版、AWS 版都已在眼鏡上驗證。**還沒修**的兩個相關問題：
+
+1. 說「我要說話」開始聆聽後，指令偵測會暫停（麥克風讓給語音辨識），這時說「停止播報」不會執行。
+   要取消聆聽，點一下觸控板。
+2. 開始聆聽時只清掉 `NAVIGATION` 以下的播報；`USER_RESPONSE` 等級（例如公車方案）會繼續播，
+   語音辨識會收到眼鏡自己的聲音（實測聽了 15.8 秒，得到「天字說話」）。
+
+### 23.5 其他
+
+- 眼鏡時間比電腦快約 15 分鐘，`auto_time=1` 也沒有校正回來；目前不影響 HTTPS。
+- `RemoteLlmIntentGateway` 把所有連線錯誤（找不到主機、連線 3 秒／讀取 8 秒逾時、任何 `IOException`）
+  都當成「目前沒有網路」，而且不記錄真正的錯誤。聽到這句先隔幾秒再試一次。

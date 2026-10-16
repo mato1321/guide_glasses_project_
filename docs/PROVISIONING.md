@@ -13,6 +13,16 @@
 adb shell cmd appops set com.guideglasses RUN_ANY_IN_BACKGROUND allow
 ```
 
+> ⚠️ **2026-10-16 補充**：連網版的套件名稱是 `com.guideglasses.cloudflare`、`com.guideglasses.aws`，
+> 而且這條指令**不是跑一次就好** —— 每次安裝（約 11 秒後）與每次開機，YodaOS 都會把它改回 `ignore`。
+> 裝完等 15 秒、每次開機後都要再跑一次，見 `DEVICE_FINDINGS.md` §23.1：
+>
+> ```bash
+> for p in com.guideglasses.cloudflare com.guideglasses.aws; do adb shell cmd appops set $p RUN_ANY_IN_BACKGROUND allow; adb shell cmd appops get $p RUN_ANY_IN_BACKGROUND; done
+> ```
+>
+> 印出 `No operations. Default mode: allow` 就是生效了。
+
 ### 為什麼
 
 YodaOS **預設把每一個第三方 App 都設成背景限制**，連 Google Maps 也是：
