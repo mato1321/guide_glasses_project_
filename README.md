@@ -20,7 +20,7 @@ tell them what is ahead, who is in front of them, what a sign says, and how to c
 - **The phone is the GPS.** The glasses have no GPS. The companion phone app shares its location **directly over the Wi-Fi hotspot**, so navigation keeps working even if the backend goes down. The backend acts as a fallback relay.
 - **A natural-language assistant.** An LLM understands requests such as *"I want to take a bus to Chiang Kai-shek Memorial Hall"* and corrects speech-recognition typos in Taiwanese place names.
 - **Built for real devices.** Announcements are always at maximum volume, the backend URL can be changed at runtime (no rebuild when a Cloudflare tunnel restarts), and three app versions can coexist on one pair of glasses.
-- **Privacy and security by default.** Face embeddings stay on the glasses, encrypted with AES-GCM keys held in the Android Keystore. The backend rejects every request without an API key (fail-closed). Keys, photos and location data are never committed.
+- **Privacy and security by default.** Face embeddings stay on the glasses, encrypted with AES-GCM keys held in the Android Keystore. The backend rejects every request without an API key (fail-closed). Keys, face photos and location data are kept out of the repository.
 
 ## What It Can Do
 

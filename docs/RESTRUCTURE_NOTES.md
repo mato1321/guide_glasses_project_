@@ -45,6 +45,9 @@ backup/    不屬於三版的原始檔案，原封不動保留
 
 - `**/.env`、`backend/credentials/`：金鑰。範本見 `backend/.env.example`
 - `shared/faces/`：真人臉部照片（生物特徵）
+- `**/face_database/`、`backup/local-faces/`：組員原型 `backup/github-v1-local-only/AI_Assistant/python/face_database/`
+  的 5 張真人照片。2026-10-16 移出版控（檔案留在原位，另有本機備份）；
+  更早的 commit 與 tag `v1-local-only` 裡仍查得到，要徹底清除得改寫歷史
 - `shared/models/*`、各模組的 ASR/KWS `.onnx`：只有 `SHA256SUMS.txt` 進版控
 - `local.properties`、`backup/local-configs/`、`backup/apk/`
 

@@ -80,8 +80,9 @@ recording_*.m4a
 # 註冊工具上傳的照片。這是**真人的臉部照片**，屬個資法特種個資，
 # 絕不可進公開 repo。少了這行，第一次 git add 就會把它們掃進去。
 **/tools/face_photos/
-# 測試用的 face_database 目前保留，正式環境請整個排除
-# face_database/
+# 組員原型的 face_database（backup/github-v1-local-only/AI_Assistant/python/）也是真人照片，
+# 2026-10-16 起一律排除：檔案留在原位讓舊原型照樣能跑，另有本機備份 backup/local-faces/。
+**/face_database/
 
 # 注意：不要用 *.json / *.png / *.jpg 這類全域規則，
 # 會誤擋 google-services.json 與 Android res/drawable 資源。
@@ -93,6 +94,7 @@ shared/faces/
 shared/models/*
 !shared/models/SHA256SUMS.txt
 !shared/models/README.md
-# 備份區裡的本機設定與 APK 成品不進版控
+# 備份區裡的本機設定、APK 成品與人臉照片不進版控
 backup/local-configs/
 backup/apk/
+backup/local-faces/
