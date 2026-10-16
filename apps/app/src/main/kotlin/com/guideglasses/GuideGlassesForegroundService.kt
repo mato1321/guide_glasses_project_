@@ -50,10 +50,20 @@ import androidx.core.content.ContextCompat
  */
 class GuideGlassesForegroundService : Service() {
 
+    private var volumeHold: AutoCloseable? = null
+
     override fun onCreate() {
         super.onCreate()
         createChannel()
         startForegroundCompat()
+        // 導盲模式運作中，播報音量被調小就馬上拉回最大，見 AnnouncementVolume。
+        volumeHold = AnnouncementVolume.holdAtMax(this)
+    }
+
+    override fun onDestroy() {
+        volumeHold?.close()
+        volumeHold = null
+        super.onDestroy()
     }
 
     /**
