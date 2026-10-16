@@ -93,23 +93,35 @@ Guide Glasses 把 **Rokid 智慧眼鏡**變成視障者的語音助理。
 
 ## 專案結構
 
+依版本分組。Cloudflare 版和 AWS 版的 App 是**同一份程式**（Gradle productFlavors），後端也是**同一份程式**，
+兩版的差別只在建置設定與部署方式。
+
 ```
 guide_glasses_project_/
-├── README.md                        英文說明（GitHub 首頁）
-├── README.zh-TW.md                  繁體中文說明（本檔案）
-├── LICENSE                          MIT
+├── README.md · README.zh-TW.md · LICENSE
 │
-├── apps/                            ★ Android 專案（Cloudflare 版與 AWS 版共用同一份程式碼）
+│  ── 端側版（地端）：只用眼鏡，不需要網路、沒有後端 ──────────────────
+│
+├── edge/                            獨立的 Android 專案（凍結，= tag v1-local-only，保留作為對照）
+│                                    app/ · core/ · ai/ · glasses/ · feature/ · tools/
+│
+│  ── Cloudflare 版＋AWS 版：共用同一份 Android 程式 ──────────────────
+│
+├── apps/
 │   ├── app/                         眼鏡 App「導盲眼鏡 CF／AWS」
-│   │   ├── MainActivity.kt                  畫面（沒有按鈕）、觸控板點一下、開發用廣播
-│   │   ├── GuideGlassesApplication.kt       啟動時把音量開到最大、版本交接
-│   │   ├── GuideGlassesForegroundService.kt 前景服務：相機、麥克風在背景持續運作
-│   │   ├── SensorHandoff.kt                 三個版本輪流使用相機與麥克風
-│   │   ├── AnnouncementVolume.kt            播報音量 15/15
-│   │   └── di/                              功能組裝、X-Api-Key、執行期更換後端網址
-│   ├── companion/companion-app/     手機 App「導盲定位 CF／AWS」
+│   │   ├── src/main/                兩版共用的全部程式
+│   │   │   ├── MainActivity.kt                  畫面（沒有按鈕）、觸控板點一下、開發用廣播
+│   │   │   ├── GuideGlassesApplication.kt       啟動時把音量開到最大、版本交接
+│   │   │   ├── GuideGlassesForegroundService.kt 前景服務：相機、麥克風在背景持續運作
+│   │   │   ├── SensorHandoff.kt                 三個版本輪流使用相機與麥克風
+│   │   │   ├── AnnouncementVolume.kt            播報音量 15/15，導盲模式中被調小就拉回
+│   │   │   └── di/                              功能組裝、X-Api-Key、執行期更換後端網址
+│   │   ├── src/cloudflare/          CF 版專屬：只有圖示底色（橘）
+│   │   ├── src/aws/                 AWS 版專屬：只有圖示底色（深藍）
+│   │   └── build.gradle.kts         兩版的差別定義在這裡：名稱、套件名稱、後端網址、手機直連埠
+│   ├── companion/companion-app/     手機 App「導盲定位 CF／AWS」（兩版共用）
 │   │   ├── LocationReportService.kt         前景服務：GPS 送到後端
-│   │   ├── LocalLocationServer.kt           熱點直連伺服器，眼鏡直接來問位置（port 8765／8766）
+│   │   ├── LocalLocationServer.kt           熱點直連伺服器，眼鏡直接來問位置（CF 8765／AWS 8766）
 │   │   └── BackendUrlStore.kt               手機上設定的後端網址，會同步給眼鏡
 │   ├── core/
 │   │   ├── core-domain/             純 Kotlin 功能邏輯：語音指令、公車規劃與核對、步行導航、
@@ -130,33 +142,49 @@ guide_glasses_project_/
 │   ├── feature/feature-assistant/   助理的指令分派與提示音
 │   ├── tools/face_enroll_server.py  人臉註冊工具（在瀏覽器上傳照片）
 │   ├── keystore.properties.example  共用簽章設定範本
-│   └── local.properties             （不進版控）後端網址與金鑰
+│   └── local.properties             （不進版控）兩版各自的後端網址與金鑰
 │
-├── backend/                         ★ FastAPI 後端
-│   ├── app/
+│  ── 後端：Cloudflare 版和 AWS 版共用同一份程式 ──────────────────────
+│
+├── backend/
+│   ├── app/                         FastAPI
 │   │   ├── main.py                  金鑰驗證、/route（LLM）、/health
 │   │   ├── config.py                設定（路徑一律以 backend/ 為準）
 │   │   ├── llm.py                   OpenAI 意圖解析、修正地名
 │   │   ├── bus_logic.py             公車方案、到站時間、LED 看板 YOLO ＋ Cloud Vision
 │   │   ├── navigation_logic.py      步行路線
-│   │   ├── lambda_handler.py        AWS Lambda 進入點（Mangum）
-│   │   └── routers/                 bus · location（記憶體或 DynamoDB）· navigation · translate
+│   │   ├── lambda_handler.py        只有 AWS 版用：Lambda 進入點（Mangum）
+│   │   └── routers/                 bus · location（CF 存記憶體／AWS 存 DynamoDB）· navigation · translate
 │   ├── tests/                       pytest（36 個；AWS 以 moto 在本機模擬）
 │   ├── deploy/
-│   │   ├── cloudflare/              Cloudflare 通道說明與啟動腳本
-│   │   └── aws/                     Lambda 打包、部署腳本與說明
-│   ├── requirements.txt             本機／Cloudflare 版
-│   ├── requirements-lambda.txt      AWS Lambda 版
+│   │   ├── cloudflare/              CF 版部署：Cloudflare 通道說明與啟動腳本
+│   │   └── aws/                     AWS 版部署：Lambda 打包、部署腳本與說明
+│   ├── requirements.txt             CF 版（含 YOLO）
+│   ├── requirements-lambda.txt      AWS 版（沒有 torch，所以不跑 YOLO）
 │   ├── requirements-dev.txt         測試與部署工具
-│   ├── .env.example                 設定範本（Cloudflare 版）
-│   ├── .env.aws.example             設定範本（AWS 版）
-│   └── .env、credentials/、models/、debug/   （不進版控）金鑰、服務帳戶、LED 看板模型、辨識畫面
+│   ├── .env.example                 CF 版設定範本
+│   ├── .env.aws.example             AWS 版設定範本
+│   └── .env、.env.aws、credentials/、models/、debug/   （不進版控）金鑰、服務帳戶、LED 看板模型、辨識畫面
 │
+│  ── 共用的資料與文件 ────────────────────────────────────────────
+│
+├── shared/
+│   ├── models/                      模型清單與 SHA-256 校驗碼
+│   └── faces/                       （不進版控）人臉註冊照片
 ├── docs/                            架構、裝置實測紀錄、眼鏡佈建、專題計畫書、操作卡（PDF）、重整紀錄
-├── edge/                            端側版（只能離線，已凍結，保留作為對照）
-├── shared/models/                   模型清單與 SHA-256 校驗碼
 └── backup/                          整理前的原始檔案，原封不動保留
+    └── local-faces/                 （不進版控）從組員原型移出的人臉照片
 ```
+
+每個版本實際用到的資料夾：
+
+| | 端側版 | Cloudflare 版 | AWS 版 |
+|---|---|---|---|
+| 眼鏡 App | `edge/` | `apps/`，建置 `cloudflareDebug` | `apps/`，建置 `awsDebug` |
+| 手機 App | 沒有 | `apps/companion/`（cloudflare） | `apps/companion/`（aws） |
+| 後端程式 | 沒有 | `backend/app/` | `backend/app/`＋`lambda_handler.py` |
+| 部署 | — | `backend/deploy/cloudflare/` | `backend/deploy/aws/` |
+| 金鑰設定 | — | `backend/.env`、`guideglasses.cloudflare.*` | `backend/.env.aws`、`guideglasses.aws.*` |
 
 ## 開始使用
 

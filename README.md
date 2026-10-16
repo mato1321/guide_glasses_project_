@@ -93,23 +93,35 @@ Model sources and SHA-256 checksums are listed in [`shared/models/README.md`](sh
 
 ## Repository Structure
 
+Grouped by edition. The Cloudflare and AWS editions build their apps from **one codebase** (Gradle productFlavors)
+and run **one backend codebase**; they differ only in build settings and deployment.
+
 ```
 guide_glasses_project_/
-├── README.md                        English README (this file)
-├── README.zh-TW.md                  Traditional Chinese README
-├── LICENSE                          MIT
+├── README.md · README.zh-TW.md · LICENSE
 │
-├── apps/                            ★ Android project — Cloudflare & AWS flavors share one codebase
+│  ── Offline edition: glasses only, no network, no backend ─────────────
+│
+├── edge/                            Standalone Android project (frozen, = tag v1-local-only, kept for reference)
+│                                    app/ · core/ · ai/ · glasses/ · feature/ · tools/
+│
+│  ── Cloudflare + AWS editions: one shared Android codebase ────────────
+│
+├── apps/
 │   ├── app/                         Glasses app "導盲眼鏡 CF / AWS"
-│   │   ├── MainActivity.kt                  Screen with no buttons, touchpad tap, debug broadcasts
-│   │   ├── GuideGlassesApplication.kt       Max volume on start, hand-off between editions
-│   │   ├── GuideGlassesForegroundService.kt Keeps camera & microphone alive in the background
-│   │   ├── SensorHandoff.kt                 Lets the three editions take turns with the sensors
-│   │   ├── AnnouncementVolume.kt            Announcement volume 15/15
-│   │   └── di/                              Dependency wiring, X-Api-Key, runtime backend URL
-│   ├── companion/companion-app/     Phone app "導盲定位 CF / AWS"
+│   │   ├── src/main/                Everything both editions share
+│   │   │   ├── MainActivity.kt                  Screen with no buttons, touchpad tap, debug broadcasts
+│   │   │   ├── GuideGlassesApplication.kt       Max volume on start, hand-off between editions
+│   │   │   ├── GuideGlassesForegroundService.kt Keeps camera & microphone alive in the background
+│   │   │   ├── SensorHandoff.kt                 Lets the three editions take turns with the sensors
+│   │   │   ├── AnnouncementVolume.kt            Announcement volume 15/15, restored if lowered while guiding
+│   │   │   └── di/                              Dependency wiring, X-Api-Key, runtime backend URL
+│   │   ├── src/cloudflare/          Cloudflare-only: just the icon background (orange)
+│   │   ├── src/aws/                 AWS-only: just the icon background (dark blue)
+│   │   └── build.gradle.kts         Where the editions differ: name, package, backend URLs, phone port
+│   ├── companion/companion-app/     Phone app "導盲定位 CF / AWS" (shared by both editions)
 │   │   ├── LocationReportService.kt         Foreground service: GPS → backend
-│   │   ├── LocalLocationServer.kt           Hotspot server the glasses query directly (port 8765 / 8766)
+│   │   ├── LocalLocationServer.kt           Hotspot server the glasses query directly (CF 8765 / AWS 8766)
 │   │   └── BackendUrlStore.kt               Backend URL set on the phone, synced to the glasses
 │   ├── core/
 │   │   ├── core-domain/             Pure-Kotlin logic: voice commands, bus planning & confirmation,
@@ -130,34 +142,50 @@ guide_glasses_project_/
 │   ├── feature/feature-assistant/   Assistant view model (command dispatch) and beep tone
 │   ├── tools/face_enroll_server.py  Face enrollment server (upload photos in a browser)
 │   ├── keystore.properties.example  Shared signing-key template
-│   └── local.properties             (git-ignored) backend URLs and API keys
+│   └── local.properties             (git-ignored) backend URLs and API keys for each edition
 │
-├── backend/                         ★ FastAPI backend
-│   ├── app/
+│  ── Backend: one codebase for the Cloudflare and AWS editions ─────────
+│
+├── backend/
+│   ├── app/                         FastAPI
 │   │   ├── main.py                  API-key check, /route (LLM), /health
 │   │   ├── config.py                Settings (paths resolved relative to backend/)
 │   │   ├── llm.py                   OpenAI intent parsing, place-name correction
 │   │   ├── bus_logic.py             Bus plans, ETA, LED-panel YOLO + Cloud Vision
 │   │   ├── navigation_logic.py      Walking routes
-│   │   ├── lambda_handler.py        AWS Lambda entry point (Mangum)
-│   │   └── routers/                 bus · location (memory or DynamoDB) · navigation · translate
+│   │   ├── lambda_handler.py        AWS edition only: Lambda entry point (Mangum)
+│   │   └── routers/                 bus · location (CF in memory / AWS in DynamoDB) · navigation · translate
 │   ├── tests/                       pytest (36 tests; AWS mocked locally with moto)
 │   ├── deploy/
-│   │   ├── cloudflare/              Cloudflare Tunnel guide and start script
-│   │   └── aws/                     Lambda build & deploy scripts and guide
-│   ├── requirements.txt             Local / Cloudflare edition
-│   ├── requirements-lambda.txt      AWS Lambda package
+│   │   ├── cloudflare/              Cloudflare edition: tunnel guide and start script
+│   │   └── aws/                     AWS edition: Lambda build & deploy scripts and guide
+│   ├── requirements.txt             Cloudflare edition (includes YOLO)
+│   ├── requirements-lambda.txt      AWS edition (no torch, so no YOLO)
 │   ├── requirements-dev.txt         Tests and deployment tools
 │   ├── .env.example                 Settings template (Cloudflare edition)
 │   ├── .env.aws.example             Settings template (AWS edition)
-│   └── .env, credentials/, models/, debug/   (git-ignored) keys, service account, LED-panel model, debug images
+│   └── .env, .env.aws, credentials/, models/, debug/   (git-ignored) keys, service account, LED-panel model, debug images
 │
+│  ── Shared data and docs ─────────────────────────────────────────────
+│
+├── shared/
+│   ├── models/                      Model inventory and SHA-256 checksums
+│   └── faces/                       (git-ignored) face enrollment photos
 ├── docs/                            Architecture, device findings, provisioning, project plan,
 │                                    quick-start card (PDF), restructure notes
-├── edge/                            Offline-only edition (frozen, kept for reference)
-├── shared/models/                   Model inventory and SHA-256 checksums
 └── backup/                          Pre-restructure originals, kept untouched
+    └── local-faces/                 (git-ignored) face photos moved out of the team prototypes
 ```
+
+Which folders each edition uses:
+
+| | Offline | Cloudflare | AWS |
+|---|---|---|---|
+| Glasses app | `edge/` | `apps/`, build `cloudflareDebug` | `apps/`, build `awsDebug` |
+| Phone app | none | `apps/companion/` (cloudflare) | `apps/companion/` (aws) |
+| Backend code | none | `backend/app/` | `backend/app/` + `lambda_handler.py` |
+| Deployment | — | `backend/deploy/cloudflare/` | `backend/deploy/aws/` |
+| Keys | — | `backend/.env`, `guideglasses.cloudflare.*` | `backend/.env.aws`, `guideglasses.aws.*` |
 
 ## Getting Started
 
